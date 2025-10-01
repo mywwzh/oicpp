@@ -1,10 +1,10 @@
 <h1 align="center">OICPP IDE</h1>
 
 <p align="center">
-  <a href="https://github.com/mywwzh/oicpp/stargazers"><img src="https://img.shields.io/github/stars/mywwzh/oicpp.svg?style=for-the-badge" alt="Stargazers"></a>
-  <a href="https://github.com/mywwzh/oicpp/issues"><img src="https://img.shields.io/github/issues/mywwzh/oicpp.svg?style=for-the-badge" alt="Issues"></a>
-  <a href="https://github.com/mywwzh/oicpp/network/members"><img src="https://img.shields.io/github/forks/mywwzh/oicpp.svg?style=for-the-badge" alt="Forks"></a>
-  <a href="https://github.com/mywwzh/oicpp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/mywwzh/oicpp.svg?style=for-the-badge" alt="License"></a>
+  <a href="https://github.com/mywwzh/oicpp/stargazers"><img src="https://img.shields.io/github/stars/mywwzh/oicpp.svg?style=for-the-badge&new=1" alt="Stargazers"></a>
+  <a href="https://github.com/mywwzh/oicpp/issues"><img src="https://img.shields.io/github/issues/mywwzh/oicpp.svg?style=for-the-badge&new=1" alt="Issues"></a>
+  <a href="https://github.com/mywwzh/oicpp/network/members"><img src="https://img.shields.io/github/forks/mywwzh/oicpp.svg?style=for-the-badge&new=1" alt="Forks"></a>
+  <a href="https://github.com/mywwzh/oicpp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/mywwzh/oicpp.svg?style=for-the-badge&new=1" alt="License"></a>
 </p>
 <br>
 <p>OICPP IDE 起源于一个退役高中 OIer 对信息学竞赛的热爱与对编程工具的思考。</p>
