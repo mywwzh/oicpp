@@ -1,0 +1,91 @@
+name: Bug 反馈
+description: 反馈 OICPP 中的错误和问题
+title: "[Bug] "
+labels: ["待处理"]
+assignees:
+  - mywwzh
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢您抽出宝贵时间填写此错误报告！
+  
+  - type: textarea
+    id: description
+    attributes:
+      label: 描述该错误
+      description: 请填写对 bug 的清晰简洁描述。
+      placeholder: 详细描述你遇到的问题...
+    validations:
+      required: true
+  
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 重现该 bug 的步骤
+      description: 请提供详细的步骤以重现此问题
+      placeholder: |
+        1. 前往"..."
+        2. 点击"...."
+        3. 向下滚动至"...."
+        4. 见错误
+    validations:
+      required: true
+  
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+      description: 对你期望发生的事情进行清晰简洁的描述。
+      placeholder: 你期望发生什么...
+    validations:
+      required: true
+  
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 屏幕截图
+      description: 如适用，请添加截图以帮助解释您的问题。
+      placeholder: 拖放图片或粘贴图片链接
+    validations:
+      required: false
+  
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      description: 你使用的操作系统
+      placeholder: 例如：Windows 11, Windows 10
+    validations:
+      required: true
+  
+  - type: input
+    id: version
+    attributes:
+      label: 软件版本
+      description: OICPP 的版本号
+      placeholder: 例如：v1.0.0
+    validations:
+      required: true
+  
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: |
+        非必需，建议上传，有助于开发者快速定位 bug
+        路径为：C:\Users\<你的用户名>\.oicpp\logs
+        请上传记录发生问题时的 OICPP 的日志
+        文件名最后的 x-y-z 表示该 OICPP 窗口打开于 x 时 y 分 z 秒
+      placeholder: 粘贴日志内容或拖放日志文件
+    validations:
+      required: false
+  
+  - type: textarea
+    id: context
+    attributes:
+      label: 附加上下文
+      description: 在此处添加关于该问题的任何其他上下文信息。
+      placeholder: 其他信息...
+    validations:
+      required: false
