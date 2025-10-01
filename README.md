@@ -7,7 +7,9 @@
   <a href="https://github.com/mywwzh/oicpp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/mywwzh/oicpp.svg?style=for-the-badge" alt="License"></a>
 </p>
 <br>
-<p>OICPP IDE 起源于一个退役高中 OIer 对信息学竞赛的热爱与对编程工具的思考。我们采访了 Genius_Star、__Cby___、水星湖 等现役 OIer，了解了更多需求， 专门打造了这款针对性极强的集成开发环境。
+<p>OICPP IDE 起源于一个退役高中 OIer 对信息学竞赛的热爱与对编程工具的思考。</p>
+
+<p>我们采访了 Genius_Star、__Cby___、水星湖 等现役 OIer，了解了更多需求， 专门打造了这款针对性极强的集成开发环境。
 从代码编写到调试测试，从算法验证到性能优化，OICPP IDE 力求在每一个环节都能为选手提供最大的便利， 让大家能够更专注于算法思维的培养和编程技能的提升</p>
 <br>
 
@@ -27,6 +29,10 @@
 - [x] 分屏与查看 PDF
 - [x] 云编译，可一键测试代码在 Linux 下能否通过编译
 - [x] 支持 NOI Linux
+
+## 下载
+
+您可以在[官网](https://oicpp.mywwzh.top)下载或在右侧 release 中下载最新版本安装包。
 
 ## 反馈建议 📢
 
