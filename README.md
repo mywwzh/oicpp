@@ -43,6 +43,15 @@
 
 点击查看 [`LICENSE`](LICENSE) 文件
 
+
+## 访问量(总计/今日)
+[![Hits](https://hits.zkitefly.eu.org/?tag=https://github.com/mywwzh/oicpp)](https://hits.zkitefly.eu.org/?tag=https://github.com/mywwzh/oicpp&web=true)
+
+## 贡献者
+<a href="https://github.com/mywwzh/oicpp/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=mywwzh/oicpp" />
+</a>
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=mywwzh/oicpp&type=Date)](https://star-history.com/#mywwzh/oicpp&Date)
