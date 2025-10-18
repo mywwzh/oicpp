@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Viewer</title>
+  <link rel="stylesheet" href="../../node_modules/pdfjs-dist/web/pdf_viewer.css" />
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #1e1e1e;
+      color: #f0f0f0;
+      overflow: hidden;
+    }
+    body.light {
+      background: #f5f5f5;
+      color: #222;
+    }
+    #viewerContainer {
+      position: absolute;
+      inset: 0;
+      overflow: auto;
+      background: inherit;
+    }
+    #viewer {
+      padding: 24px 32px 48px;
+    }
+    .pdfViewer .page {
+      margin: 0 auto 24px auto;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    body.light .pdfViewer .page {
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+    }
+    #loadingOverlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      background: inherit;
+      color: inherit;
+      font-size: 14px;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    #loadingOverlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+    }
+    #loadingOverlay .spinner {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 4px solid rgba(255, 255, 255, 0.2);
+      border-top-color: rgba(255, 255, 255, 0.7);
+      animation: spin 0.9s linear infinite;
+    }
+    body.light #loadingOverlay .spinner {
+      border: 4px solid rgba(0, 0, 0, 0.12);
+      border-top-color: rgba(0, 0, 0, 0.45);
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    #errorOverlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      background: rgba(30, 30, 30, 0.92);
+      color: #ff9d9d;
+      font-size: 14px;
+      text-align: center;
+      padding: 16px;
+    }
+    #errorOverlay.visible {
+      display: flex;
+    }
+    #dropOverlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(20, 20, 20, 0.65);
+      color: #f5f5f5;
+      font-size: 15px;
+      z-index: 20;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    #dropOverlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #dropOverlay .message {
+      padding: 10px 18px;
+      border-radius: 8px;
+      border: 1px dashed rgba(245, 245, 245, 0.6);
+      background: rgba(0, 0, 0, 0.35);
+      -webkit-backdrop-filter: blur(4px);
+      backdrop-filter: blur(4px);
+    }
+    body.light #dropOverlay {
+      background: rgba(240, 240, 240, 0.75);
+      color: #222;
+    }
+    body.light #dropOverlay .message {
+      border-color: rgba(34, 34, 34, 0.35);
+      background: rgba(255, 255, 255, 0.85);
+    }
+    #passwordOverlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.55);
+      color: inherit;
+      z-index: 40;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    #passwordOverlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    body.light #passwordOverlay {
+      background: rgba(240, 240, 240, 0.65);
+    }
+    #passwordDialog {
+      width: min(360px, 80vw);
+      padding: 24px 24px 20px;
+      border-radius: 12px;
+      background: #2c2c2c;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    body.light #passwordDialog {
+      background: #ffffff;
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.2);
+    }
+    #passwordDialog h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    #passwordMessage {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.5;
+      color: rgba(255, 255, 255, 0.85);
+    }
+    body.light #passwordMessage {
+      color: rgba(0, 0, 0, 0.72);
+    }
+    #passwordError {
+      font-size: 13px;
+      color: #ff9d9d;
+      min-height: 18px;
+    }
+    #passwordInput {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(0, 0, 0, 0.4);
+      color: inherit;
+      font-size: 14px;
+      outline: none;
+    }
+    #passwordInput:focus {
+      border-color: #4fc3f7;
+      box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.25);
+    }
+    body.light #passwordInput {
+      background: rgba(0, 0, 0, 0.04);
+      border-color: rgba(0, 0, 0, 0.12);
+    }
+    body.light #passwordInput:focus {
+      border-color: #1976d2;
+      box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.15);
+    }
+    #passwordActions {
+      margin-top: 4px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+    #passwordActions button {
+      min-width: 88px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    }
+    #passwordCancel {
+      background: rgba(255, 255, 255, 0.12);
+      color: inherit;
+    }
+    #passwordSubmit {
+      background: #2f88ff;
+      color: #ffffff;
+      font-weight: 600;
+    }
+    #passwordActions button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    #passwordActions button:not(:disabled):hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+    }
+    body.light #passwordCancel {
+      background: rgba(0, 0, 0, 0.08);
+    }
+    body.light #passwordSubmit {
+      background: #1976d2;
+    }
+  </style>
+</head>
+<body>
+  <div id="viewerContainer" class="viewerContainer">
+    <div id="viewer" class="pdfViewer"></div>
+  </div>
+  <div id="loadingOverlay">
+    <div class="spinner"></div>
+    <div>PDF 加载中…</div>
+  </div>
+  <div id="errorOverlay">
+    <strong>无法打开 PDF 文件</strong>
+    <span id="errorMessage"></span>
+  </div>
+  <div id="dropOverlay">
+    <div class="message">拖拽文件到此处打开</div>
+  </div>
+  <div id="passwordOverlay" aria-hidden="true">
+    <div id="passwordDialog" role="dialog" aria-modal="true" aria-labelledby="passwordDialogTitle">
+      <h2 id="passwordDialogTitle">PDF 密码保护</h2>
+      <p id="passwordMessage">该 PDF 文件受密码保护，请输入密码：</p>
+      <input id="passwordInput" type="password" autocomplete="current-password" placeholder="请输入密码" />
+      <div id="passwordError"></div>
+      <div id="passwordActions">
+        <button id="passwordCancel" type="button">取消</button>
+        <button id="passwordSubmit" type="button">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as pdfjsLib from "../../node_modules/pdfjs-dist/build/pdf.mjs";
+    import {
+      EventBus,
+      PDFViewer,
+      PDFLinkService,
+      PDFFindController
+    } from "../../node_modules/pdfjs-dist/web/pdf_viewer.mjs";
+
+    const params = new URLSearchParams(window.location.search);
+  const fileUrl = params.get("file") || "";
+    const tabId = params.get("tabId") || "";
+    const initialScale = params.get("zoom") || "page-width";
+    const theme = params.get("theme") || "dark";
+    const autoScalePattern = /^(page-width|page-fit|auto)$/i;
+    let autoScaleMode = autoScalePattern.test(initialScale) ? initialScale : null;
+    let resizeObserver = null;
+    const pendingFileRequests = new Map();
+
+    if (theme === "light") {
+      document.body.classList.add("light");
+      document.documentElement.style.setProperty("color-scheme", "light");
+    }
+
+    const viewerContainer = document.getElementById("viewerContainer");
+    const viewerElement = document.getElementById("viewer");
+    const loadingOverlay = document.getElementById("loadingOverlay");
+    const errorOverlay = document.getElementById("errorOverlay");
+    const errorMessage = document.getElementById("errorMessage");
+  const dropOverlay = document.getElementById("dropOverlay");
+  let dropHoverCounter = 0;
+  let lastDropActivity = 0;
+  let dropMonitorTimer = null;
+  const DROP_MONITOR_INTERVAL = 400;
+
+  const passwordOverlay = document.getElementById("passwordOverlay");
+  const passwordDialog = document.getElementById("passwordDialog");
+  const passwordMessageEl = document.getElementById("passwordMessage");
+  const passwordInput = document.getElementById("passwordInput");
+  const passwordError = document.getElementById("passwordError");
+  const passwordSubmit = document.getElementById("passwordSubmit");
+  const passwordCancel = document.getElementById("passwordCancel");
+  let passwordResolver = null;
+  let passwordAllowEmpty = false;
+  let lastPasswordCancelled = false;
+
+  function startDropMonitor() {
+    if (dropMonitorTimer) {
+      return;
+    }
+    dropMonitorTimer = setInterval(() => {
+      if (dropHoverCounter === 0) {
+        stopDropMonitor();
+        return;
+      }
+      if (Date.now() - lastDropActivity > DROP_MONITOR_INTERVAL * 2) {
+        hideDropOverlay(true);
+      }
+    }, DROP_MONITOR_INTERVAL);
+  }
+
+  function stopDropMonitor() {
+    if (dropMonitorTimer) {
+      clearInterval(dropMonitorTimer);
+      dropMonitorTimer = null;
+    }
+  }
+
+    const eventBus = new EventBus();
+    const linkService = new PDFLinkService({ eventBus });
+    const findController = new PDFFindController({ eventBus, linkService });
+
+    const workerUrl = new URL("../../node_modules/pdfjs-dist/build/pdf.worker.mjs", import.meta.url).href;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+
+    const pdfViewer = new PDFViewer({
+      container: viewerContainer,
+      eventBus,
+      linkService,
+      findController,
+      textLayerMode: 2,
+      annotationMode: 2,
+      enablePermissions: true,
+      useOnlyCssZoom: false
+    });
+    linkService.setViewer(pdfViewer);
+
+    function notifyParent(type, detail = {}) {
+      if (!window.parent) return;
+      window.parent.postMessage({
+        source: "oicpp-pdf-viewer",
+        tabId,
+        type,
+        detail
+      }, "*");
+    }
+
+    function base64ToUint8Array(base64) {
+      const binaryString = atob(base64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i += 1) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes;
+    }
+
+    function arrayBufferToBase64(buffer) {
+      if (!buffer) {
+        return "";
+      }
+      const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+      let binary = "";
+      const chunkSize = 0x8000;
+      for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        const chunk = bytes.subarray(offset, offset + chunkSize);
+        binary += String.fromCharCode.apply(null, chunk);
+      }
+      return btoa(binary);
+    }
+
+    function guessFilePathFromUrl(url) {
+      if (!url || !url.startsWith("file:")) {
+        return null;
+      }
+      try {
+        let withoutScheme = url.replace(/^file:\/\//, "");
+        withoutScheme = decodeURI(withoutScheme);
+        if (/^\/[A-Za-z]:/.test(withoutScheme)) {
+          return withoutScheme.slice(1);
+        }
+        return withoutScheme;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function requestFileData(url) {
+      if (!window.parent) {
+        return Promise.reject(new Error("无法访问应用上下文"));
+      }
+      const requestId = `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+      const filePath = guessFilePathFromUrl(url);
+      const payload = { requestId, fileUrl: url };
+      if (filePath) {
+        payload.filePath = filePath;
+      }
+      if (url === "inline") {
+        payload.inline = true;
+      }
+      return new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          pendingFileRequests.delete(requestId);
+          reject(new Error("读取 PDF 文件超时"));
+        }, 15000);
+        pendingFileRequests.set(requestId, { resolve, reject, timeoutId });
+        notifyParent("request-file", payload);
+      });
+    }
+
+    function handleFileDataResponse(data) {
+      const { requestId } = data;
+      if (!requestId || !pendingFileRequests.has(requestId)) {
+        return;
+      }
+      const pending = pendingFileRequests.get(requestId);
+      pendingFileRequests.delete(requestId);
+      clearTimeout(pending.timeoutId);
+
+      if (data.error) {
+        pending.reject(new Error(data.error));
+        return;
+      }
+
+      try {
+        let buffer = null;
+        if (data.base64) {
+          buffer = base64ToUint8Array(data.base64);
+        } else if (data.bytes && Array.isArray(data.bytes)) {
+          buffer = new Uint8Array(data.bytes);
+        } else if (data.buffer instanceof ArrayBuffer) {
+          buffer = new Uint8Array(data.buffer);
+        }
+        if (!buffer) {
+          throw new Error("未收到有效的 PDF 数据");
+        }
+        pending.resolve(buffer);
+      } catch (error) {
+        pending.reject(error);
+      }
+    }
+
+    function showLoading() {
+      if (!loadingOverlay) {
+        return;
+      }
+      loadingOverlay.classList.remove("hidden");
+    }
+
+    function hideLoading() {
+      if (!loadingOverlay) {
+        return;
+      }
+      loadingOverlay.classList.add("hidden");
+    }
+
+    function showError(message) {
+      hideLoading();
+      cleanupPasswordOverlay();
+      errorMessage.textContent = message || "未知错误";
+      errorOverlay.classList.add("visible");
+      notifyParent("error", { message });
+    }
+
+    function isInternalTabDrag(event) {
+      try {
+        const types = Array.isArray(event?.dataTransfer?.types)
+          ? event.dataTransfer.types
+          : Array.from(event?.dataTransfer?.types || []);
+        return types.includes("application/oicpp-tab");
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function showDropOverlay(event) {
+      if (!dropOverlay) {
+        return;
+      }
+      if (isInternalTabDrag(event)) {
+        return;
+      }
+      dropHoverCounter += 1;
+      if (event?.dataTransfer) {
+        event.dataTransfer.dropEffect = "copy";
+      }
+      dropOverlay.classList.add("visible");
+      lastDropActivity = Date.now();
+      startDropMonitor();
+    }
+
+    function hideDropOverlay(force = false) {
+      if (!dropOverlay) {
+        return;
+      }
+      if (force) {
+        dropHoverCounter = 0;
+        dropOverlay.classList.remove("visible");
+        stopDropMonitor();
+        return;
+      }
+      dropHoverCounter = Math.max(dropHoverCounter - 1, 0);
+      if (dropHoverCounter === 0) {
+        dropOverlay.classList.remove("visible");
+        stopDropMonitor();
+      }
+    }
+
+    function cleanupPasswordOverlay() {
+      if (!passwordOverlay) {
+        return;
+      }
+      passwordOverlay.classList.remove("visible");
+      passwordOverlay.setAttribute("aria-hidden", "true");
+      document.body.style.overflow = "";
+      passwordAllowEmpty = false;
+      passwordResolver = null;
+    }
+
+    function finishPasswordOverlay(result) {
+      if (typeof passwordResolver !== "function") {
+        cleanupPasswordOverlay();
+        return;
+      }
+      const resolver = passwordResolver;
+      passwordResolver = null;
+      cleanupPasswordOverlay();
+      resolver(result);
+    }
+
+    function showPasswordOverlay(message, options = {}) {
+      if (!passwordOverlay || !passwordInput) {
+        return Promise.resolve(null);
+      }
+      if (typeof passwordResolver === "function") {
+        finishPasswordOverlay(null);
+      }
+      const { allowEmpty = false } = options;
+      passwordAllowEmpty = allowEmpty;
+      passwordMessageEl.textContent = message || "请输入 PDF 密码：";
+      passwordError.textContent = "";
+      passwordInput.value = "";
+      passwordOverlay.classList.add("visible");
+      passwordOverlay.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+      return new Promise((resolve) => {
+        passwordResolver = resolve;
+        setTimeout(() => {
+          passwordInput.focus();
+          passwordInput.select();
+        }, 20);
+      });
+    }
+
+    if (passwordOverlay) {
+      passwordSubmit?.addEventListener("click", () => {
+        if (typeof passwordResolver !== "function") {
+          return;
+        }
+        const value = passwordInput.value;
+        if (!passwordAllowEmpty && !value) {
+          passwordError.textContent = "密码不能为空";
+          passwordInput.focus();
+          return;
+        }
+        finishPasswordOverlay(value);
+      });
+
+      passwordCancel?.addEventListener("click", () => {
+        if (typeof passwordResolver !== "function") {
+          cleanupPasswordOverlay();
+          return;
+        }
+        finishPasswordOverlay(null);
+      });
+
+      passwordOverlay.addEventListener("click", (event) => {
+        if (event.target === passwordOverlay) {
+          passwordError.textContent = "";
+          passwordInput.focus();
+        }
+      });
+
+      passwordInput?.addEventListener("keydown", (event) => {
+        if (!passwordResolver) {
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          const value = passwordInput.value;
+          if (!passwordAllowEmpty && !value) {
+            passwordError.textContent = "密码不能为空";
+            passwordInput.focus();
+            return;
+          }
+          finishPasswordOverlay(value);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          finishPasswordOverlay(null);
+        }
+      });
+    }
+
+    function applyAutoScale() {
+      if (!autoScaleMode) {
+        return;
+      }
+      const targetPreset = autoScaleMode || "page-width";
+      if (pdfViewer.currentScaleValue !== targetPreset) {
+        pdfViewer.currentScaleValue = targetPreset;
+      } else {
+        // 强制刷新以适配最新容器尺寸
+        pdfViewer.currentScaleValue = targetPreset;
+      }
+    }
+
+    eventBus.on("pagesinit", () => {
+      applyAutoScale();
+      hideLoading();
+      cleanupPasswordOverlay();
+      notifyParent("ready", { scale: pdfViewer.currentScale });
+    });
+
+    eventBus.on("scalechanging", (evt) => {
+      if (!evt.presetValue || !autoScalePattern.test(evt.presetValue)) {
+        autoScaleMode = null;
+      }
+      notifyParent("zoom-changed", { scale: evt.scale });
+    });
+
+    function setupResizeHandling() {
+      if (window.ResizeObserver) {
+        resizeObserver = new ResizeObserver(() => {
+          if (autoScaleMode) {
+            applyAutoScale();
+          }
+        });
+        resizeObserver.observe(viewerContainer);
+      } else {
+        window.addEventListener("resize", applyAutoScale);
+      }
+    }
+
+    async function loadDocument() {
+      if (!fileUrl) {
+        showError("缺少文件参数");
+        return;
+      }
+
+      lastPasswordCancelled = false;
+      const isInlineSource = fileUrl === "inline";
+      const isLocalFile = !isInlineSource && fileUrl.startsWith("file:");
+
+      let cachedFileDataPromise = null;
+      const getFileDataClone = async () => {
+        if (!cachedFileDataPromise) {
+          if (isInlineSource) {
+            cachedFileDataPromise = requestFileData("inline");
+          } else if (isLocalFile) {
+            cachedFileDataPromise = requestFileData(fileUrl);
+          } else {
+            cachedFileDataPromise = Promise.resolve(null);
+          }
+        }
+        const original = await cachedFileDataPromise;
+        if (!original) {
+          return null;
+        }
+        if (original instanceof Uint8Array) {
+          return original.slice();
+        }
+        if (original instanceof ArrayBuffer) {
+          return new Uint8Array(original).slice();
+        }
+        if (Array.isArray(original)) {
+          return new Uint8Array(original).slice();
+        }
+        return null;
+      };
+
+      let providedPassword = null;
+      let attemptCount = 0;
+
+      while (true) {
+        let loadingTask = null;
+        try {
+          const params = { useSystemFonts: true };
+          if (isInlineSource || isLocalFile) {
+            const clonedData = await getFileDataClone();
+            if (!clonedData) {
+              throw new Error("未收到有效的 PDF 数据");
+            }
+            params.data = clonedData;
+          } else {
+            params.url = fileUrl;
+          }
+          if (typeof providedPassword === "string") {
+            params.password = providedPassword;
+          }
+
+          loadingTask = pdfjsLib.getDocument(params);
+
+          const pdfDocument = await loadingTask.promise;
+          showLoading();
+          pdfViewer.setDocument(pdfDocument);
+          linkService.setDocument(pdfDocument, null);
+          setupResizeHandling();
+          return;
+        } catch (error) {
+          if (loadingTask && typeof loadingTask.destroy === "function") {
+            try { await loadingTask.destroy(); } catch (_) {}
+          }
+          console.error("PDF 加载失败", error);
+
+          const responses = pdfjsLib.PasswordResponses || {};
+          const needPassword = error?.name === "PasswordException" && error.code === responses.NEED_PASSWORD;
+          const wrongPassword = error?.name === "PasswordException" && error.code === responses.INCORRECT_PASSWORD;
+          const messageIndicatesPassword = !error?.code && /password/i.test(error?.message || "");
+
+          if (needPassword || wrongPassword || messageIndicatesPassword) {
+            hideLoading();
+            attemptCount = wrongPassword ? attemptCount + 1 : 0;
+
+            let promptMessage = "该 PDF 文件受密码保护，请输入密码：";
+            if (wrongPassword) {
+              promptMessage = attemptCount === 1
+                ? "密码错误，请重新输入正确的密码："
+                : `密码错误（第 ${attemptCount} 次尝试），请重新输入：`;
+            }
+
+            try {
+              const password = await showPasswordOverlay(promptMessage, { allowEmpty: false });
+              if (password === null) {
+                lastPasswordCancelled = true;
+                showError("已取消打开受密码保护的 PDF 文件。");
+                return;
+              }
+              lastPasswordCancelled = false;
+              providedPassword = password;
+              showLoading();
+              continue;
+            } catch (passwordError) {
+              console.error("处理 PDF 密码输入失败", passwordError);
+              lastPasswordCancelled = true;
+              showError("已取消打开受密码保护的 PDF 文件。");
+              return;
+            }
+          }
+
+          showError(error?.message || String(error));
+          return;
+        }
+      }
+    }
+
+    function applyZoomChange(action) {
+      const currentScale = pdfViewer.currentScale || pdfViewer.currentScaleValue || 1;
+      let nextScale = currentScale;
+      switch (action) {
+        case "zoom-in":
+          autoScaleMode = null;
+          nextScale = Math.min(currentScale * 1.2, 5);
+          break;
+        case "zoom-out":
+          autoScaleMode = null;
+          nextScale = Math.max(currentScale / 1.2, 0.25);
+          break;
+        case "zoom-reset":
+          autoScaleMode = autoScalePattern.test(initialScale) ? initialScale : null;
+          if (autoScaleMode) {
+            applyAutoScale();
+          } else {
+            pdfViewer.currentScaleValue = Number.isFinite(Number(initialScale)) ? Number(initialScale) : 1;
+          }
+          return;
+        default:
+          return;
+      }
+      pdfViewer.currentScale = nextScale;
+    }
+
+    window.addEventListener("message", (event) => {
+      const data = event.data;
+      if (!data || data.source !== "oicpp-tabs") {
+        return;
+      }
+      if (data.tabId && data.tabId !== tabId) {
+        return;
+      }
+
+      if (data.type === "file-data") {
+        handleFileDataResponse(data);
+        return;
+      }
+
+      switch (data.action) {
+        case "zoom-in":
+        case "zoom-out":
+        case "zoom-reset":
+          applyZoomChange(data.action);
+          break;
+        case "set-zoom":
+          if (typeof data.value === "number" && Number.isFinite(data.value)) {
+            autoScaleMode = null;
+            const clamped = Math.min(Math.max(data.value, 0.25), 5);
+            pdfViewer.currentScale = clamped;
+          } else if (typeof data.value === "string" && autoScalePattern.test(data.value)) {
+            autoScaleMode = data.value;
+            applyAutoScale();
+          }
+          break;
+        default:
+          break;
+      }
+    });
+
+    viewerContainer.addEventListener("wheel", (event) => {
+      if (!event.ctrlKey) {
+        return;
+      }
+      event.preventDefault();
+      const direction = event.deltaY < 0 ? "zoom-in" : "zoom-out";
+      applyZoomChange(direction);
+    }, { passive: false });
+
+    const dropTargets = [document, viewerContainer, dropOverlay];
+
+    async function prepareDropPayload(files) {
+      const result = [];
+      for (const file of files) {
+        if (!file) {
+          continue;
+        }
+        const descriptor = {
+          name: file?.name || "",
+          size: typeof file?.size === "number" ? file.size : 0,
+          type: file?.type || "",
+          path: typeof file?.path === "string" ? file.path : null,
+          lastModified: typeof file?.lastModified === "number" ? file.lastModified : undefined,
+          file
+        };
+        if (!descriptor.path) {
+          try {
+            const buffer = await file.arrayBuffer();
+            descriptor.base64 = arrayBufferToBase64(buffer);
+          } catch (error) {
+            console.warn("读取拖拽文件数据失败", error);
+          }
+        }
+        result.push(descriptor);
+      }
+      return result;
+    }
+
+    function postExternalDrop(files) {
+      try {
+        notifyParent("external-drop", { files });
+        return true;
+      } catch (error) {
+        console.warn("向宿主发送拖拽文件失败，尝试降级", error);
+        const sanitized = files.map((descriptor) => {
+          const { file, ...rest } = descriptor;
+          return rest;
+        });
+        try {
+          notifyParent("external-drop", { files: sanitized });
+        } catch (fallbackError) {
+          console.error("无法将拖拽信息传递给宿主", fallbackError);
+        }
+        return false;
+      }
+    }
+
+    dropTargets.forEach((target) => {
+      target.addEventListener("dragenter", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        showDropOverlay(event);
+      });
+      target.addEventListener("dragover", (event) => {
+        if (isInternalTabDrag(event)) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = "copy";
+        }
+        if (dropOverlay) {
+          dropOverlay.classList.add("visible");
+        }
+        lastDropActivity = Date.now();
+      });
+      target.addEventListener("dragleave", (event) => {
+        event.stopPropagation();
+        const related = event.relatedTarget;
+        if (related && (dropOverlay?.contains(related) || viewerContainer.contains(related))) {
+          return;
+        }
+        hideDropOverlay();
+      });
+      target.addEventListener("drop", async (event) => {
+        if (isInternalTabDrag(event)) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        hideDropOverlay(true);
+        const files = Array.from(event.dataTransfer?.files || []);
+        if (files.length > 0) {
+          const descriptors = await prepareDropPayload(files);
+          if (descriptors.length > 0) {
+            postExternalDrop(descriptors);
+          }
+        }
+      });
+    });
+
+    const cancelDrag = () => hideDropOverlay(true);
+    window.addEventListener("dragend", cancelDrag, true);
+    window.addEventListener("dragexit", cancelDrag, true);
+    window.addEventListener("drop", cancelDrag, true);
+    window.addEventListener("blur", cancelDrag, true);
+    document.addEventListener("mouseleave", cancelDrag, true);
+
+    loadDocument();
+  </script>
+</body>
+</html>
