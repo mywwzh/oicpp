@@ -1,0 +1,92 @@
+.status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: #007acc;
+    color: #ffffff;
+    height: 22px;
+    padding: 0 12px;
+    font-size: 12px;
+    border-top: 1px solid #464647;
+}
+
+.status-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.status-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.status-item {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 0 4px;
+    border-radius: 2px;
+    transition: background-color 0.2s;
+}
+
+.status-item:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.status-item.clickable {
+    cursor: pointer;
+}
+
+.status-item.warning {
+    background-color: #ffcc00;
+    color: #000000;
+}
+
+.status-item.error {
+    background-color: #e51400;
+    color: #ffffff;
+}
+
+.status-item.success {
+    background-color: #00aa00;
+    color: #ffffff;
+}
+
+.status-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+}
+
+.progress-bar {
+    width: 100px;
+    height: 2px;
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 1px;
+    overflow: hidden;
+    margin-left: 8px;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: #ffffff;
+    transition: width 0.3s ease;
+}
+
+@media (max-width: 600px) {
+    .status-bar {
+        font-size: 11px;
+        padding: 0 8px;
+    }
+    
+    .status-left,
+    .status-right {
+        gap: 8px;
+    }
+    
+    .status-item {
+        padding: 0 2px;
+    }
+}
