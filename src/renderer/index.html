@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self' blob: file:; connect-src 'self' https://oicpp.mywwzh.top;">
+    <meta http-equiv="Permissions-Policy" content="fullscreen=(self)">
+    <title>OICPP IDE</title>
+    <link rel="stylesheet" href="css/titlebar.css">
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/sidebar.css">
+    <link rel="stylesheet" href="css/editor.css">
+    <link rel="stylesheet" href="css/monaco-editor.css">
+    <link rel="stylesheet" href="css/pdf-viewer.css">
+    <link rel="stylesheet" href="css/statusbar.css">
+    <link rel="stylesheet" href="css/welcome.css">
+    <link rel="stylesheet" href="css/dialog.css">
+    <link rel="stylesheet" href="css/compile-output.css">
+    <link rel="stylesheet" href="css/samples.css">
+    <link rel="stylesheet" href="css/compare.css">
+    <link rel="stylesheet" href="css/quick-open.css">
+    <link rel="stylesheet" href="css/folder-picker.css">
+
+</head>
+<body>
+    <div class="titlebar">
+        <div class="titlebar-left">
+            <div class="app-icon">
+                <img id="app-icon" src="" width="16" height="16" alt="OICPP IDE">
+            </div>
+            <span class="app-title">OICPP IDE</span>
+        </div>
+        <div class="titlebar-center">
+            <div class="menu-bar">
+                <div class="menu-item" data-menu="file">
+                    <span class="menu-label">文件</span>
+                    <div class="menu-dropdown">
+                        <div class="menu-dropdown-item" data-action="open-folder">
+                            <span>打开文件夹</span>
+                            <span class="menu-shortcut">Ctrl+K</span>
+                        </div>
+                        <div class="menu-separator"></div>
+                        <div class="menu-dropdown-item" data-action="save-file">
+                            <span>保存</span>
+                            <span class="menu-shortcut">Ctrl+S</span>
+                        </div>
+                        <div class="menu-dropdown-item" data-action="save-as">
+                            <span>另存为</span>
+                            <span class="menu-shortcut">Ctrl+Shift+S</span>
+                        </div>
+                        <div class="menu-separator"></div>
+                        <div class="menu-dropdown-item" data-action="exit">
+                            <span>退出</span>
+                            <span class="menu-shortcut">Ctrl+Q</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="menu-item" data-menu="tools">
+                    <span class="menu-label">工具</span>
+                    <div class="menu-dropdown">
+                        <div class="menu-dropdown-item" data-action="cloud-compile">
+                            <span>代码云编译</span>
+                            <span class="menu-shortcut">F12</span>
+                        </div>
+                        <div class="menu-separator"></div>
+                        <div class="menu-dropdown-item" data-action="format-code">
+                            <span>格式化代码</span>
+                            <span class="menu-shortcut">Alt+Shift+S</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="menu-item" data-menu="options">
+                    <span class="menu-label">选项</span>
+                    <div class="menu-dropdown">
+                        <div class="menu-dropdown-item" data-action="compiler-settings">
+                            <span>编译器设置</span>
+                        </div>
+                        <div class="menu-dropdown-item" data-action="editor-settings">
+                            <span>编辑器设置</span>
+                        </div>
+                        <div class="menu-dropdown-item" data-action="template-settings">
+                            <span>模板设置</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="menu-item" data-menu="run">
+                    <span class="menu-label">运行</span>
+                    <div class="menu-dropdown">
+                        <div class="menu-dropdown-item" data-action="compile">
+                            <span>编译</span>
+                            <span class="menu-shortcut">F9</span>
+                        </div>
+                        <div class="menu-dropdown-item" data-action="run">
+                            <span>运行</span>
+                            <span class="menu-shortcut">F10</span>
+                        </div>
+                        <div class="menu-dropdown-item" data-action="compile-run">
+                            <span>编译并运行</span>
+                            <span class="menu-shortcut">F11</span>
+                        </div>
+                        <div class="menu-separator"></div>
+                        <div class="menu-dropdown-item" data-action="debug">
+                            <span>调试</span>
+                            <span class="menu-shortcut">F5</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="menu-item" data-menu="about">
+                    <span class="menu-label">关于</span>
+                    <div class="menu-dropdown">
+                        <div class="menu-dropdown-item" data-action="about">
+                            <span>关于 OICPP IDE</span>
+                        </div>
+                        <div class="menu-dropdown-item" data-action="feedback">
+                            <span>反馈</span>
+                        </div>
+                        <div class="menu-dropdown-item" data-action="check-update">
+                            <span>检查更新</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="titlebar-quickopen-wrap">
+                <div class="titlebar-quickopen" id="titlebar-quickopen" title="快速打开 (Ctrl+P)">
+                    <svg class="qo-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                        <path d="M15.5 14h-.79l-.28-.27a6.471 6.471 0 001.48-4.23C15.91 6.01 13.4 3.5 10.45 3.5S5 6.01 5 9.5 7.51 15.5 10.45 15.5c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l4.25 4.25c.41.41 1.08.41 1.49 0 .41-.41.41-1.08 0-1.49L15.5 14zm-5.05 0C8.01 14 6 11.99 6 9.5S8.01 5 10.45 5s4.45 2.01 4.45 4.5-2.01 4.5-4.45 4.5z" fill="currentColor"/>
+                    </svg>
+                    <span class="qo-placeholder">搜索文件 (Ctrl+P)</span>
+                </div>
+            </div>
+        </div>
+        <div class="titlebar-drag"></div>
+        <div class="titlebar-controls">
+            <button class="titlebar-button minimize-btn" id="minimize-btn" title="最小化" tabindex="-1">
+                <svg width="12" height="12" viewBox="0 0 12 12">
+                    <path d="M2 6h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </button>
+            <button class="titlebar-button maximize-btn" id="maximize-btn" title="最大化" tabindex="-1">
+                <svg width="12" height="12" viewBox="0 0 12 12">
+                    <path d="M2 2h8v8H2V2z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </button>
+            <button class="titlebar-button close-btn" id="close-btn" title="关闭" tabindex="-1">
+                <svg width="12" height="12" viewBox="0 0 12 12">
+                    <path d="M2 2l8 8M2 10l8-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+    
+    <div class="main-container">
+        <div class="sidebar">
+            <div class="sidebar-resizer"></div>
+            <div class="sidebar-icons">
+                <div class="sidebar-icon active" data-panel="files" title="文件管理器">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M10 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2h-8l-2-2z"/>
+                    </svg>
+                </div>
+                <div class="sidebar-icon" data-panel="samples" title="样例测试器">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-8 12l-5-5 1.41-1.41L11 12.17l7.59-7.59L20 6l-9 9z"/>
+                    </svg>
+                </div>
+                <div class="sidebar-icon" data-panel="compare" title="代码对拍器">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h8c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                    </svg>
+                </div>
+                <div class="sidebar-icon" data-panel="debug" title="调试">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5s-.96.06-1.42.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8z"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="sidebar-panel" id="sidebar-content">
+                <div class="panel-content active" id="files-panel">
+                    <div class="panel-header">
+                        <span class="panel-title">文件管理器</span>
+                        <div class="panel-actions">
+                            <button class="icon-btn" title="新建文件" tabindex="-1">
+                                <svg width="16" height="16" viewBox="0 0 16 16">
+                                    <path d="M12 2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM9 9H7v2H6V9H4V8h2V6h1v2h2v1z"/>
+                                </svg>
+                            </button>
+                            <button class="icon-btn" title="新建文件夹" tabindex="-1">
+                                <svg width="16" height="16" viewBox="0 0 16 16">
+                                    <path d="M14.5 3H7.71l-.85-.85A1.5 1.5 0 0 0 5.79 2H1.5A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 14.5 3zM8 8H6v2H5V8H3V7h2V5h1v2h2v1z"/>
+                                </svg>
+                            </button>
+                            <button class="icon-btn" title="刷新" tabindex="-1">
+                                <svg width="16" height="16" viewBox="0 0 16 16">
+                                    <path d="M13.65 2.35a8 8 0 0 0-11.3 0 8 8 0 0 0 0 11.3 8 8 0 0 0 11.3 0 8 8 0 0 0 0-11.3zm-1.41 9.9a6 6 0 0 1-8.48 0 6 6 0 0 1 0-8.48 6 6 0 0 1 8.48 0 6 6 0 0 1 0 8.48z"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="file-tree">
+                    </div>
+                </div>
+                
+                <div class="panel-content" id="samples-panel">
+                    <div class="panel-header">
+                        <span class="panel-title">样例测试器</span>
+                        <div class="panel-actions">
+                            <button class="icon-btn" id="add-sample-btn" title="添加样例组" tabindex="-1">
+                                <svg width="16" height="16" viewBox="0 0 16 16">
+                                    <path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM7 7V4h2v3h3v2H9v3H7V9H4V7h3z"/>
+                                </svg>
+                            </button>
+                            <button class="icon-btn run-all-btn" id="run-all-samples-btn" title="运行所有样例" tabindex="-1">
+                                <svg width="14" height="14" viewBox="0 0 14 14">
+                                    <path d="M4 2l8 5-8 5V2z" fill="currentColor"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="global-settings" id="global-settings" style="display: none;">
+                        <div class="global-settings-header">
+                            <span class="settings-title">全局设置</span>
+                        </div>
+                        <div class="global-settings-content">
+                            <div class="setting-group">
+                                <label class="setting-checkbox">
+                                    <input type="checkbox" id="global-use-testlib" onchange="sampleTester.updateGlobalSetting('useTestlib', this.checked)">
+                                    <span class="setting-label">全局使用 testlib</span>
+                                </label>
+                            </div>
+                            <div class="setting-group" id="global-spj-group">
+                                <div class="spj-header-row">
+                                    <span class="setting-label">SPJ</span>
+                                    <a href="#" class="spj-browse-link" onclick="sampleTester.selectGlobalSpjFile(); return false;" title="选择SPJ文件">
+                                        浏览
+                                    </a>
+                                </div>
+                                <div class="spj-file-display" id="spj-file-display" style="display: none;">
+                                    <span class="spj-file-name" id="spj-file-name"></span>
+                                    <a href="#" class="spj-clear-link" onclick="sampleTester.clearGlobalSpjFile(); return false;" title="清除SPJ文件">
+                                        删除
+                                    </a>
+                                </div>
+                                <input type="hidden" id="global-spj-path" onchange="sampleTester.updateGlobalSetting('spjPath', this.value)">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="samples-content">
+                        <div class="no-file-message" id="no-file-message" style="display: none;">
+                            <div class="message-icon">📄</div>
+                            <p>请先打开一个C++文件</p>
+                            <p class="sub-text">样例测试器需要一个活动的C++文件才能工作</p>
+                        </div>
+                        <div class="no-samples-message" id="no-samples-message">
+                            <div class="message-icon">✨</div>
+                            <p>还没有样例组</p>
+                            <p class="sub-text">点击上方的 + 按钮添加第一个样例组</p>
+                        </div>
+                        <div class="samples-list" id="samples-list">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="panel-content" id="compare-panel">
+                    <div class="panel-header">
+                        <span class="panel-title">代码对拍器</span>
+                    </div>
+                    <div class="compare-content">
+                        <div class="no-compiler-message" id="no-compiler-message" style="display: none;">
+                            <div class="message-icon">⚙️</div>
+                            <p>请先设置编译器</p>
+                            <p class="sub-text">对拍器需要编译器才能工作，请前往设置页面配置编译器</p>
+                            <button class="empty-state-button" onclick="window.electronAPI?.openCompilerSettings?.()">
+                                打开编译器设置
+                            </button>
+                        </div>
+
+                        <div class="compare-file-section" id="compare-file-section">
+                            <div class="compare-notice">
+                                <div class="notice-icon">⚠️</div>
+                                <div class="notice-text">
+                                    <strong>重要提醒：</strong>所有程序的输入输出均要从标准输入输出(stdin/stdout)进行，不要使用文件读写。
+                                </div>
+                            </div>
+                            
+                            <div class="file-select-group">
+                                <div class="file-select-item">
+                                    <div class="file-select-header">
+                                        <span class="file-select-label">标准/暴力代码</span>
+                                        <button class="file-browse-btn" id="std-code-browse">浏览</button>
+                                    </div>
+                                    <div class="file-path-display" id="std-code-path">未选择文件</div>
+                                </div>
+
+                                <div class="file-select-item">
+                                    <div class="file-select-header">
+                                        <span class="file-select-label">要对拍的代码</span>
+                                        <button class="file-browse-btn" id="test-code-browse">浏览</button>
+                                    </div>
+                                    <div class="file-path-display" id="test-code-path">未选择文件</div>
+                                </div>
+
+                                <div class="file-select-item">
+                                    <div class="file-select-header">
+                                        <span class="file-select-label">数据生成器</span>
+                                        <button class="file-browse-btn" id="generator-browse">浏览</button>
+                                    </div>
+                                    <div class="file-path-display" id="generator-path">未选择文件</div>
+                                </div>
+                            </div>
+
+                            <div class="compare-config-section">
+                                <div class="config-item">
+                                    <label class="config-label" for="compare-count">对拍组数：</label>
+                                    <input type="number" class="config-input" id="compare-count" value="100" min="1" max="100000">
+                                </div>
+                                <div class="config-item">
+                                    <label class="config-label" for="time-limit">时间限制：</label>
+                                    <input type="number" class="config-input" id="time-limit" value="1000" min="0">
+                                    <span class="config-unit">ms</span>
+                                </div>
+                                <div class="config-item testlib-spj-row">
+                                    <label class="config-label testlib-label">
+                                        <input type="checkbox" class="config-checkbox" id="compare-use-testlib">
+                                        使用 testlib
+                                    </label>
+                                    <div class="spj-section">
+                                        <label class="config-label spj-label">SPJ:</label>
+                                        <div class="file-input-group spj-input">
+                                            <input type="text" class="config-input" id="compare-spj-path" placeholder="选择SPJ文件（可选）" readonly>
+                                            <button class="file-browse-btn" id="compare-spj-browse">浏览</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="compare-actions">
+                                <button class="compare-btn compare-start-btn" id="compare-start-btn">
+                                    <svg width="14" height="14" viewBox="0 0 14 14">
+                                        <path d="M4 2l8 5-8 5V2z" fill="currentColor"/>
+                                    </svg>
+                                    开始对拍
+                                </button>
+                                <button class="compare-btn compare-stop-btn" id="compare-stop-btn" disabled>
+                                    <svg width="14" height="14" viewBox="0 0 14 14">
+                                        <rect x="3" y="3" width="8" height="8" fill="currentColor"/>
+                                    </svg>
+                                    停止对拍
+                                </button>
+                                <button class="compare-btn compare-reset-btn" id="compare-reset-btn">
+                                    <svg width="14" height="14" viewBox="0 0 14 14">
+                                        <path d="M7 2a5 5 0 0 1 5 5h-2a3 3 0 0 0-3-3V2zM2 7a5 5 0 0 1 5-5v2a3 3 0 0 0-3 3H2z" fill="currentColor"/>
+                                    </svg>
+                                    重置
+                                </button>
+                            </div>
+
+                            <div class="compare-status" id="compare-status" style="display: none;">
+                                <div class="status-header">
+                                    <div class="status-title">对拍状态</div>
+                                    <div class="status-info">
+                                        <span id="current-test">第 0 组</span>
+                                        <span class="status-separator">|</span>
+                                        <span id="status-text">准备中</span>
+                                    </div>
+                                </div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progress-fill"></div>
+                                </div>
+                            </div>
+
+                            <div class="compare-result" id="compare-result" style="display: none;">
+                                <div class="result-header">
+                                    <div>
+                                        <span class="result-title" id="error-title">发现差异</span>
+                                        <span class="result-subtitle" id="error-test-num"></span>
+                                    </div>
+                                    <button class="export-btn" id="export-btn">导出数据</button>
+                                </div>
+                                
+                                <div class="result-diff">
+                                    <div class="diff-section">
+                                        <div class="diff-header" id="input-diff-label">输入数据</div>
+                                        <pre class="diff-content" id="input-diff"></pre>
+                                    </div>
+                                    
+                                    <div class="diff-section">
+                                        <div class="diff-header" id="std-output-diff-label">标准程序输出</div>
+                                        <pre class="diff-content" id="std-output-diff"></pre>
+                                    </div>
+                                    
+                                    <div class="diff-section">
+                                        <div class="diff-header" id="test-output-diff-label">测试程序输出</div>
+                                        <pre class="diff-content" id="test-output-diff"></pre>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="compare-complete" id="compare-complete" style="display: none;">
+                                <div class="complete-icon">
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                                    </svg>
+                                </div>
+                                <div class="complete-text">对拍完成</div>
+                                <div class="complete-info">
+                                    <span>已完成 <span id="completed-tests">0</span> 组测试，未发现差异</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="panel-content" id="debug-panel">
+                    <div class="panel-header">
+                        <span class="panel-title">调试</span>
+                    </div>
+                    <div class="debug-content">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="editor-container">
+            <div class="editor-terminal-container">
+                <div class="editor-groups" id="editor-groups">
+                    <div class="editor-group" data-group-id="group-1">
+                        <div class="tab-bar" data-group-id="group-1">
+                        </div>
+                        <div class="editor-area" data-group-id="group-1" id="editor-area-group-1">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="welcome-container" id="welcome-container">
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <div class="status-left">
+            <span class="status-item cursor-position">行 1, 列 1</span>
+            <span class="status-item encoding">UTF-8</span>
+            <span class="status-item language">C++</span>
+        </div>
+        <div class="status-right">
+            <span class="status-item">✓ 就绪</span>
+        </div>
+    </div>
+
+    <div id="quick-open-overlay" class="quick-open-overlay" aria-hidden="true">
+        <div class="quick-open-container" role="dialog" aria-modal="true">
+            <input id="quick-open-input" class="quick-open-input" type="text" placeholder="输入文件名以在工作区搜索... (Esc 关闭)" aria-label="快速打开：输入文件名">
+            <div id="quick-open-results" class="quick-open-results" role="listbox" aria-label="搜索结果">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.MonacoEnvironment = {
+            getWorkerUrl: function (moduleId, label) {
+                if (label === 'json') {
+                    return '../../node_modules/monaco-editor/min/vs/language/json/jsonWorker.js';
+                }
+                if (label === 'css' || label === 'scss' || label === 'less') {
+                    return '../../node_modules/monaco-editor/min/vs/language/css/cssWorker.js';
+                }
+                if (label === 'html' || label === 'handlebars' || label === 'razor') {
+                    return '../../node_modules/monaco-editor/min/vs/language/html/htmlWorker.js';
+                }
+                if (label === 'typescript' || label === 'javascript') {
+                    return '../../node_modules/monaco-editor/min/vs/language/typescript/tsWorker.js';
+                }
+                return '../../node_modules/monaco-editor/min/vs/base/worker/workerMain.js';
+            }
+        };
+    </script>
+    <script src="../../node_modules/monaco-editor/min/vs/loader.js"></script>
+    <script>
+        require.config({ 
+            paths: { 
+                vs: '../../node_modules/monaco-editor/min/vs' 
+            },
+            'vs/nls': {
+                availableLanguages: {
+                    '*': 'zh-cn'
+                }
+            }
+        });
+        require(['vs/editor/editor.main'], function() {
+            logInfo('Monaco Editor 本地库加载完成');
+        });
+    </script>
+    
+    <script src="js/electron-helper.js"></script>
+    <script src="../utils/font-detector.js"></script>
+    <script src="js/settings-init.js"></script>
+    <script src="js/dialog.js"></script>
+    <script src="js/folder-picker.js"></script>
+    <script src="js/compile-manager.js"></script>
+    <script src="js/formatters/cppFormatter.js"></script>
+    <script src="js/monaco-editor-manager.js"></script>
+    <script src="js/titlebar.js"></script>
+    <script src="js/sidebar/fileExplorer.js"></script>
+    <script src="js/sidebar/sampleTester.js"></script>
+    <script src="js/sidebar/debugPanel.js"></script>
+    <script src="js/sidebar/codeComparer.js"></script>
+    <script src="js/sidebar.js"></script>
+    <script src="js/tabs.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/quick-open.js"></script>
+    <script src="js/init.js"></script>
+</body>
+</html>
