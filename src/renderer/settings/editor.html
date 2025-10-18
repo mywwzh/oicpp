@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>编辑器设置</title>
+    <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+    <div class="settings-container">
+        <div class="settings-header">
+            <h2>编辑器设置</h2>
+        </div>
+        
+        <div class="settings-content">
+            <div class="setting-group">
+                <label for="editor-font">字体：</label>
+                <div class="input-group">
+                    <select id="editor-font" class="form-select">
+                    </select>
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <label for="editor-theme">主题：</label>
+                <div class="input-group">
+                    <select id="editor-theme" class="form-select">
+                        <option value="dark">深色</option>
+                        <option value="light">浅色</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <label for="editor-font-size">字体大小：</label>
+                <input type="number" id="editor-font-size" min="8" max="72" value="14">
+            </div>
+
+            <div class="setting-group">
+                <label for="editor-font-ligatures">启用字体连字：</label>
+                <input type="checkbox" id="editor-font-ligatures" checked>
+            </div>
+
+            <div class="setting-group">
+                <label for="editor-folding">启用代码折叠：</label>
+                <input type="checkbox" id="editor-folding" checked>
+            </div>
+
+            <div class="setting-group">
+                <label for="editor-sticky-scroll">显示上级代码区域：</label>
+                <input type="checkbox" id="editor-sticky-scroll" checked>
+            </div>
+
+            <div class="setting-group">
+                <label for="editor-tab-size">Tab 缩进宽度：</label>
+                <input type="number" id="editor-tab-size" min="1" max="16" value="4">
+            </div>
+
+            <div class="setting-group">
+                <label for="editor-auto-save-enabled">启用自动保存：</label>
+                <input type="checkbox" id="editor-auto-save-enabled" checked>
+            </div>
+
+            <div class="setting-group">
+                <label for="editor-auto-save-interval">自动保存间隔（秒）：</label>
+                <input type="number" id="editor-auto-save-interval" min="10" max="3600" value="60">
+            </div>
+
+            <div class="setting-group settings-note">
+                <span class="settings-note-label">注意：</span>
+                <span class="settings-note-text">更改主题后将自动重启编辑器</span>
+            </div>
+
+
+        </div>
+
+        <div class="settings-footer">
+            <button id="save-settings" class="btn btn-primary">保存设置</button>
+            <button id="cancel-settings" class="btn btn-secondary">取消</button>
+            <button id="reset-settings" class="btn btn-warning">重置为默认值</button>
+        </div>
+    </div>
+
+    <div id="font-download-dialog" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>下载字体</h3>
+                <button id="close-font-dialog" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>选择要下载的字体：</p>
+                <div id="font-list" class="font-list">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="message-container"></div>
+
+    <script src="../js/electron-helper.js"></script>
+    <script src="../../utils/font-detector.js"></script>
+    <script>
+
+    document.addEventListener('DOMContentLoaded', () => {
+    });
+    
+    window.addEventListener('load', () => {
+    });
+</script>
+<script src="editor.js"></script>
+</body>
+</html>
