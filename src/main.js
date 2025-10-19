@@ -478,11 +478,11 @@ function createWindow() {
         checkDailyUpdate().catch(err => logError('启动时检查更新失败:', err));
         
         // 清理启动时可能遗留的旧安装包（延迟执行，避免影响启动速度）
-        setTimeout(() => {
+        setTimeout(async () => {
             try {
                 // 如果有待处理的更新，保留其安装包
                 const keepFile = settings.pendingUpdate?.installerPath || null;
-                cleanupOldInstallers(keepFile);
+                await cleanupOldInstallers(keepFile);
             } catch (err) {
                 logWarn('[启动] 清理旧安装包失败:', err);
             }
@@ -3661,7 +3661,7 @@ async function checkForUpdates(isManual = false) {
     }
 }
 
-function cleanupOldInstallers(keepFile = null) {
+async function cleanupOldInstallers(keepFile = null) {
     try {
         const userOicppDir = path.join(os.homedir(), '.oicpp');
         if (!fs.existsSync(userOicppDir)) {
@@ -3669,12 +3669,15 @@ function cleanupOldInstallers(keepFile = null) {
         }
 
         logInfo('[更新] 开始清理旧的安装包...');
-        const files = fs.readdirSync(userOicppDir);
+        const files = await fs.promises.readdir(userOicppDir);
         
-        // 匹配安装包文件名模式: OICPP-x.x.x-Setup.exe 或类似的 .deb/.rpm 文件
-        const installerPattern = /^OICPP-[\d.]+-Setup\.(exe|deb|rpm)$/i;
+        // 匹配安装包文件名模式: OICPP-x.y.z-Setup.exe 或类似的 .deb/.rpm 文件
+        // 使用更严格的版本号格式：主版本.次版本.修订号
+        const installerPattern = /^OICPP-\d+\.\d+\.\d+-Setup\.(exe|deb|rpm)$/i;
         
         let cleanedCount = 0;
+        const deletePromises = [];
+        
         for (const file of files) {
             if (installerPattern.test(file)) {
                 const filePath = path.join(userOicppDir, file);
@@ -3685,15 +3688,22 @@ function cleanupOldInstallers(keepFile = null) {
                     continue;
                 }
                 
-                try {
-                    fs.unlinkSync(filePath);
-                    logInfo('[更新] 已删除旧安装包:', file);
-                    cleanedCount++;
-                } catch (error) {
-                    logWarn('[更新] 无法删除旧安装包:', file, error.message);
-                }
+                // 异步删除文件，收集所有 promise
+                deletePromises.push(
+                    fs.promises.unlink(filePath)
+                        .then(() => {
+                            logInfo('[更新] 已删除旧安装包:', file);
+                            cleanedCount++;
+                        })
+                        .catch(error => {
+                            logWarn('[更新] 无法删除旧安装包:', file, error.message);
+                        })
+                );
             }
         }
+        
+        // 等待所有删除操作完成
+        await Promise.all(deletePromises);
         
         if (cleanedCount > 0) {
             logInfo(`[更新] 共清理了 ${cleanedCount} 个旧安装包`);
@@ -3761,7 +3771,7 @@ async function downloadAndInstallUpdate(updateInfo = null) {
         if (!fs.existsSync(userOicppDir)) fs.mkdirSync(userOicppDir, { recursive: true });
         
         // 在下载新安装包之前，清理旧的安装包
-        cleanupOldInstallers();
+        await cleanupOldInstallers();
         
         const installerPath = path.join(userOicppDir, installerFile.name);
 
@@ -3862,10 +3872,10 @@ function runInstaller(installerPath) {
                 
                 // 在Linux上，尝试在启动后删除安装包（Windows上文件可能被锁定）
                 if (isLinux) {
-                    setTimeout(() => {
+                    setTimeout(async () => {
                         try {
                             if (fs.existsSync(installerPath)) {
-                                fs.unlinkSync(installerPath);
+                                await fs.promises.unlink(installerPath);
                                 logInfo('[更新] 已删除安装包文件（启动后清理）');
                             }
                         } catch (error) {
