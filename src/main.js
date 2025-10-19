@@ -1949,7 +1949,7 @@ function setupIPC() {
                 webPreferences: {
                     nodeIntegration: false,
                     contextIsolation: true,
-                    webSecurity: false // Allow cross-origin for cookie access if needed, but generally avoid
+                    webSecurity: false // 禁止跨域请求
                 },
                 show: false
             });
@@ -1988,8 +1988,7 @@ function setupIPC() {
                 }
             };
 
-            // Periodically check cookies after navigation
-            const interval = setInterval(checkCookiesAndResolve, 1000); // Check every second
+            const interval = setInterval(checkCookiesAndResolve, 1000); // 每秒检查一次cookie
 
             loginWindow.webContents.on('did-navigate', () => {
                 checkCookiesAndResolve();
@@ -2003,7 +2002,7 @@ function setupIPC() {
                 clearInterval(interval);
                 if (!resolved) {
                     logInfo('洛谷登录窗口已关闭，但未获取到 Cookies。');
-                    resolve(null); // User closed the window without logging in
+                    resolve(null); // 关闭窗口，但是没有登录
                 }
             });
         });
