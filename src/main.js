@@ -17,6 +17,7 @@ const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
 const APP_VERSION = '1.0.2';
+const SAVE_ALL_TIMEOUT = 4000; // 4 seconds timeout for save-all before closing
 
 function getUserIconPath() {
     const userIconPath = path.join(os.homedir(), '.oicpp', 'oicpp.ico');
@@ -444,6 +445,38 @@ ipcMain.handle('get-build-info', () => {
     return { version: '1.0.2', buildTime: '未知', author: 'mywwzh' };
 });
 
+/**
+ * Requests save-all and closes the main window after completion or timeout
+ * @param {string} context - Context string for logging (e.g., '菜单退出', '关闭窗口')
+ */
+function requestSaveAllAndClose(context = '关闭窗口') {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        return;
+    }
+    
+    try {
+        mainWindow.webContents.send('request-save-all');
+        const timeout = setTimeout(() => {
+            try { logWarn(`[${context}] 保存超时，强制关闭窗口`); } catch (_) { }
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.close();
+            }
+        }, SAVE_ALL_TIMEOUT);
+        
+        ipcMain.once('save-all-complete', () => {
+            clearTimeout(timeout);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.close();
+            }
+        });
+    } catch (e) {
+        try { logWarn(`[${context}] 发送保存请求失败，直接关闭:`, e?.message || String(e)); } catch (_) { }
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.close();
+        }
+    }
+}
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200,
@@ -629,26 +662,7 @@ function createMenuBar() {
                     label: '退出',
                     accelerator: 'CmdOrCtrl+Q',
                     click: () => {
-                        if (mainWindow && !mainWindow.isDestroyed()) {
-                            try {
-                                mainWindow.webContents.send('request-save-all');
-                                const timeout = setTimeout(() => {
-                                    try { logWarn('[菜单退出] 保存超时，强制关闭窗口'); } catch (_) { }
-                                    if (mainWindow && !mainWindow.isDestroyed()) {
-                                        mainWindow.close();
-                                    }
-                                }, 4000);
-                                ipcMain.once('save-all-complete', () => {
-                                    clearTimeout(timeout);
-                                    if (mainWindow && !mainWindow.isDestroyed()) {
-                                        mainWindow.close();
-                                    }
-                                });
-                            } catch (e) {
-                                try { logWarn('[菜单退出] 发送保存请求失败，直接关闭:', e?.message || String(e)); } catch (_) { }
-                                mainWindow.close();
-                            }
-                        }
+                        requestSaveAllAndClose('菜单退出');
                     }
                 }
             ]
@@ -788,26 +802,7 @@ function setupWindowControls() {
     });
 
     ipcMain.on('window-close', () => {
-        if (mainWindow) {
-            try {
-                mainWindow.webContents.send('request-save-all');
-                const timeout = setTimeout(() => {
-                    try { logWarn('[关闭窗口] 保存超时，强制关闭窗口'); } catch (_) { }
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.close();
-                    }
-                }, 4000);
-                ipcMain.once('save-all-complete', () => {
-                    clearTimeout(timeout);
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.close();
-                    }
-                });
-            } catch (e) {
-                try { logWarn('[关闭窗口] 发送保存请求失败，直接关闭:', e?.message || String(e)); } catch (_) { }
-                mainWindow.close();
-            }
-        }
+        requestSaveAllAndClose('关闭窗口');
     });
 
     ipcMain.handle('window-is-maximized', () => {
