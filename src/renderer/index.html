@@ -472,6 +472,25 @@
         </div>
     </div>
 
+    <!-- Captcha Modal -->
+    <div id="captcha-modal-overlay" class="dialog-overlay" aria-hidden="true">
+        <div class="dialog-container">
+            <div class="dialog-header">
+                <h3 class="dialog-title">洛谷验证码</h3>
+                <button class="dialog-close-btn" id="captcha-close-btn">&times;</button>
+            </div>
+            <div class="dialog-content" style="text-align: center;">
+                <p>请输入图片中的验证码：</p>
+                <img id="captcha-image" src="" alt="验证码" style="margin: 10px auto; border: 1px solid var(--border-color);">
+                <input type="text" id="captcha-input" placeholder="验证码" class="dialog-input" style="width: calc(100% - 30px);">
+            </div>
+            <div class="dialog-buttons">
+                <button class="dialog-button secondary" id="captcha-cancel-btn">取消</button>
+                <button class="dialog-button primary" id="captcha-submit-btn">提交验证码</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         window.MonacoEnvironment = {
             getWorkerUrl: function (moduleId, label) {

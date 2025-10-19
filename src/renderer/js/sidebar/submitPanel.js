@@ -1,11 +1,88 @@
 class SubmitManager {
     constructor() {
+        this.luoguCookies = null;
+        this.captchaId = null;
+        this.pendingSubmitData = null;
         this.init();
     }
 
     init() {
         logInfo('SubmitManager initialized.');
         this.renderSubmitForm();
+        this.setupCaptchaModal();
+        window.electronAPI.on('request-luogu-captcha', () => this.handleCaptchaRequest());
+    }
+
+    setupCaptchaModal() {
+        this.captchaModalOverlay = document.getElementById('captcha-modal-overlay');
+        this.captchaImage = document.getElementById('captcha-image');
+        this.captchaInput = document.getElementById('captcha-input');
+        this.captchaSubmitBtn = document.getElementById('captcha-submit-btn');
+        this.captchaCancelBtn = document.getElementById('captcha-cancel-btn');
+        this.captchaCloseBtn = document.getElementById('captcha-close-btn');
+
+        this.captchaSubmitBtn.addEventListener('click', () => this.submitCaptcha());
+        this.captchaCancelBtn.addEventListener('click', () => this.hideCaptchaModal());
+        this.captchaCloseBtn.addEventListener('click', () => this.hideCaptchaModal());
+        this.captchaInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                this.submitCaptcha();
+            }
+        });
+    }
+
+    async handleCaptchaRequest() {
+        logInfo('收到验证码请求');
+        this.showCaptchaModal();
+    }
+
+    async showCaptchaModal() {
+        this.captchaInput.value = '';
+        this.captchaModalOverlay.classList.add('visible');
+        this.captchaInput.focus();
+
+        try {
+            const result = await window.electronAPI.getLuoguCaptcha();
+            if (result.success) {
+                this.captchaImage.src = result.image;
+                this.captchaId = result.captchaId;
+                logInfo('获取验证码成功，captchaId:', this.captchaId);
+            } else {
+                logError('获取验证码失败:', result.error);
+                alert(`获取验证码失败: ${result.error}`);
+                this.hideCaptchaModal();
+            }
+        } catch (error) {
+            logError('获取验证码时发生错误:', error);
+            alert(`获取验证码时发生错误: ${error.message}`);
+            this.hideCaptchaModal();
+        }
+    }
+
+    hideCaptchaModal() {
+        this.captchaModalOverlay.classList.remove('visible');
+        this.captchaId = null;
+        this.pendingSubmitData = null;
+    }
+
+    async submitCaptcha() {
+        const captcha = this.captchaInput.value.trim();
+        if (!captcha) {
+            alert('请输入验证码');
+            return;
+        }
+
+        this.hideCaptchaModal();
+
+        if (this.pendingSubmitData) {
+            logInfo('重新提交代码，带上验证码');
+            const { problemId, submitData, cookies } = this.pendingSubmitData;
+            // Clear pending data to avoid re-submission loops
+            this.pendingSubmitData = null;
+            await this.submitCodeToLuogu(problemId, submitData, cookies, captcha, this.captchaId);
+        } else {
+            logWarn('没有待处理的提交数据，无法提交验证码。');
+        }
     }
 
     renderSubmitForm() {
@@ -87,7 +164,7 @@ class SubmitManager {
 
         try {
             const cookies = await window.electronAPI.getLuoguCookies();
-            if (cookies && cookies.__client_id && cookies._uid) {
+            if (cookies && cookies.__client_id && cookies._uid && cookies.C3VK) {
                 this.luoguCookies = cookies;
                 this.luoguLoginStatusDiv.innerHTML = '洛谷已登录。';
                 this.luoguLoginStatusDiv.style.color = 'green';
@@ -113,7 +190,7 @@ class SubmitManager {
 
         try {
             const cookies = await window.electronAPI.openLuoguLoginWindow();
-            if (cookies && cookies.__client_id && cookies._uid) {
+            if (cookies && cookies.__client_id && cookies._uid && cookies.C3VK) {
                 this.luoguCookies = cookies;
                 await window.electronAPI.setLuoguCookies(cookies);
                 this.luoguLoginStatusDiv.innerHTML = '洛谷登录成功！';
@@ -126,6 +203,38 @@ class SubmitManager {
             logError('洛谷登录失败:', error);
             this.luoguLoginStatusDiv.innerHTML = '洛谷登录过程中发生错误。';
             this.luoguLoginStatusDiv.style.color = 'red';
+        }
+    }
+
+    async submitCodeToLuogu(problemId, submitData, cookies, captcha = null, captchaId = null) {
+        const submitStatus = document.getElementById('submit-status');
+        submitStatus.textContent = '正在向洛谷提交...';
+        submitStatus.style.color = 'orange';
+
+        try {
+            const result = await window.electronAPI.submitCodeToLuogu(
+                problemId,
+                submitData,
+                cookies,
+                captcha,
+                captchaId
+            );
+
+            if (result.success) {
+                submitStatus.textContent = '洛谷提交成功！';
+                submitStatus.style.color = 'green';
+            } else if (result.captchaRequired) {
+                logInfo('洛谷提交需要验证码，请求用户输入。');
+                this.pendingSubmitData = { problemId, submitData, cookies };
+                this.handleCaptchaRequest();
+            } else {
+                submitStatus.textContent = `洛谷提交失败: ${result.error || '未知错误'}`;
+                submitStatus.style.color = 'red';
+            }
+        } catch (error) {
+            logError('洛谷提交过程中发生错误:', error);
+            submitStatus.textContent = `洛谷提交过程中发生错误: ${error.message || error}`;
+            submitStatus.style.color = 'red';
         }
     }
 
@@ -166,35 +275,14 @@ class SubmitManager {
                 return;
             }
 
-            submitStatus.textContent = '正在向洛谷提交...';
-            submitStatus.style.color = 'orange';
+            const submitData = {
+                lang: parseInt(language, 10),
+                code: codeContent.replace(/\r\n/g, '\n'), // 替换换行符
+                enableO2: enableO2
+            };
+            logInfo('向洛谷提交数据:', submitData);
+            await this.submitCodeToLuogu(problemId, submitData, this.luoguCookies);
 
-            try {
-                const submitData = {
-                    lang: parseInt(language, 10),
-                    code: codeContent.replace(/\n/g, '\n'), // 替换换行符
-                    enableO2: enableO2
-                };
-                logInfo('向洛谷提交数据:', submitData);
-
-                const result = await window.electronAPI.submitCodeToLuogu(
-                    problemId,
-                    submitData,
-                    this.luoguCookies
-                );
-
-                if (result.success) {
-                    submitStatus.textContent = '洛谷提交成功！';
-                    submitStatus.style.color = 'green';
-                } else {
-                    submitStatus.textContent = `洛谷提交失败: ${result.error || '未知错误'}`;
-                    submitStatus.style.color = 'red';
-                }
-            } catch (error) {
-                logError('洛谷提交过程中发生错误:', error);
-                submitStatus.textContent = `洛谷提交过程中发生错误: ${error.message || error}`;
-                submitStatus.style.color = 'red';
-            }
         } else if (selectedOj === 'none') {
             submitStatus.textContent = '请选择一个 OJ。';
             submitStatus.style.color = 'red';

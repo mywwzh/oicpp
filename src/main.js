@@ -2021,7 +2021,7 @@ function setupIPC() {
                     'Content-Type': 'application/json',
                     'Content-Length': Buffer.byteLength(postData),
                     'Cookie': `__client_id=${cookies.__client_id}; _uid=${cookies._uid}; C3VK=${cookies.C3VK}`,
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 OICPP-IDE/1.0.2',
                     'X-Requested-With': 'XMLHttpRequest'
                 }
             };
