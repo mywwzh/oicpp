@@ -623,6 +623,33 @@ function createMenuBar() {
                     click: () => {
                         openCodeTemplates();
                     }
+                },
+                { type: 'separator' },
+                {
+                    label: '退出',
+                    accelerator: 'CmdOrCtrl+Q',
+                    click: () => {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            try {
+                                mainWindow.webContents.send('request-save-all');
+                                const timeout = setTimeout(() => {
+                                    try { logWarn('[菜单退出] 保存超时，强制关闭窗口'); } catch (_) { }
+                                    if (mainWindow && !mainWindow.isDestroyed()) {
+                                        mainWindow.close();
+                                    }
+                                }, 4000);
+                                ipcMain.once('save-all-complete', () => {
+                                    clearTimeout(timeout);
+                                    if (mainWindow && !mainWindow.isDestroyed()) {
+                                        mainWindow.close();
+                                    }
+                                });
+                            } catch (e) {
+                                try { logWarn('[菜单退出] 发送保存请求失败，直接关闭:', e?.message || String(e)); } catch (_) { }
+                                mainWindow.close();
+                            }
+                        }
+                    }
                 }
             ]
         },
