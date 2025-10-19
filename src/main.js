@@ -1999,7 +1999,7 @@ function setupIPC() {
                     'Content-Type': 'application/json',
                     'Content-Length': Buffer.byteLength(postData),
                     'Cookie': `__client_id=${cookies.__client_id}; _uid=${cookies._uid}; C3VK=${cookies.C3VK}`,
-                    'User-Agent': 'OICPP IDE Electron App',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
                     'X-Requested-With': 'XMLHttpRequest'
                 }
             };
