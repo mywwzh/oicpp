@@ -223,6 +223,9 @@ class SubmitManager {
             if (result.success) {
                 submitStatus.textContent = '洛谷提交成功！';
                 submitStatus.style.color = 'green';
+                if (result.rid) {
+                    this.fetchAndDisplayLuoguRecord(result.rid);
+                }
             } else if (result.captchaRequired) {
                 logInfo('洛谷提交需要验证码，请求用户输入。');
                 this.pendingSubmitData = { problemId, submitData, cookies };
@@ -300,6 +303,43 @@ class SubmitManager {
                     submitStatus.style.color = 'red';
                 }
             }, 2000);
+        }
+    }
+
+    async fetchAndDisplayLuoguRecord(rid) {
+        const submitStatus = document.getElementById('submit-status');
+        submitStatus.textContent = `正在抓取洛谷评测记录 #${rid}...`;
+        submitStatus.style.color = 'blue';
+
+        try {
+            const recordUrl = `https://www.luogu.com.cn/record/${rid}`;
+            const response = await window.electronAPI.fetchLuoguRecord(recordUrl); 
+            
+            if (response.success && response.html) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(response.html, 'text/html');
+                const testCaseWraps = doc.querySelectorAll('.test-case-wrap');
+                
+                let displayHtml = '';
+                testCaseWraps.forEach(wrap => {
+                    displayHtml += wrap.outerHTML;
+                });
+
+                if (displayHtml) {
+                    submitStatus.innerHTML = `洛谷评测记录 #${rid} 结果：<br>${displayHtml}`;
+                    submitStatus.style.color = 'black'; 
+                } else {
+                    submitStatus.textContent = `未能从评测记录 #${rid} 中提取到测试点信息。`;
+                    submitStatus.style.color = 'red';
+                }
+            } else {
+                submitStatus.textContent = `抓取洛谷评测记录 #${rid} 失败: ${response.error || '未知错误'}`;
+                submitStatus.style.color = 'red';
+            }
+        } catch (error) {
+            logError('抓取洛谷评测记录时发生错误:', error);
+            submitStatus.textContent = `抓取洛谷评测记录 #${rid} 过程中发生错误: ${error.message || error}`;
+            submitStatus.style.color = 'red';
         }
     }
 

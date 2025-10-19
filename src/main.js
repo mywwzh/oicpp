@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Menu, ipcMain, dialog, shell, webContents } = require('electron');
 const http = require('http');
+const https = require('https');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -1997,6 +1998,31 @@ function setupIPC() {
             loginWindow.webContents.on('did-redirect-navigation', () => {
                 checkCookiesAndResolve();
             });
+        });
+    });
+
+    ipcMain.handle('fetch-luogu-record', async (event, recordUrl) => {
+        try {
+            logInfo('正在主进程抓取洛谷评测记录:', recordUrl);
+            const response = await new Promise((resolve, reject) => {
+                https.get(recordUrl, (res) => {
+                    let data = '';
+                    res.on('data', (chunk) => {
+                        data += chunk;
+                    });
+                    res.on('end', () => {
+                        resolve(data);
+                    });
+                }).on('error', (err) => {
+                    reject(err);
+                });
+            });
+            return { success: true, html: response };
+        } catch (error) {
+            logError('主进程抓取洛谷评测记录失败:', error);
+            return { success: false, error: error.message };
+        }
+    });
 
             loginWindow.on('closed', () => {
                 clearInterval(interval);
