@@ -45,6 +45,53 @@ global.logerror = (...args) => { try { logger.logerror(...args); } catch (_) { }
 global.logWarn = global.logwarn;
 global.logError = global.logerror;
 
+/**
+ * Validates file or folder name for illegal characters
+ * @param {string} name - The file or folder name to validate
+ * @returns {Object} - { valid: boolean, error: string }
+ */
+function validateFileName(name) {
+    if (!name || typeof name !== 'string') {
+        return { valid: false, error: '名称不能为空' };
+    }
+
+    const trimmedName = name.trim();
+    if (trimmedName.length === 0) {
+        return { valid: false, error: '名称不能为空' };
+    }
+
+    // Check for illegal characters based on platform
+    // Windows: < > : " / \ | ? *
+    // Unix/Linux/macOS: /
+    const illegalCharsWin = /[<>:"/\\|?*]/;
+    const illegalCharsUnix = /\//;
+    
+    const illegalChars = process.platform === 'win32' ? illegalCharsWin : illegalCharsUnix;
+    
+    if (illegalChars.test(trimmedName)) {
+        const platformMsg = process.platform === 'win32' 
+            ? '文件名不能包含以下字符: < > : " / \\ | ? *'
+            : '文件名不能包含字符: /';
+        return { valid: false, error: platformMsg };
+    }
+
+    // Check for reserved names on Windows
+    if (process.platform === 'win32') {
+        const reservedNames = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i;
+        if (reservedNames.test(trimmedName)) {
+            return { valid: false, error: '该名称为系统保留名称，不能使用' };
+        }
+    }
+
+    // Check if the original name (before trim) ends with space or period (Windows restriction)
+    // Note: We check the original 'name' not 'trimmedName' because Windows does not allow
+    // trailing spaces or periods, even though String.trim() would remove them
+    if (process.platform === 'win32' && /[\s.]$/.test(name)) {
+        return { valid: false, error: '文件名不能以空格或句点结尾' };
+    }
+
+    return { valid: true, error: null };
+}
 
 const fileWatchRegistry = new Map();
 
@@ -1603,6 +1650,14 @@ function setupIPC() {
 
     ipcMain.on('rename-file', async (event, oldPath, newName) => {
         try {
+            // Validate the new file name
+            const validation = validateFileName(newName);
+            if (!validation.valid) {
+                event.reply('file-renamed', oldPath, null, validation.error);
+                logWarn('文件重命名失败 - 非法名称:', newName, '-', validation.error);
+                return;
+            }
+
             const dir = path.dirname(oldPath);
             let newPath = path.join(dir, newName);
             if (fs.existsSync(newPath)) {
@@ -1635,6 +1690,15 @@ function setupIPC() {
 
     ipcMain.on('create-file', async (event, filePath, content = '') => {
         try {
+            // Validate the file name
+            const fileName = path.basename(filePath);
+            const validation = validateFileName(fileName);
+            if (!validation.valid) {
+                event.reply('file-created', filePath, validation.error);
+                logWarn('文件创建失败 - 非法名称:', fileName, '-', validation.error);
+                return;
+            }
+
             const dir = path.dirname(filePath);
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
@@ -1659,6 +1723,15 @@ function setupIPC() {
     ipcMain.handle('create-file', async (_event, filePath, content = '') => {
         try {
             if (!filePath || typeof filePath !== 'string') throw new Error('无效文件路径');
+            
+            // Validate the file name
+            const fileName = path.basename(filePath);
+            const validation = validateFileName(fileName);
+            if (!validation.valid) {
+                logWarn('文件创建失败(invoke) - 非法名称:', fileName, '-', validation.error);
+                return { success: false, error: validation.error };
+            }
+
             const dir = path.dirname(filePath);
             if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             let finalPath = filePath;
@@ -1678,6 +1751,15 @@ function setupIPC() {
 
     ipcMain.on('create-folder', async (event, folderPath) => {
         try {
+            // Validate the folder name
+            const folderName = path.basename(folderPath);
+            const validation = validateFileName(folderName);
+            if (!validation.valid) {
+                event.reply('folder-created', folderPath, validation.error);
+                logWarn('文件夹创建失败 - 非法名称:', folderName, '-', validation.error);
+                return;
+            }
+
             if (fs.existsSync(folderPath)) {
                 const base = path.basename(folderPath);
                 const parent = path.dirname(folderPath);
