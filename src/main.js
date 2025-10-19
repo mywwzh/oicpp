@@ -3877,21 +3877,6 @@ function runInstaller(installerPath) {
             const success = isLinux ? (result === '') : (result === true);
             if (success) {
                 logInfo('安装程序已启动');
-                
-                // 在Linux上，尝试在启动后删除安装包（Windows上文件可能被锁定）
-                if (isLinux) {
-                    setTimeout(async () => {
-                        try {
-                            if (fs.existsSync(installerPath)) {
-                                await fs.promises.unlink(installerPath);
-                                logInfo('[更新] 已删除安装包文件（启动后清理）');
-                            }
-                        } catch (error) {
-                            logWarn('[更新] 无法删除安装包文件:', error.message);
-                        }
-                    }, 1000);
-                }
-                
                 dialog.showMessageBox(mainWindow, {
                     type: 'info',
                     title: '安装程序已启动',
