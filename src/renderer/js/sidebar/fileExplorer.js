@@ -11,6 +11,56 @@ class FileExplorer {
         this.setupKeyboardShortcuts();
     }
 
+    /**
+     * Validates file or folder name for illegal characters
+     * @param {string} name - The file or folder name to validate
+     * @returns {Object} - { valid: boolean, error: string }
+     */
+    validateFileName(name) {
+        if (!name || typeof name !== 'string') {
+            return { valid: false, error: '名称不能为空' };
+        }
+
+        const trimmedName = name.trim();
+        if (trimmedName.length === 0) {
+            return { valid: false, error: '名称不能为空' };
+        }
+
+        // Check for illegal characters
+        // Windows: < > : " / \ | ? *
+        // Unix/Linux/macOS: /
+        const illegalCharsWin = /[<>:"/\\|?*]/;
+        const illegalCharsUnix = /\//;
+        
+        // Detect platform from userAgent or assume Windows if unclear
+        const isWindows = navigator.platform?.toLowerCase().includes('win') || 
+                          navigator.userAgent?.toLowerCase().includes('windows');
+        
+        const illegalChars = isWindows ? illegalCharsWin : illegalCharsUnix;
+        
+        if (illegalChars.test(trimmedName)) {
+            const platformMsg = isWindows 
+                ? '文件名不能包含以下字符: < > : " / \\ | ? *'
+                : '文件名不能包含字符: /';
+            return { valid: false, error: platformMsg };
+        }
+
+        // Check for reserved names on Windows
+        if (isWindows) {
+            const reservedNames = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i;
+            if (reservedNames.test(trimmedName)) {
+                return { valid: false, error: '该名称为系统保留名称，不能使用' };
+            }
+        }
+
+        // Check if name ends with space or period (Windows restriction)
+        if (isWindows && /[\s.]$/.test(trimmedName)) {
+            return { valid: false, error: '文件名不能以空格或句点结尾' };
+        }
+
+        return { valid: true, error: null };
+    }
+
     async confirmOperation(title, message) {
         try {
             if (window.dialogManager?.showConfirmDialog) {
@@ -971,6 +1021,14 @@ class FileExplorer {
         try {
             const newName = await dialogManager.showInputDialog('重命名', file.name, '请输入新名称');
             if (newName && newName !== file.name) {
+                // Validate the new name before sending to backend
+                const validation = this.validateFileName(newName);
+                if (!validation.valid) {
+                    this.showError(validation.error);
+                    logWarn('重命名文件失败 - 非法名称:', newName, '-', validation.error);
+                    return;
+                }
+
                 logInfo('重命名文件:', file.name, '->', newName);
 
                 if (window.electronIPC) {
@@ -1298,6 +1356,15 @@ class FileExplorer {
                     return;
                 }
 
+                // Validate the file name for illegal characters
+                const validation = this.validateFileName(fileName);
+                if (!validation.valid) {
+                    errorMessage = validation.error;
+                    logWarn('文件创建失败 - 非法名称:', fileName, '-', validation.error);
+                    attempts++;
+                    continue;
+                }
+
                 try {
                     if (!/\.[^.\\/]+$/.test(fileName)) {
                         fileName = fileName + '.cpp';
@@ -1399,6 +1466,14 @@ class FileExplorer {
         try {
             const folderName = await dialogManager.showNewFolderDialog();
             if (folderName) {
+                // Validate the folder name before sending to backend
+                const validation = this.validateFileName(folderName);
+                if (!validation.valid) {
+                    this.showError(validation.error);
+                    logWarn('文件夹创建失败 - 非法名称:', folderName, '-', validation.error);
+                    return;
+                }
+
                 if (window.electronIPC) {
                     const folderPath = this.currentPath + '/' + folderName;
                     window.electronIPC.send('create-folder', folderPath);
@@ -1446,6 +1521,14 @@ class FileExplorer {
 
             let fileName = await dialogManager.showNewFileDialog('', defaultName);
             if (fileName) {
+                // Validate the file name before sending to backend
+                const validation = this.validateFileName(fileName);
+                if (!validation.valid) {
+                    this.showError(validation.error);
+                    logWarn('文件创建失败 - 非法名称:', fileName, '-', validation.error);
+                    return;
+                }
+
                 try {
                     if (!/\.[^.\\/]+$/.test(fileName)) {
                         fileName = fileName + '.cpp';
@@ -1503,6 +1586,14 @@ class FileExplorer {
         try {
             const folderName = await dialogManager.showNewFolderDialog();
             if (folderName) {
+                // Validate the folder name before sending to backend
+                const validation = this.validateFileName(folderName);
+                if (!validation.valid) {
+                    this.showError(validation.error);
+                    logWarn('文件夹创建失败 - 非法名称:', folderName, '-', validation.error);
+                    return;
+                }
+
                 if (window.electronIPC) {
                     const folderPath = parentFolder.path + '/' + folderName;
                     window.electronIPC.send('create-folder', folderPath);
