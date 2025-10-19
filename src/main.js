@@ -3687,9 +3687,11 @@ async function cleanupOldInstallers(keepFile = null) {
                     continue;
                 }
                 
-                // 异步删除文件，收集所有 promise
+                // 异步删除文件，收集所有 promise，确保错误也被捕获
                 deletePromises.push(
-                    fs.promises.unlink(filePath).then(() => ({ file, success: true }))
+                    fs.promises.unlink(filePath)
+                        .then(() => ({ file, success: true }))
+                        .catch(error => ({ file, success: false, error }))
                 );
             }
         }
@@ -3699,11 +3701,15 @@ async function cleanupOldInstallers(keepFile = null) {
         
         let cleanedCount = 0;
         for (const result of results) {
-            if (result.status === 'fulfilled' && result.value.success) {
-                logInfo('[更新] 已删除旧安装包:', result.value.file);
-                cleanedCount++;
-            } else if (result.status === 'rejected') {
-                logWarn('[更新] 无法删除旧安装包:', result.reason?.message || result.reason);
+            if (result.status === 'fulfilled') {
+                if (result.value.success) {
+                    logInfo('[更新] 已删除旧安装包:', result.value.file);
+                    cleanedCount++;
+                } else {
+                    logWarn('[更新] 无法删除旧安装包:', result.value.file, result.value.error?.message || result.value.error);
+                }
+            } else {
+                logWarn('[更新] 删除操作失败:', result.reason?.message || result.reason);
             }
         }
         
