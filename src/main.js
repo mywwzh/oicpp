@@ -3675,7 +3675,6 @@ async function cleanupOldInstallers(keepFile = null) {
         // 使用更严格的版本号格式：主版本.次版本.修订号
         const installerPattern = /^OICPP-\d+\.\d+\.\d+-Setup\.(exe|deb|rpm)$/i;
         
-        let cleanedCount = 0;
         const deletePromises = [];
         
         for (const file of files) {
@@ -3690,20 +3689,23 @@ async function cleanupOldInstallers(keepFile = null) {
                 
                 // 异步删除文件，收集所有 promise
                 deletePromises.push(
-                    fs.promises.unlink(filePath)
-                        .then(() => {
-                            logInfo('[更新] 已删除旧安装包:', file);
-                            cleanedCount++;
-                        })
-                        .catch(error => {
-                            logWarn('[更新] 无法删除旧安装包:', file, error.message);
-                        })
+                    fs.promises.unlink(filePath).then(() => ({ file, success: true }))
                 );
             }
         }
         
-        // 等待所有删除操作完成
-        await Promise.all(deletePromises);
+        // 等待所有删除操作完成，使用 allSettled 确保所有操作都执行
+        const results = await Promise.allSettled(deletePromises);
+        
+        let cleanedCount = 0;
+        for (const result of results) {
+            if (result.status === 'fulfilled' && result.value.success) {
+                logInfo('[更新] 已删除旧安装包:', result.value.file);
+                cleanedCount++;
+            } else if (result.status === 'rejected') {
+                logWarn('[更新] 无法删除旧安装包:', result.reason?.message || result.reason);
+            }
+        }
         
         if (cleanedCount > 0) {
             logInfo(`[更新] 共清理了 ${cleanedCount} 个旧安装包`);
