@@ -2008,7 +2008,7 @@ function setupIPC() {
         });
     });
 
-    ipcMain.handle('submit-code-to-luogu', async (event, problemId, submitData, cookies) => {
+    ipcMain.handle('submit-code-to-luogu', async (event, problemId, submitData, cookies, captcha = null, captchaId = null) => {
         return new Promise((resolve) => {
             const postData = JSON.stringify(submitData);
             const options = {

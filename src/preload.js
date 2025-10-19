@@ -145,7 +145,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getLuoguCookies: () => ipcRenderer.invoke('get-luogu-cookies'),
     setLuoguCookies: (cookies) => ipcRenderer.invoke('set-luogu-cookies', cookies),
     openLuoguLoginWindow: () => ipcRenderer.invoke('open-luogu-login-window'),
-    submitCodeToLuogu: (problemId, submitData, cookies) => ipcRenderer.invoke('submit-code-to-luogu', problemId, submitData, cookies),
+    getLuoguCaptcha: () => ipcRenderer.invoke('get-luogu-captcha'),
+    submitCodeToLuogu: (problemId, submitData, cookies, captcha, captchaId) => ipcRenderer.invoke('submit-code-to-luogu', problemId, submitData, cookies, captcha, captchaId),
 
     versions: process.versions,
 
