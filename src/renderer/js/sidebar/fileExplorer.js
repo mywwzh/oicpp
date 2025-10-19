@@ -53,8 +53,8 @@ class FileExplorer {
             }
         }
 
-        // Check if name ends with space or period (Windows restriction)
-        if (isWindows && /[\s.]$/.test(trimmedName)) {
+        // Check if the original name (before trim) ends with space or period (Windows restriction)
+        if (isWindows && /[\s.]$/.test(name)) {
             return { valid: false, error: '文件名不能以空格或句点结尾' };
         }
 
