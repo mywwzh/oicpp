@@ -476,6 +476,17 @@ function createWindow() {
         checkPendingUpdate();
 
         checkDailyUpdate().catch(err => logError('启动时检查更新失败:', err));
+        
+        // 清理启动时可能遗留的旧安装包（延迟执行，避免影响启动速度）
+        setTimeout(() => {
+            try {
+                // 如果有待处理的更新，保留其安装包
+                const keepFile = settings.pendingUpdate?.installerPath || null;
+                cleanupOldInstallers(keepFile);
+            } catch (err) {
+                logWarn('[启动] 清理旧安装包失败:', err);
+            }
+        }, 5000);
 
         try { restoreSettingsBackupLinux(); ensureUserIconForLinux(); } catch (_) { }
     });
@@ -3650,6 +3661,50 @@ async function checkForUpdates(isManual = false) {
     }
 }
 
+function cleanupOldInstallers(keepFile = null) {
+    try {
+        const userOicppDir = path.join(os.homedir(), '.oicpp');
+        if (!fs.existsSync(userOicppDir)) {
+            return;
+        }
+
+        logInfo('[更新] 开始清理旧的安装包...');
+        const files = fs.readdirSync(userOicppDir);
+        
+        // 匹配安装包文件名模式: OICPP-x.x.x-Setup.exe 或类似的 .deb/.rpm 文件
+        const installerPattern = /^OICPP-[\d.]+-Setup\.(exe|deb|rpm)$/i;
+        
+        let cleanedCount = 0;
+        for (const file of files) {
+            if (installerPattern.test(file)) {
+                const filePath = path.join(userOicppDir, file);
+                
+                // 如果指定了要保留的文件，跳过该文件
+                if (keepFile && filePath === keepFile) {
+                    logInfo('[更新] 保留当前安装包:', file);
+                    continue;
+                }
+                
+                try {
+                    fs.unlinkSync(filePath);
+                    logInfo('[更新] 已删除旧安装包:', file);
+                    cleanedCount++;
+                } catch (error) {
+                    logWarn('[更新] 无法删除旧安装包:', file, error.message);
+                }
+            }
+        }
+        
+        if (cleanedCount > 0) {
+            logInfo(`[更新] 共清理了 ${cleanedCount} 个旧安装包`);
+        } else {
+            logInfo('[更新] 没有发现需要清理的旧安装包');
+        }
+    } catch (error) {
+        logWarn('[更新] 清理旧安装包时出错:', error.message);
+    }
+}
+
 async function downloadAndInstallUpdate(updateInfo = null) {
     try {
         logInfo('=== 开始下载安装程序(静默) ===');
@@ -3704,6 +3759,10 @@ async function downloadAndInstallUpdate(updateInfo = null) {
 
         const userOicppDir = path.join(os.homedir(), '.oicpp');
         if (!fs.existsSync(userOicppDir)) fs.mkdirSync(userOicppDir, { recursive: true });
+        
+        // 在下载新安装包之前，清理旧的安装包
+        cleanupOldInstallers();
+        
         const installerPath = path.join(userOicppDir, installerFile.name);
 
         if (fs.existsSync(installerPath)) {
@@ -3800,6 +3859,21 @@ function runInstaller(installerPath) {
             const success = isLinux ? (result === '') : (result === true);
             if (success) {
                 logInfo('安装程序已启动');
+                
+                // 在Linux上，尝试在启动后删除安装包（Windows上文件可能被锁定）
+                if (isLinux) {
+                    setTimeout(() => {
+                        try {
+                            if (fs.existsSync(installerPath)) {
+                                fs.unlinkSync(installerPath);
+                                logInfo('[更新] 已删除安装包文件（启动后清理）');
+                            }
+                        } catch (error) {
+                            logWarn('[更新] 无法删除安装包文件:', error.message);
+                        }
+                    }, 1000);
+                }
+                
                 dialog.showMessageBox(mainWindow, {
                     type: 'info',
                     title: '安装程序已启动',
