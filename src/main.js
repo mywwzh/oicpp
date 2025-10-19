@@ -13,6 +13,9 @@ try {
 }
 const logger = require('./utils/logger');
 
+const Store = require('electron-store');
+const store = new Store({ name: 'oicpp-data' }); // Store user-specific data like Luogu cookies
+
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
@@ -1904,6 +1907,132 @@ function setupIPC() {
         } catch (error) {
             throw error;
         }
+    });
+
+    ipcMain.handle('get-luogu-cookies', () => {
+        return store.get('luogu-cookies', null);
+    });
+
+    ipcMain.handle('set-luogu-cookies', (event, cookies) => {
+        store.set('luogu-cookies', cookies);
+        return { success: true };
+    });
+
+    ipcMain.handle('open-luogu-login-window', async (event) => {
+        return new Promise((resolve, reject) => {
+            const loginWindow = new BrowserWindow({
+                width: 1000,
+                height: 700,
+                title: '登录洛谷',
+                webPreferences: {
+                    nodeIntegration: false,
+                    contextIsolation: true,
+                    webSecurity: false // Allow cross-origin for cookie access if needed, but generally avoid
+                },
+                show: false
+            });
+
+            loginWindow.loadURL('https://www.luogu.com.cn/').then(() => {
+                loginWindow.show();
+            }).catch(err => {
+                logError('加载洛谷登录页面失败:', err);
+                loginWindow.destroy();
+                reject({ success: false, error: err.message });
+            });
+
+            let resolved = false;
+
+            const checkCookiesAndResolve = async () => {
+                try {
+                    const cookies = await loginWindow.webContents.session.cookies.get({ url: 'https://www.luogu.com.cn/' });
+                    const client_id_cookie = cookies.find(c => c.name === '__client_id');
+                    const uid_cookie = cookies.find(c => c.name === '_uid');
+                    const c3vk_cookie = cookies.find(c => c.name === 'C3VK');
+
+                    if (client_id_cookie && uid_cookie && c3vk_cookie) {
+                        const luoguCookies = {
+                            __client_id: client_id_cookie.value,
+                            _uid: uid_cookie.value,
+                            C3VK: c3vk_cookie.value
+                        };
+                        if (!resolved) {
+                            resolved = true;
+                            loginWindow.destroy();
+                            resolve(luoguCookies);
+                        }
+                    }
+                } catch (err) {
+                    logWarn('检查洛谷 Cookies 失败:', err);
+                }
+            };
+
+            // Periodically check cookies after navigation
+            const interval = setInterval(checkCookiesAndResolve, 1000); // Check every second
+
+            loginWindow.webContents.on('did-navigate', () => {
+                checkCookiesAndResolve();
+            });
+
+            loginWindow.webContents.on('did-redirect-navigation', () => {
+                checkCookiesAndResolve();
+            });
+
+            loginWindow.on('closed', () => {
+                clearInterval(interval);
+                if (!resolved) {
+                    logInfo('洛谷登录窗口已关闭，但未获取到 Cookies。');
+                    resolve(null); // User closed the window without logging in
+                }
+            });
+        });
+    });
+
+    ipcMain.handle('submit-code-to-luogu', async (event, problemId, submitData, cookies) => {
+        return new Promise((resolve) => {
+            const postData = JSON.stringify(submitData);
+            const options = {
+                hostname: 'www.luogu.com.cn',
+                port: 443,
+                path: `/fe/api/problem/submit/${problemId}`,
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Cookie': `__client_id=${cookies.__client_id}; _uid=${cookies._uid}; C3VK=${cookies.C3VK}`,
+                    'User-Agent': 'OICPP IDE Electron App',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            };
+
+            const req = require('https').request(options, (res) => {
+                let responseData = '';
+                res.on('data', (chunk) => {
+                    responseData += chunk;
+                });
+                res.on('end', () => {
+                    try {
+                        const jsonResponse = JSON.parse(responseData);
+                        logInfo('洛谷提交 API 响应:', jsonResponse);
+                        if (res.statusCode === 200 && jsonResponse.code === 200) {
+                            resolve({ success: true, data: jsonResponse });
+                        } else {
+                            resolve({ success: false, error: jsonResponse.message || '提交失败' });
+                        }
+                    } catch (parseError) {
+                        logError('解析洛谷提交 API 响应失败:', parseError, '原始响应:', responseData);
+                        resolve({ success: false, error: '解析服务器响应失败' });
+                    }
+                });
+            });
+
+            req.on('error', (error) => {
+                logError('向洛谷提交代码时发生网络错误:', error);
+                resolve({ success: false, error: error.message });
+            });
+
+            req.write(postData);
+            req.end();
+        });
     });
 
     ipcMain.handle('run-program', async (event, executablePathOrOptions, input, timeLimit) => {

@@ -142,6 +142,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
     openRecentFile: (filePath) => ipcRenderer.invoke('open-recent-file', filePath),
 
+    getLuoguCookies: () => ipcRenderer.invoke('get-luogu-cookies'),
+    setLuoguCookies: (cookies) => ipcRenderer.invoke('set-luogu-cookies', cookies),
+    openLuoguLoginWindow: () => ipcRenderer.invoke('open-luogu-login-window'),
+    submitCodeToLuogu: (problemId, submitData, cookies) => ipcRenderer.invoke('submit-code-to-luogu', problemId, submitData, cookies),
+
     versions: process.versions,
 
     relaunchApp: () => ipcRenderer.invoke('relaunch-app'),

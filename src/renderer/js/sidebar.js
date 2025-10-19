@@ -5,7 +5,8 @@ class SidebarManager {
             files: new FileExplorer(),
             samples: new SampleTester(),
             compare: new CodeComparer(),
-            debug: new DebugPanel()
+            debug: new DebugPanel(),
+            submit: new SubmitManager()
         };
 
         this._pendingResizeRaf = null;
