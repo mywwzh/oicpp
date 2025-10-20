@@ -4763,7 +4763,8 @@ async function compileFile(options) {
             cwd: workingDirectory,
             stdio: ['pipe', 'pipe', 'pipe'],
             env: compilerEnv,
-            shell: false // 禁用shell模式以避免路径解析问题
+            shell: false, // 禁用shell模式以避免路径解析问题
+            max_buffer: 10 * 1024 * 1024 // 10MB
         });
 
         const stdoutChunks = [];
