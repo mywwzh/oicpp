@@ -630,7 +630,7 @@ class MonacoEditorManager {
                     const endLine = Math.max(sel.startLineNumber, sel.endLineNumber);
                     const text = model.getValueInRange(new monaco.Range(startLine, 1, endLine, model.getLineMaxColumn(endLine)));
                     const insertPos = new monaco.Position(endLine, model.getLineMaxColumn(endLine));
-                    const insertText = (text.endsWith('\n') || endLine >= model.getLineCount()) ? ('\n' + text) : ('\n' + text + '\n');
+                    const insertText = '\n' + text;
                     ed.executeEdits('duplicate-line', [{ range: new monaco.Range(insertPos.lineNumber, insertPos.column, insertPos.lineNumber, insertPos.column), text: insertText }]);
                 });
             } catch (e) { logWarn('注册 Ctrl+E 复制行 失败:', e); }
