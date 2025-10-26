@@ -10,7 +10,7 @@ class SubmitManager {
         logInfo('SubmitManager initialized.');
         this.renderSubmitForm();
         this.setupCaptchaModal();
-        window.electronAPI.on('request-luogu-captcha', () => this.handleCaptchaRequest());
+        window.electronAPI.onRequestLuoguCaptcha(() => this.handleCaptchaRequest());
     }
 
     setupCaptchaModal() {
@@ -92,6 +92,21 @@ class SubmitManager {
             return;
         }
 
+        const LUOGU_LANGUAGES = {
+            "28": "C++ 14(GCC9)",
+            "3": "C++ 98",
+            "4": "C++ 11",
+            "11": "C++ 14",
+            "12": "C++ 17",
+            "27": "C++ 20",
+            "34": "C++ 23"
+        }; // 洛谷支持的语言及其ID映射
+
+        let languageOptionsHtml = '';
+        for (const id in LUOGU_LANGUAGES) {
+            languageOptionsHtml += `<option value="${id}">${LUOGU_LANGUAGES[id]}</option>`;
+        }
+
         submitPanel.innerHTML = `
             <div class="panel-header">
                 <span class="panel-title">提交代码</span>
@@ -112,13 +127,7 @@ class SubmitManager {
                 <div class="form-group">
                     <label for="language">语言:</label>
                     <select id="language">
-                        <option value="28">C++ 14(GCC9)</option>
-                        <option value="3">C++ 98</option>
-                        <option value="4">C++ 11</option>
-                        <option value="11">C++ 14</option>
-                        <option value="12">C++ 17</option>
-                        <option value="27">C++ 20</option>
-                        <option value="34">C++ 23</option>
+                        ${languageOptionsHtml}
                     </select>
                 </div>
                 <div class="form-group">
@@ -208,6 +217,9 @@ class SubmitManager {
 
     async submitCodeToLuogu(problemId, submitData, cookies, captcha = null, captchaId = null) {
         const submitStatus = document.getElementById('submit-status');
+        const submitBtn = document.getElementById('submit-btn');
+
+        submitBtn.disabled = true; // 禁用提交按钮
         submitStatus.textContent = '正在向洛谷提交...';
         submitStatus.style.color = 'orange';
 
@@ -238,6 +250,8 @@ class SubmitManager {
             logError('洛谷提交过程中发生错误:', error);
             submitStatus.textContent = `洛谷提交过程中发生错误: ${error.message || error}`;
             submitStatus.style.color = 'red';
+        } finally {
+            submitBtn.disabled = false; // 重新启用提交按钮
         }
     }
 
@@ -248,61 +262,70 @@ class SubmitManager {
         const language = document.getElementById('language').value;
         const enableO2 = document.getElementById('enable-o2').checked ? 1 : 0;
         const submitStatus = document.getElementById('submit-status');
+        const submitBtn = document.getElementById('submit-btn');
 
-        if (!problemId) {
-            submitStatus.textContent = '请填写题目 ID。';
-            submitStatus.style.color = 'red';
-            return;
-        }
+        submitBtn.disabled = true; // 禁用提交按钮
+        submitStatus.textContent = '正在处理...';
+        submitStatus.style.color = 'orange';
 
-        // 获取当前编辑器中的代码
-        let codeContent = '';
-        if (window.editorManager && window.editorManager.currentEditor) {
-            codeContent = window.editorManager.currentEditor.getValue();
-        } else {
-            submitStatus.textContent = '无法获取编辑器中的代码，请确保已打开文件。';
-            submitStatus.style.color = 'red';
-            return;
-        }
-
-        if (!codeContent.trim()) {
-            submitStatus.textContent = '提交代码不能为空。';
-            submitStatus.style.color = 'red';
-            return;
-        }
-
-        if (selectedOj === 'luogu') {
-            if (!this.luoguCookies || !this.luoguCookies.__client_id || !this.luoguCookies._uid || !this.luoguCookies.C3VK) {
-                submitStatus.textContent = '请先登录洛谷并确保获取到所有 Cookies (C3VK)。';
+        try {
+            if (!problemId) {
+                submitStatus.textContent = '请填写题目 ID。';
                 submitStatus.style.color = 'red';
                 return;
             }
 
-            const submitData = {
-                lang: parseInt(language, 10),
-                code: codeContent.replace(/\r\n/g, '\n'), // 替换换行符
-                enableO2: enableO2
-            };
-            logInfo('向洛谷提交数据:', submitData);
-            await this.submitCodeToLuogu(problemId, submitData, this.luoguCookies);
+            // 获取当前编辑器中的代码
+            let codeContent = '';
+            if (window.editorManager && window.editorManager.currentEditor) {
+                codeContent = window.editorManager.currentEditor.getValue();
+            } else {
+                submitStatus.textContent = '无法获取编辑器中的代码，请确保已打开文件。';
+                submitStatus.style.color = 'red';
+                return;
+            }
 
-        } else if (selectedOj === 'none') {
-            submitStatus.textContent = '请选择一个 OJ。';
-            submitStatus.style.color = 'red';
-        } else {
-            logInfo(`正在向 ${selectedOj} 提交题目 ID: ${problemId}, 语言: ${language}, O2: ${enableO2}`);
-            submitStatus.textContent = `正在向 ${selectedOj} 提交...`;
-            submitStatus.style.color = 'orange';
-            setTimeout(() => {
-                const success = Math.random() > 0.5;
-                if (success) {
-                    submitStatus.textContent = `${selectedOj} 提交成功！`;
-                    submitStatus.style.color = 'green';
-                } else {
-                    submitStatus.textContent = `${selectedOj} 提交失败，请重试。`;
+            if (!codeContent.trim()) {
+                submitStatus.textContent = '提交代码不能为空。';
+                submitStatus.style.color = 'red';
+                return;
+            }
+
+            if (selectedOj === 'luogu') {
+                if (!this.luoguCookies || !this.luoguCookies.__client_id || !this.luoguCookies._uid || !this.luoguCookies.C3VK) {
+                    submitStatus.textContent = '请先登录洛谷并确保获取到所有 Cookies (C3VK)。';
                     submitStatus.style.color = 'red';
+                    return;
                 }
-            }, 2000);
+
+                const submitData = {
+                    lang: parseInt(language, 10),
+                    code: codeContent.replace(/\r\n/g, '\n'), // 替换换行符
+                    enableO2: enableO2
+                };
+                logInfo('向洛谷提交数据:', submitData);
+                await this.submitCodeToLuogu(problemId, submitData, this.luoguCookies);
+
+            } else if (selectedOj === 'none') {
+                submitStatus.textContent = '请选择一个 OJ。';
+                submitStatus.style.color = 'red';
+            } else {
+                logInfo(`正在向 ${selectedOj} 提交题目 ID: ${problemId}, 语言: ${language}, O2: ${enableO2}`);
+                submitStatus.textContent = `正在向 ${selectedOj} 提交...`;
+                submitStatus.style.color = 'orange';
+                setTimeout(() => {
+                    const success = Math.random() > 0.5;
+                    if (success) {
+                        submitStatus.textContent = `${selectedOj} 提交成功！`;
+                        submitStatus.style.color = 'green';
+                    } else {
+                        submitStatus.textContent = `${selectedOj} 提交失败，请重试。`;
+                        submitStatus.style.color = 'red';
+                    }
+                }, 2000);
+            }
+        } finally {
+            submitBtn.disabled = false; // 重新启用提交按钮
         }
     }
 

@@ -491,7 +491,7 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false, // 出于安全原因，建议禁用
             contextIsolation: true, // 推荐启用
-            webSecurity: false, // 允许加载本地文件
+            webSecurity: true, // 启用 webSecurity，禁止跨域请求，更安全
             devTools: process.argv.includes('--dev')
         },
         icon: getUserIconPath(),
@@ -1933,11 +1933,21 @@ function setupIPC() {
     });
 
     ipcMain.handle('get-luogu-cookies', () => {
-        return store.get('luogu-cookies', null);
+        const storedCookies = store.get('luogu-cookies', null);
+        // 如果没有C3VK，则认为需要重新登录
+        if (storedCookies && storedCookies.__client_id && storedCookies._uid) {
+            return storedCookies;
+        }
+        return null;
     });
 
     ipcMain.handle('set-luogu-cookies', (event, cookies) => {
-        store.set('luogu-cookies', cookies);
+        // 只存储非敏感的 __client_id 和 _uid，C3VK 不持久化
+        const safeCookies = {
+            __client_id: cookies.__client_id,
+            _uid: cookies._uid
+        };
+        store.set('luogu-cookies', safeCookies);
         return { success: true };
     });
 
@@ -1950,7 +1960,7 @@ function setupIPC() {
                 webPreferences: {
                     nodeIntegration: false,
                     contextIsolation: true,
-                    webSecurity: false // 禁止跨域请求
+                    webSecurity: true // 启用 webSecurity，更安全
                 },
                 show: false
             });
@@ -1964,6 +1974,7 @@ function setupIPC() {
             });
 
             let resolved = false;
+            let interval = null; // Declare interval here
 
             const checkCookiesAndResolve = async () => {
                 try {
@@ -1980,6 +1991,7 @@ function setupIPC() {
                         };
                         if (!resolved) {
                             resolved = true;
+                            clearInterval(interval); // Clear interval before destroying window
                             loginWindow.destroy();
                             resolve(luoguCookies);
                         }
@@ -1989,7 +2001,7 @@ function setupIPC() {
                 }
             };
 
-            const interval = setInterval(checkCookiesAndResolve, 1000); // 每秒检查一次cookie
+            interval = setInterval(checkCookiesAndResolve, 1000); // 每秒检查一次cookie
 
             loginWindow.webContents.on('did-navigate', () => {
                 checkCookiesAndResolve();
@@ -1998,28 +2010,125 @@ function setupIPC() {
             loginWindow.webContents.on('did-redirect-navigation', () => {
                 checkCookiesAndResolve();
             });
+
+            loginWindow.on('closed', () => {
+                if (!resolved) {
+                    resolved = true;
+                    clearInterval(interval);
+                    resolve(null); // User closed the window without logging in
+                }
+            });
         });
     });
 
-    ipcMain.handle('fetch-luogu-record', async (event, recordUrl) => {
+    ipcMain.handle('fetch-luogu-record', async (_event, recordUrl) => {
+        logInfo('[主进程] 请求洛谷评测记录', recordUrl);
         try {
-            logInfo('正在主进程抓取洛谷评测记录:', recordUrl);
-            const response = await new Promise((resolve, reject) => {
+            return new Promise((resolve) => {
                 https.get(recordUrl, (res) => {
-                    let data = '';
-                    res.on('data', (chunk) => {
-                        data += chunk;
-                    });
+                    let rawData = '';
+                    res.setEncoding('utf8'); // 设置编码
+                    res.on('data', (chunk) => { rawData += chunk; });
                     res.on('end', () => {
-                        resolve(data);
+                        if (res.statusCode >= 200 && res.statusCode < 300) {
+                            resolve({ success: true, html: rawData });
+                        } else {
+                            resolve({ success: false, error: `HTTP 错误: ${res.statusCode}`, raw: rawData });
+                        }
                     });
-                }).on('error', (err) => {
-                    reject(err);
+                }).on('error', (e) => {
+                    logError('抓取洛谷评测记录请求失败:', e);
+                    resolve({ success: false, error: e.message });
                 });
             });
-            return { success: true, html: response };
         } catch (error) {
-            logError('主进程抓取洛谷评测记录失败:', error);
+            logError('处理洛谷评测记录请求时发生错误:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('get-luogu-captcha', async () => {
+        logInfo('[主进程] 请求洛谷验证码');
+        // 占位符实现：模拟返回验证码数据
+        return {
+            success: true,
+            image: 'data:image/png;base64,iVBORw0KGgoAAAANSUgEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', // 一个1x1的透明PNG图片
+            captchaId: 'mock_captcha_id_12345'
+        };
+    });
+
+    ipcMain.handle('submit-code-to-luogu', async (_event, problemId, submitData, cookies, captcha = null, captchaId = null) => {
+        logInfo('[主进程] 收到洛谷提交请求', { problemId, submitData, captcha: !!captcha, captchaId: !!captchaId });
+        try {
+            if (!cookies || !cookies.__client_id || !cookies._uid || !cookies.C3VK) {
+                return { success: false, error: '缺少洛谷 Cookies' };
+            }
+
+            const cookieString = `__client_id=${encodeURIComponent(cookies.__client_id)}; _uid=${encodeURIComponent(cookies._uid)}; C3VK=${encodeURIComponent(cookies.C3VK)}`;
+
+            const postData = JSON.stringify({
+                code: submitData.code,
+                lang: submitData.lang,
+                enableO2: submitData.enableO2,
+                _token: cookies.C3VK, // 洛谷通常使用C3VK作为_token
+                captcha: captcha,
+                captchaId: captchaId
+            });
+
+            const options = {
+                hostname: 'www.luogu.com.cn',
+                port: 443,
+                path: `/problem/${problemId}/submit`,
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Cookie': cookieString,
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 OICPP IDE',
+                    'Referer': `https://www.luogu.com.cn/problem/${problemId}`,
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            };
+
+            return new Promise((resolve) => {
+                const req = https.request(options, (res) => {
+                    let rawData = '';
+                    res.setEncoding('utf8');
+                    res.on('data', (chunk) => { rawData += chunk; });
+                    res.on('end', () => {
+                        try {
+                            const jsonResponse = JSON.parse(rawData);
+                            logInfo('洛谷提交 API 响应:', jsonResponse);
+
+                            if (jsonResponse.code === 200) {
+                                // 提交成功
+                                const rid = jsonResponse.rid || jsonResponse.data?.rid;
+                                resolve({ success: true, rid: rid });
+                            } else if (jsonResponse.code === 400 && jsonResponse.message.includes('验证码')) {
+                                // 需要验证码
+                                resolve({ success: false, captchaRequired: true, error: jsonResponse.message });
+                            } else {
+                                // 其他错误
+                                resolve({ success: false, error: jsonResponse.message || '未知错误', raw: jsonResponse });
+                            }
+                        } catch (e) {
+                            logError('解析洛谷提交响应失败:', e, '原始数据:', rawData);
+                            resolve({ success: false, error: '解析响应失败', raw: rawData });
+                        }
+                    });
+                });
+
+                req.on('error', (e) => {
+                    logError('洛谷提交请求失败:', e);
+                    resolve({ success: false, error: e.message });
+                });
+
+                req.write(postData);
+                req.end();
+            });
+
+        } catch (error) {
+            logError('处理洛谷提交请求时发生错误:', error);
             return { success: false, error: error.message };
         }
     });
@@ -2031,8 +2140,7 @@ function setupIPC() {
                     resolve(null); // 关闭窗口，但是没有登录
                 }
             });
-        });
-    });
+        }
 
     ipcMain.handle('submit-code-to-luogu', async (event, problemId, submitData, cookies, captcha = null, captchaId = null) => {
         return new Promise((resolve) => {
@@ -3408,7 +3516,6 @@ function setupIPC() {
             return null;
         }
     }
-}
 
 function normalizeDroppedPath(filePath) {
     if (filePath == null) {

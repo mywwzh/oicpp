@@ -132,6 +132,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('external-file-changed', listener);
     },
     onSampleTesterCreateProblem: (callback) => ipcRenderer.on('sample-tester-create-problem', (_e, data) => callback && callback(data)),
+    onRequestLuoguCaptcha: (callback) => ipcRenderer.on('request-luogu-captcha', () => callback && callback()),
 
     sendFeedback: (message) => ipcRenderer.invoke('send-feedback', message),
     getDeviceInfo: () => ipcRenderer.invoke('get-device-info'),
