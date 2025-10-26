@@ -173,6 +173,11 @@
                         <path d="M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5s-.96.06-1.42.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8z"/>
                     </svg>
                 </div>
+                <div class="sidebar-icon" data-panel="submit" title="提交代码">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                    </svg>
+                </div>
             </div>
             <div class="sidebar-panel" id="sidebar-content">
                 <div class="panel-content active" id="files-panel">
@@ -418,6 +423,13 @@
                     <div class="debug-content">
                     </div>
                 </div>
+                <div class="panel-content" id="submit-panel">
+                    <div class="panel-header">
+                        <span class="panel-title">提交代码</span>
+                    </div>
+                    <div class="submit-content">
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -454,6 +466,25 @@
         <div class="quick-open-container" role="dialog" aria-modal="true">
             <input id="quick-open-input" class="quick-open-input" type="text" placeholder="输入文件名以在工作区搜索... (Esc 关闭)" aria-label="快速打开：输入文件名">
             <div id="quick-open-results" class="quick-open-results" role="listbox" aria-label="搜索结果">
+            </div>
+        </div>
+    </div>
+
+    <!-- Captcha Modal -->
+    <div id="captcha-modal-overlay" class="dialog-overlay" aria-hidden="true">
+        <div class="dialog-container">
+            <div class="dialog-header">
+                <h3 class="dialog-title">洛谷验证码</h3>
+                <button class="dialog-close-btn" id="captcha-close-btn">&times;</button>
+            </div>
+            <div class="dialog-content" style="text-align: center;">
+                <p>请输入图片中的验证码：</p>
+                <img id="captcha-image" src="" alt="验证码" style="margin: 10px auto; border: 1px solid var(--border-color);">
+                <input type="text" id="captcha-input" placeholder="验证码" class="dialog-input" style="width: calc(100% - 30px);">
+            </div>
+            <div class="dialog-buttons">
+                <button class="dialog-button secondary" id="captcha-cancel-btn">取消</button>
+                <button class="dialog-button primary" id="captcha-submit-btn">提交验证码</button>
             </div>
         </div>
     </div>
@@ -507,6 +538,7 @@
     <script src="js/sidebar/sampleTester.js"></script>
     <script src="js/sidebar/debugPanel.js"></script>
     <script src="js/sidebar/codeComparer.js"></script>
+    <script src="js/sidebar/submitPanel.js"></script>
     <script src="js/sidebar.js"></script>
     <script src="js/tabs.js"></script>
     <script src="js/main.js"></script>

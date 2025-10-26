@@ -132,6 +132,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('external-file-changed', listener);
     },
     onSampleTesterCreateProblem: (callback) => ipcRenderer.on('sample-tester-create-problem', (_e, data) => callback && callback(data)),
+    onRequestLuoguCaptcha: (callback) => ipcRenderer.on('request-luogu-captcha', () => callback && callback()),
 
     sendFeedback: (message) => ipcRenderer.invoke('send-feedback', message),
     getDeviceInfo: () => ipcRenderer.invoke('get-device-info'),
@@ -141,6 +142,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
     openRecentFile: (filePath) => ipcRenderer.invoke('open-recent-file', filePath),
+
+    getLuoguCookies: () => ipcRenderer.invoke('get-luogu-cookies'),
+    setLuoguCookies: (cookies) => ipcRenderer.invoke('set-luogu-cookies', cookies),
+    openLuoguLoginWindow: () => ipcRenderer.invoke('open-luogu-login-window'),
+    getLuoguCaptcha: () => ipcRenderer.invoke('get-luogu-captcha'),
+    submitCodeToLuogu: (problemId, submitData, cookies, captcha, captchaId) => ipcRenderer.invoke('submit-code-to-luogu', problemId, submitData, cookies, captcha, captchaId),
+    fetchLuoguRecord: (recordUrl) => ipcRenderer.invoke('fetch-luogu-record', recordUrl),
 
     versions: process.versions,
 
