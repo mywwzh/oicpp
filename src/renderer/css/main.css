@@ -248,8 +248,58 @@ body.theme-light .status-bar,
 body[data-theme="light"] .status-bar,
 body[data-editor-theme="light"] .status-bar {
     background-color: var(--statusbar-bg);
-    color: #ffffff;
+    color: var(--statusbar-text);
 }
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: var(--text-color);
+}
+
+.form-group input[type="text"],
+.form-group input[type="file"],
+.form-group select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    box-sizing: border-box;
+}
+
+.form-group input[type="file"] {
+    padding: 5px;
+}
+
+button#submit-btn {
+    background-color: var(--accent-color);
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    width: 100%;
+    margin-top: 10px;
+}
+
+button#submit-btn:hover {
+    background-color: var(--accent-color-hover);
+}
+
+#submit-status {
+    margin-top: 15px;
+    text-align: center;
+    font-weight: bold;
+}
+
 
 body.theme-dark,
 body[data-theme="dark"],
