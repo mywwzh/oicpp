@@ -2104,7 +2104,7 @@ function setupIPC() {
                                 // 提交成功
                                 const rid = jsonResponse.rid || jsonResponse.data?.rid;
                                 resolve({ success: true, rid: rid });
-                            } else if (jsonResponse.code === 400 && jsonResponse.message.includes('验证码')) {
+                            } else if (jsonResponse.code === 403) {
                                 // 需要验证码
                                 resolve({ success: false, captchaRequired: true, error: jsonResponse.message });
                             } else {
