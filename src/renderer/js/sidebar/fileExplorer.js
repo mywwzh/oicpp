@@ -1297,11 +1297,20 @@ class FileExplorer {
 
             try {
                 const isPdf = typeof file.name === 'string' && file.name.toLowerCase().endsWith('.pdf');
+                const isMarkdown = typeof file.name === 'string' && file.name.toLowerCase().endsWith('.md');
+
                 if (isPdf) {
                     if (window.tabManager?.openFile) {
                         await window.tabManager.openFile(file.name, '', false, { filePath: file.path, viewType: 'pdf' });
                     } else {
                         logWarn('tabManager不可用，无法打开PDF文件');
+                    }
+                    return;
+                } else if (isMarkdown) {
+                    if (window.electronAPI?.openMarkdownFile) {
+                        await window.electronAPI.openMarkdownFile(file.path);
+                    } else {
+                        logWarn('electronAPI.openMarkdownFile 不可用，无法打开 Markdown 文件');
                     }
                     return;
                 }

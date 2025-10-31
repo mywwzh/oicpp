@@ -1,0 +1,19 @@
+/* md-reader.css */
+
+#markdown-content {
+    padding: 20px;
+    font-family: sans-serif;
+    line-height: 1.6;
+}
+
+#markdown-content h1 {
+    border-bottom: 1px solid #eee;
+    padding-bottom: 0.3em;
+}
+
+#markdown-content pre {
+    background-color: #f6f8fa;
+    padding: 16px;
+    border-radius: 6px;
+    overflow: auto;
+}
