@@ -386,6 +386,10 @@ body[data-editor-theme="light"] .breakpoint-glyph {
     --editor-warning: #ff8c00;
     --editor-info: #75beff;
     --editor-hint: #eeeeeeb3;
+    --editor-background-image: none;
+    --editor-background-size: auto;
+    --editor-background-position: initial;
+    --editor-background-repeat: repeat;
     --menu-background: #252526;
     --border-color: #454545;
     --text-color: #cccccc;
@@ -425,6 +429,11 @@ body[data-editor-theme="light"] {
 
 .monaco-editor {
     font-family: 'Consolas' !important;
+    background-color: var(--editor-background-color, #1e1e1e) !important;
+    background-image: var(--editor-background-image) !important;
+    background-size: var(--editor-background-size) !important;
+    background-position: var(--editor-background-position) !important;
+    background-repeat: var(--editor-background-repeat) !important;
 }
 
 .monaco-editor .view-lines {
@@ -701,10 +710,25 @@ body[data-editor-theme="light"] .monaco-editor {
     color: #000000 !important;
 }
 
+body.theme-dark .monaco-editor,
+body[data-theme="dark"] .monaco-editor,
+body[data-editor-theme="dark"] .monaco-editor {
+    background-color: var(--editor-background-color, #1e1e1e) !important;
+    background-image: var(--editor-background-image) !important;
+    background-size: var(--editor-background-size) !important;
+    background-position: var(--editor-background-position) !important;
+    background-repeat: var(--editor-background-repeat) !important;
+}
+
+
 body.theme-light .monaco-editor .margin,
 body[data-theme="light"] .monaco-editor .margin,
 body[data-editor-theme="light"] .monaco-editor .margin {
-    background-color: #ffffff !important;
+    background-color: var(--editor-background-color, #ffffff) !important;
+    background-image: var(--editor-background-image) !important;
+    background-size: var(--editor-background-size) !important;
+    background-position: var(--editor-background-position) !important;
+    background-repeat: var(--editor-background-repeat) !important;
 }
 
 body.theme-light .monaco-editor .line-numbers,

@@ -14,7 +14,8 @@ class SettingsManager {
                 wordWrap: false,
                 enableAutoCompletion: true,
                 bracketMatching: true,
-                highlightCurrentLine: true
+                highlightCurrentLine: true,
+                background: ''
             },
             templates: {
                 cppTemplate: '',
@@ -240,7 +241,8 @@ class SettingsManager {
                 wordWrap: false,
                 autoCompletion: true,
                 bracketMatching: true,
-                highlightCurrentLine: true
+                highlightCurrentLine: true,
+                background: ''
             },
             templates: {
                 cppTemplate: '',

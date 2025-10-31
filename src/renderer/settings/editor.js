@@ -13,7 +13,8 @@ class EditorSettings {
             bracketMatching: true,
             highlightCurrentLine: true,
             autoSave: true,
-            autoSaveInterval: 60000
+            autoSaveInterval: 60000,
+            background: ''
         };
     }
 
@@ -29,6 +30,7 @@ class EditorSettings {
         this.applyTheme(this.settings.theme);
 
         this.updateUI();
+        this.applyBackground(this.settings.background);
 
         logInfo('EditorSettings 初始化完成');
     }
@@ -81,6 +83,29 @@ class EditorSettings {
         if (tabSizeInput) {
             tabSizeInput.addEventListener('input', () => {
                 this.notifyMainWindowPreview();
+            });
+        }
+
+        const backgroundInput = document.getElementById('editor-background');
+        if (backgroundInput) {
+            backgroundInput.addEventListener('input', () => {
+                this.notifyMainWindowPreview();
+            });
+        }
+
+        const backgroundFileBtn = document.getElementById('editor-background-file-btn');
+        if (backgroundFileBtn) {
+            backgroundFileBtn.addEventListener('click', async () => {
+                const filePath = await window.electronAPI.showOpenDialog({
+                    properties: ['openFile'],
+                    filters: [
+                        { name: '��片文件', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] }
+                    ]
+                });
+                if (filePath && filePath.length > 0) {
+                    backgroundInput.value = `url('file:///${filePath[0].replace(/\\/g, '/')}')`;
+                    this.notifyMainWindowPreview();
+                }
             });
         }
     }
@@ -219,7 +244,8 @@ class EditorSettings {
                     foldingEnabled: allSettings.foldingEnabled !== false,
                     stickyScrollEnabled: allSettings.stickyScrollEnabled !== false,
                     autoSave: allSettings.autoSave !== false,
-                    autoSaveInterval: typeof allSettings.autoSaveInterval === 'number' ? allSettings.autoSaveInterval : 60000
+                    autoSaveInterval: typeof allSettings.autoSaveInterval === 'number' ? allSettings.autoSaveInterval : 60000,
+                    background: allSettings.background || ''
                 };
                 logInfo('编辑器设置加载完成:', this.settings);
             } else {
@@ -232,7 +258,8 @@ class EditorSettings {
                     stickyScrollEnabled: true,
                     foldingEnabled: true,
                     autoSave: true,
-                    autoSaveInterval: 60000
+                    autoSaveInterval: 60000,
+                    background: ''
                 };
             }
         } catch (error) {
@@ -363,6 +390,11 @@ class EditorSettings {
             if (!Number.isNaN(parsedInterval) && parsedInterval > 0) {
                 newSettings.autoSaveInterval = parsedInterval * 1000;
             }
+        }
+
+        const backgroundInput = document.getElementById('editor-background');
+        if (backgroundInput) {
+            newSettings.background = backgroundInput.value;
         }
 
         logInfo('收集到的设置:', newSettings);
@@ -540,6 +572,11 @@ class EditorSettings {
             autoSaveIntervalInput.value = Math.max(1, Math.round(intervalMs / 1000));
             this.toggleAutoSaveInterval(autoSaveIntervalInput, autoSaveEnabled);
         }
+
+        const backgroundInput = document.getElementById('editor-background');
+        if (backgroundInput) {
+            backgroundInput.value = this.settings.background || '';
+        }
     }
 
     showMessage(message, type = 'info') {
@@ -594,6 +631,14 @@ class EditorSettings {
 
     closeWindow() {
         window.close();
+    }
+
+    applyBackground(background) {
+        if (window.monacoEditorManager && typeof window.monacoEditorManager.updateEditorBackground === 'function') {
+            window.monacoEditorManager.updateEditorBackground(background);
+        } else {
+            logWarn('Monaco编辑器管理器或其背景更新方法不可用');
+        }
     }
 }
 

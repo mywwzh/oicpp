@@ -595,7 +595,8 @@ class OICPPApp {
             tabSize: this.settings.tabSize || 4,
             wordWrap: this.settings.wordWrap || false,
             foldingEnabled: this.settings.foldingEnabled !== false,
-            stickyScrollEnabled: this.settings.stickyScrollEnabled !== false
+            stickyScrollEnabled: this.settings.stickyScrollEnabled !== false,
+            background: this.settings.background || ''
         };
         
         if (window.monacoEditorManager && typeof window.monacoEditorManager.updateAllEditorsSettings === 'function') {
@@ -623,6 +624,21 @@ class OICPPApp {
         }
         if (settings.fontSize) {
             root.style.setProperty('--editor-font-size', settings.fontSize + 'px');
+        }
+        if (settings.background) {
+            if (settings.background.startsWith('url(')) {
+                root.style.setProperty('--editor-background-image', settings.background);
+                root.style.setProperty('--editor-background-size', 'cover');
+                root.style.setProperty('--editor-background-position', 'center');
+                root.style.setProperty('--editor-background-repeat', 'no-repeat');
+                root.style.setProperty('--editor-background-color', 'transparent');
+            } else {
+                root.style.setProperty('--editor-background-color', settings.background);
+                root.style.setProperty('--editor-background-image', 'none');
+            }
+        } else {
+            root.style.setProperty('--editor-background-color', '');
+            root.style.setProperty('--editor-background-image', 'none');
         }
     }
 
