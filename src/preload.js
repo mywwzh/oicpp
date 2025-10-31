@@ -47,7 +47,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
 
     openMarkdownFile: (filePath) => ipcRenderer.invoke('open-markdown-file', filePath),
-    onLoadMarkdown: (callback) => ipcRenderer.on('load-markdown-content', (event, filePath) => callback(filePath)),
 
     saveTempFile: (filePath, content) => ipcRenderer.invoke('save-temp-file', filePath, content),
     saveBinaryTempFile: (fileName, base64Data) => ipcRenderer.invoke('save-binary-temp-file', fileName, base64Data),

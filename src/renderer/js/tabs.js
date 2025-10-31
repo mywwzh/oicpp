@@ -1218,6 +1218,35 @@ class TabManager {
                     logWarn('切换到PDF视图时更新编辑器状态失败:', err);
                 }
             }
+        } else if (tabData.viewType === 'markdown') {
+            this.hideGroupViewContainers(tabData.groupId);
+            if (!tabData.viewerContainer || !tabData.viewerContainer.parentElement) {
+                tabData.viewerContainer = this.createMarkdownViewerContainer({
+                    groupId: tabData.groupId,
+                    tabId: tabData.tabId || this.generateMarkdownTabId(tabData.uniqueKey),
+                    filePath: tabData.filePath,
+                    fileName: tabData.fileName,
+                    content: tabData.content
+                });
+            } else if (tabData.viewerContainer.dataset.groupId !== tabData.groupId) {
+                const targetGroup = this.groups.get(tabData.groupId);
+                if (targetGroup?.editorArea) {
+                    targetGroup.editorArea.appendChild(tabData.viewerContainer);
+                    tabData.viewerContainer.dataset.groupId = tabData.groupId;
+                }
+            }
+            if (tabData.viewerContainer) {
+                tabData.viewerContainer.style.display = 'flex';
+                tabData.viewerContainer.classList.add('active');
+            }
+            if (this.monacoEditorManager) {
+                try {
+                    this.monacoEditorManager.groupActiveTab.set(tabData.groupId, null);
+                    this.monacoEditorManager.currentEditor = null;
+                } catch (err) {
+                    logWarn('切换到 Markdown 视图时更新编辑器状态失败:', err);
+                }
+            }
         } else if (this.monacoEditorManager) {
             this.hideGroupViewContainers(tabData.groupId);
             const expectedTabId = this.monacoEditorManager.generateTabId(tabData.fileName, tabData.filePath || tabData.uniqueKey || null);
@@ -3127,141 +3156,108 @@ class TabManager {
         await this.activateTabByUniqueKey(uniqueKey);
     }
 
-    async openFile(fileName, content = '', isNew = false, filePath = null) {
-        if (this.tabs && typeof this.tabs.has === 'function' && this.tabs.has('Welcome')) {
-            try {
-                this.closeWelcomePage();
-            } catch (e) {
-                logWarn('关闭欢迎页面失败:', e);
-            }
-        }
-        let openOptions = {};
-        let pdfBase64 = null;
-        if (filePath && typeof filePath === 'object' && !Array.isArray(filePath)) {
-            openOptions = filePath;
-            filePath = openOptions.filePath || null;
-        }
-        if (openOptions && typeof openOptions === 'object' && typeof openOptions.pdfBase64 === 'string' && openOptions.pdfBase64.trim()) {
-            pdfBase64 = openOptions.pdfBase64.trim();
-        }
+    async openFile(fileName, content, isNew = false, options = {}) {
+        const { filePath = null, groupId = null, viewType = 'editor', pdfBase64 = null } = options;
+        const uniqueKey = filePath || fileName;
 
-        let uniqueKey = fileName;
-        if (filePath && typeof filePath === 'string' && !isNew) {
-            uniqueKey = filePath.replace(/\\/g, '/');
-        }
-
-        if (this.tabs.has(uniqueKey)) {
-            await this.activateTabByUniqueKey(uniqueKey);
-            this.refreshTabLabels();
-            return;
-        }
         if (this._openingKeys.has(uniqueKey)) {
+            logInfo('文件���在打开中，跳过重复调用:', uniqueKey);
             return;
         }
         this._openingKeys.add(uniqueKey);
 
         try {
-            let tabId;
-            let targetGroupId = this.activeGroupId || this.groupOrder[0] || 'group-1';
-            if (openOptions && typeof openOptions === 'object') {
-                targetGroupId = openOptions.groupId || openOptions.targetGroupId || targetGroupId;
-            }
-            const requestedViewType = (openOptions && typeof openOptions === 'object' && openOptions.viewType)
-                ? String(openOptions.viewType).toLowerCase()
-                : null;
-            const isPdf = requestedViewType === 'pdf' || (this.isPdfFile(fileName) && !isNew);
-            const isTempFile = !!(openOptions && typeof openOptions === 'object' && openOptions.isTempFile);
-            let targetGroup = this.groups.get(targetGroupId);
+            let targetGroup = this.groups.get(groupId || this.activeGroupId);
             if (!targetGroup) {
-                targetGroup = this.createGroup({ afterGroupId: this.activeGroupId });
-                targetGroupId = targetGroup?.id || targetGroupId;
+                targetGroup = this.createGroup();
+                this.activeGroupId = targetGroup.id;
             }
-            if (!targetGroup) {
-                logError('无法创建或找到目标分组，放弃打开文件:', targetGroupId);
+
+            let tabData = this.tabs.get(uniqueKey);
+            if (tabData) {
+                logInfo('标签页已存在，激活它:', uniqueKey);
+                await this.activateTabByUniqueKey(uniqueKey);
                 return;
             }
 
-            if (isPdf) {
-                const effectiveFilePath = typeof filePath === 'string' && filePath.trim() ? filePath : null;
-                if (!effectiveFilePath && !pdfBase64) {
-                    logError('打开PDF失败：缺少文件路径或数据');
-                    return;
-                }
-                await this.openPdfTab({
-                    fileName,
-                    filePath: effectiveFilePath,
-                    uniqueKey,
-                    targetGroupId,
-                    targetGroup,
-                    isTempFile,
-                    pdfBase64
-                });
-                return;
+            const tabElement = document.createElement('div');
+            tabElement.className = 'tab';
+            tabElement.dataset.file = fileName;
+            tabElement.dataset.uniqueKey = uniqueKey;
+            tabElement.dataset.groupId = targetGroup.id;
+            if (filePath) {
+                tabElement.dataset.filePath = filePath;
+            }
+            if (viewType) {
+                tabElement.dataset.viewType = viewType;
             }
 
-            if (this.monacoEditorManager) {
-                tabId = this.monacoEditorManager.generateTabId(fileName, filePath);
-                if (filePath) {
-                    this.monacoEditorManager.currentFilePath = filePath;
-                    this.monacoEditorManager.currentFileName = fileName;
-                }
-                await this.monacoEditorManager.createNewEditor(tabId, fileName, content, filePath, { groupId: targetGroupId });
-            } else {
-                tabId = `fallback-${Date.now()}`;
-            }
+            const tabLabel = document.createElement('span');
+            tabLabel.className = 'tab-label';
+            tabLabel.textContent = fileName;
 
-            const tabElement = this.createTabElement(fileName, tabId);
-            tabElement.dataset.viewType = 'code';
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'tab-close';
+            closeBtn.innerHTML = '&times;';
 
-            tabElement.dataset.groupId = targetGroupId;
-            this.addTabDragListeners(tabElement);
+            tabElement.appendChild(tabLabel);
+            tabElement.appendChild(closeBtn);
 
-            const tabData = {
+            targetGroup.tabBar.appendChild(tabElement);
+
+            tabData = {
                 element: tabElement,
-                fileName: fileName,
+                fileName,
                 modified: isNew,
-                content: content,
-                active: true,
-                filePath: filePath,
-                tabId: tabId,
-                uniqueKey: uniqueKey,
-                groupId: targetGroupId,
-                viewType: 'code',
-                isTempFile,
+                content,
+                active: false,
+                filePath,
+                tabId: null,
+                uniqueKey,
+                groupId: targetGroup.id,
+                viewType,
+                pdfBase64,
+                viewerContainer: null,
+                viewerFrame: null,
                 externalModified: false,
                 externalChangeType: null,
                 externalPromptDismissed: false,
                 externalPromptInProgress: false,
                 pendingExternalPrompt: false,
-                externalChangeTimestamp: null
+                externalChangeTimestamp: null,
+                isLoading: false
             };
+
             this.tabs.set(uniqueKey, tabData);
+            targetGroup.tabs.set(uniqueKey, tabData);
+            targetGroup.tabOrder.push(uniqueKey);
+            this.updateGlobalTabOrder();
 
-            if (targetGroup) {
-                targetGroup.tabs.set(uniqueKey, tabData);
-                if (targetGroup.tabBar) {
-                    this.bindTabBarEvents(targetGroup.tabBar);
-                    targetGroup.tabBar.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-                    targetGroup.tabBar.appendChild(tabElement);
-                }
-                targetGroup.activeTabKey = uniqueKey;
-            }
+            this.attachTabEventHandlers(tabElement);
+            this.addTabDragListeners(tabElement);
 
-            this.activeTab = fileName;
-            this.activeTabKey = uniqueKey;
-            this.activeGroupId = targetGroupId;
-            tabElement.classList.add('active');
-
-            this.setTabElementUniqueKey(tabElement, uniqueKey);
-
-            this.syncGroupTabs(targetGroupId);
-
-            if (tabData.filePath) {
+            if (filePath && viewType !== 'pdf' && viewType !== 'markdown') {
                 await this.registerFileWatchForTab(tabData);
             }
 
             await this.activateTabByUniqueKey(uniqueKey);
-            this.refreshTabLabels();
+
+            if (this.welcomeContainer) {
+                this.welcomeContainer.style.display = 'none';
+            }
+            if (this.editorGroupsElement) {
+                this.editorGroupsElement.style.display = 'flex';
+            }
+
+            if (isNew && viewType === 'editor' && this.monacoEditorManager && tabData.tabId) {
+                this.monacoEditorManager.currentEditor.setValue(content || '');
+                this.monacoEditorManager.currentEditor.focus();
+            }
+
+            this.refreshGroupResizers();
+        } catch (error) {
+            logError('打开文件失败:', error);
+            throw error;
         } finally {
             this._openingKeys.delete(uniqueKey);
         }

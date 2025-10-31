@@ -477,50 +477,6 @@ function requestSaveAllAndClose(context = '关闭窗口') {
     }
 }
 
-let markdownReaderWindow = null;
-
-function createMarkdownReaderWindow(filePath) {
-    if (markdownReaderWindow && !markdownReaderWindow.isDestroyed()) {
-        markdownReaderWindow.focus();
-        markdownReaderWindow.webContents.send('load-markdown-content', filePath);
-        return;
-    }
-
-    markdownReaderWindow = new BrowserWindow({
-        width: 800,
-        height: 600,
-        minWidth: 600,
-        minHeight: 400,
-        webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
-            nodeIntegration: false,
-            contextIsolation: true,
-            webSecurity: false,
-            devTools: process.argv.includes('--dev')
-        },
-        icon: getUserIconPath(),
-        show: false,
-        title: 'Markdown Reader'
-    });
-
-    markdownReaderWindow.loadFile('src/renderer/md-reader.html');
-
-    if (process.argv.includes('--dev')) {
-        markdownReaderWindow.webContents.openDevTools();
-    }
-
-    markdownReaderWindow.once('ready-to-show', () => {
-        markdownReaderWindow.show();
-        if (filePath) {
-            markdownReaderWindow.webContents.send('load-markdown-content', filePath);
-        }
-    });
-
-    markdownReaderWindow.on('closed', () => {
-        markdownReaderWindow = null;
-    });
-}
-
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200,
@@ -1962,7 +1918,10 @@ function setupIPC() {
             if (!fs.existsSync(filePath)) {
                 throw new Error('文件不存在');
             }
-            createMarkdownReaderWindow(filePath);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                // Instead of opening a new window, send an event to the main window to open in split view
+                mainWindow.webContents.send('open-file', path.basename(filePath), '', false, { filePath: filePath, viewType: 'markdown' });
+            }
             return { success: true };
         } catch (error) {
             logError('打开 Markdown 文件失败:', error);

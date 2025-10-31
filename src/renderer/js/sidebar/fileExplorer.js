@@ -1307,10 +1307,10 @@ class FileExplorer {
                     }
                     return;
                 } else if (isMarkdown) {
-                    if (window.electronAPI?.openMarkdownFile) {
-                        await window.electronAPI.openMarkdownFile(file.path);
+                    if (window.tabManager?.openFile) {
+                        await window.tabManager.openFile(file.name, '', false, { filePath: file.path, viewType: 'markdown' });
                     } else {
-                        logWarn('electronAPI.openMarkdownFile 不可用，无法打开 Markdown 文件');
+                        logWarn('tabManager不可用，无法打开 Markdown 文件');
                     }
                     return;
                 }
