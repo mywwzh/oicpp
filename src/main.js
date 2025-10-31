@@ -1910,6 +1910,25 @@ function setupIPC() {
         app.exit();
     });
 
+    ipcMain.handle('open-markdown-file', async (event, filePath) => {
+        try {
+            if (!filePath || typeof filePath !== 'string') {
+                throw new Error('无效的文件路径');
+            }
+            if (!fs.existsSync(filePath)) {
+                throw new Error('文件不存在');
+            }
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                // Instead of opening a new window, send an event to the main window to open in split view
+                mainWindow.webContents.send('open-file', path.basename(filePath), '', false, { filePath: filePath, viewType: 'markdown' });
+            }
+            return { success: true };
+        } catch (error) {
+            logError('打开 Markdown 文件失败:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('compile-file', async (event, options) => {
         try {
             const result = await compileFile(options);

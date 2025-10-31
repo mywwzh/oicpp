@@ -299,12 +299,14 @@ class OICPPApp {
                 try { window.monacoEditorManager?.refreshUserSnippets?.(); } catch (_) {}
             });
 
-            window.electronAPI.onFileOpened((event, data) => {
-                try { logInfo('[渲染进程] 收到 file-opened:', { fileName: data?.fileName, filePath: data?.filePath, contentBytes: (data?.content || '').length }); } catch (_) {}
-                if (data && data.filePath !== undefined && data.content !== undefined) {
-                    this.openFile(data.filePath, data.content);
-                } else if (typeof data === 'string') {
-                    this.openFile(data, '');
+            window.electronAPI.onFileOpened((fileName, content, isNew, options) => {
+                try { logInfo('[渲染进程] 收到 file-opened:', { fileName, contentBytes: (content || '').length, isNew, options }); } catch (_) {}
+                if (window.tabManager) {
+                    window.tabManager.openFile(fileName, content, isNew, options);
+                } else if (this.editorManager) {
+                    this.editorManager.openFile(fileName, content);
+                } else {
+                    logWarn('没有可用的编辑器管理器或 TabManager，无法打开文件');
                 }
             });
 
