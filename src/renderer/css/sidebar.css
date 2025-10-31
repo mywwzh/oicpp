@@ -533,6 +533,18 @@ body[data-editor-theme="light"] .samples-content p {
     line-height: 1.4;
 }
 
+.submit-content {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.submit-content p {
+    color: #858585;
+    text-align: center;
+    margin-top: 50px;
+}
+
 body.theme-light .spj-help-text,
 body[data-theme="light"] .spj-help-text,
 body[data-editor-theme="light"] .spj-help-text {

@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "node-stream-zip": "^1.13.0",
+    "extract-zip": "^2.0.1",
+    "7zip-bin": "^1.0.1",
+    "electron-store": "^8.1.0"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0"
+  }
+}

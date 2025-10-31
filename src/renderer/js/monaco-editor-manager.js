@@ -1574,6 +1574,28 @@ class MonacoEditorManager {
         }
     }
 
+    updateEditorBackground(background) {
+        this.editors.forEach((editor, tabId) => {
+            const container = this.tabIdToContainer.get(tabId);
+            if (container) {
+                if (background) {
+                    if (background.startsWith('url(')) {
+                        container.style.backgroundImage = background;
+                        container.style.backgroundSize = 'cover';
+                        container.style.backgroundPosition = 'center';
+                        container.style.backgroundRepeat = 'no-repeat';
+                    } else {
+                        container.style.backgroundColor = background;
+                        container.style.backgroundImage = 'none';
+                    }
+                } else {
+                    container.style.backgroundColor = '';
+                    container.style.backgroundImage = 'none';
+                }
+            }
+        });
+    }
+
     async copyToClipboard(text) {
         let success = false;
         
