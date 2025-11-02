@@ -1,0 +1,92 @@
+{
+  "name": "oicpp-ide",
+  "version": "1.0.2",
+  "description": "OICPP IDE for competitive programming",
+  "author": {
+    "name": "mywwzh",
+    "email": "mywwzh@163.com"
+  },
+  "homepage": "https://oicpp.mywwzh.top/",
+  "license": "GPL-3.0-only",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "prebuild:icons": "node scripts/generate-icons.js",
+    "build": "npm run prebuild:icons && electron-builder",
+    "pack": "npm run prebuild:icons && electron-builder --dir",
+    "dist": "npm run prebuild:icons && electron-builder",
+    "dist:win": "npm run prebuild:icons && electron-builder -w nsis",
+    "dist:linux": "npm run prebuild:icons && electron-builder -l deb rpm"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.0",
+    "html-webpack-plugin": "^5.6.3",
+    "icojs": "^0.16.1",
+    "monaco-editor-webpack-plugin": "^7.1.0",
+    "sharp": "^0.33.5",
+    "webpack": "^5.101.0",
+    "webpack-cli": "^6.0.1"
+  },
+  "dependencies": {
+    "7zip-bin": "^5.2.0",
+    "axios": "latest",
+    "extract-zip": "latest",
+    "iconv-lite": "^0.6.3",
+    "monaco-editor": "^0.52.2",
+    "node-stream-zip": "^1.15.0",
+    "pdfjs-dist": "5.0.375",
+    "winreg": "latest"
+  },
+  "build": {
+    "appId": "com.oicpp.ide",
+    "productName": "OICPP IDE",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "node_modules/**/*",
+      "oicpp.ico"
+    ],
+    "artifactName": "${productName}-${version}-Setup.${ext}",
+    "win": {
+      "target": "nsis",
+      "icon": "oicpp.ico",
+      "forceCodeSigning": false,
+      "signExts": [
+        ".exe",
+        ".dll"
+      ]
+    },
+    "linux": {
+      "target": [
+        "deb",
+        "rpm"
+      ],
+      "category": "Development",
+      "icon": "build/icons/png"
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnss3",
+        "libxss1",
+        "libasound2",
+        "libxtst6",
+        "libc6"
+      ]
+    },
+    "rpm": {
+      "depends": [
+        "gtk3",
+        "nss",
+        "libXScrnSaver",
+        "alsa-lib",
+        "libXtst",
+        "glibc"
+      ]
+    }
+  }
+}
