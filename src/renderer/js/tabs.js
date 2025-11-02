@@ -1213,7 +1213,6 @@ class TabManager {
             if (this.monacoEditorManager) {
                 try {
                     this.monacoEditorManager.groupActiveTab.set(tabData.groupId, null);
-                    this.monacoEditorManager.currentEditor = null;
                 } catch (err) {
                     logWarn('切换到PDF视图时更新编辑器状态失败:', err);
                 }
