@@ -260,101 +260,159 @@ class MultiThreadDownloader {
     async downloadSingleThread(url, outputFile) {
         logInfo('[多线程下载] 使用单线程下载模式');
 
-        const response = await makeRequest(url, {
-            timeout: this.timeout * 3 // 单线程下载使用更长的超时时间
-        });
+        const maxAttempts = Math.max(1, this.retryCount);
+        let attempt = 0;
+        let lastError = null;
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const totalSize = parseInt(response.headers.get('content-length') || '0');
-        const writer = fs.createWriteStream(outputFile);
-
-        let downloadedBytes = 0;
-        const startTime = Date.now();
-        let lastProgressTime = startTime;
-
-        try {
+        while (attempt < maxAttempts) {
+            attempt++;
             if (this.isCancelled) throw new Error('下载已取消');
-            return new Promise((resolve, reject) => {
-                response.body.on('data', (chunk) => {
-                    if (this.isCancelled) {
-                        writer.end(() => {
-                            if (fs.existsSync(outputFile)) {
-                                fs.unlinkSync(outputFile);
-                            }
-                        });
-                        response.body.destroy();
-                        return reject(this.cancelError || new Error('下载已取消'));
-                    }
-                    writer.write(chunk);
-                    downloadedBytes += chunk.length;
 
-                    const now = Date.now();
-                    if (now - lastProgressTime > 500) { // 每500ms报告一次进度
-                        const progress = totalSize > 0 ? (downloadedBytes / totalSize) * 100 : 0;
-                        const elapsed = (now - startTime) / 1000;
-                        const speed = downloadedBytes / elapsed;
+            let response = null;
+            let writer = null;
+            let inactivityTimer = null;
+            let finished = false;
 
-                        logInfo(`[单线程下载] 进度: ${progress.toFixed(1)}%, 已下载: ${(downloadedBytes / 1024 / 1024).toFixed(1)}MB, 速度: ${(speed / 1024 / 1024).toFixed(1)}MB/s`);
-
-                        if (this.progressCallback) {
-                            this.progressCallback({
-                                type: 'single',
-                                downloadedBytes,
-                                totalBytes: totalSize,
-                                progress,
-                                speed
-                            });
-                        }
-
-                        lastProgressTime = now;
-                    }
+            try {
+                response = await makeRequest(url, {
+                    timeout: this.timeout * 3
                 });
 
-                response.body.on('end', () => {
-                    writer.end((error) => {
-                        if (error) {
-                            reject(error);
-                        } else {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const totalSize = parseInt(response.headers.get('content-length') || '0');
+                writer = fs.createWriteStream(outputFile);
+
+                let downloadedBytes = 0;
+                const startTime = Date.now();
+                let lastProgressTime = startTime;
+
+                const resetInactivityTimer = () => {
+                    if (inactivityTimer) clearTimeout(inactivityTimer);
+                    inactivityTimer = setTimeout(() => {
+                        try { response.body.destroy(new Error('下载超时(无数据)')); } catch (_) { }
+                    }, this.timeout);
+                };
+
+                resetInactivityTimer();
+
+                const finishSuccessfully = () => {
+                    if (finished) return;
+                    finished = true;
+                    if (inactivityTimer) clearTimeout(inactivityTimer);
+                    try { writer.end(() => { }); } catch (_) { }
+                };
+
+                await new Promise((resolve, reject) => {
+                    response.body.on('data', (chunk) => {
+                        if (this.isCancelled) {
+                            try { writer.end(() => { if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile); }); } catch (_) { }
+                            try { response.body.destroy(); } catch (_) { }
+                            return reject(this.cancelError || new Error('下载已取消'));
+                        }
+
+                        resetInactivityTimer();
+                        const canContinue = writer.write(chunk);
+                        if (!canContinue) {
+                            response.body.pause();
+                            writer.once('drain', () => {
+                                try { response.body.resume(); } catch (_) { }
+                            });
+                        }
+                        downloadedBytes += chunk.length;
+
+                        const now = Date.now();
+                        if (now - lastProgressTime > 500) { // 每500ms报告一次进度
+                            const progress = totalSize > 0 ? (downloadedBytes / totalSize) * 100 : 0;
+                            const elapsed = (now - startTime) / 1000;
+                            const speed = elapsed > 0 ? (downloadedBytes / elapsed) : 0;
+
+                            logInfo(`[单线程下载] 进度: ${progress.toFixed(1)}%, 已下载: ${(downloadedBytes / 1024 / 1024).toFixed(1)}MB, 速度: ${(speed / 1024 / 1024).toFixed(1)}MB/s`);
+
                             if (this.progressCallback) {
                                 this.progressCallback({
                                     type: 'single',
-                                    downloadedBytes: totalSize || downloadedBytes,
-                                    totalBytes: totalSize || downloadedBytes,
-                                    progress: 100,
-                                    speed: downloadedBytes / ((Date.now() - startTime) / 1000)
+                                    downloadedBytes,
+                                    totalBytes: totalSize,
+                                    progress,
+                                    speed
                                 });
                             }
-                            resolve();
+
+                            lastProgressTime = now;
                         }
+                    });
+
+                    response.body.on('end', () => {
+                        finishSuccessfully();
+                        const elapsed = Math.max(0.001, (Date.now() - startTime) / 1000);
+                        if (this.progressCallback) {
+                            this.progressCallback({
+                                type: 'single',
+                                downloadedBytes: totalSize || downloadedBytes,
+                                totalBytes: totalSize || downloadedBytes,
+                                progress: totalSize ? Math.min(100, (downloadedBytes / totalSize) * 100) : 100,
+                                speed: downloadedBytes / elapsed
+                            });
+                        }
+                        resolve();
+                    });
+
+                    response.body.on('close', () => {
+                        if (!finished) {
+                            return reject(new Error('连接关闭但未完成下载'));
+                        }
+                    });
+
+                    response.body.on('error', (error) => {
+                        if (this.isCancelled) {
+                            return reject(this.cancelError);
+                        }
+                        try { if (writer && !writer.destroyed) writer.destroy(); } catch (_) { }
+                        reject(error);
+                    });
+
+                    writer.on('error', (error) => {
+                        if (this.isCancelled) {
+                            return reject(this.cancelError);
+                        }
+                        reject(error);
+                    });
+
+                    writer.on('finish', () => {
                     });
                 });
 
-                response.body.on('error', (error) => {
-                    if (this.isCancelled) {
-                        return reject(this.cancelError);
+                try {
+                    if (typeof totalSize === 'number' && totalSize > 0) {
+                        const stat = fs.statSync(outputFile);
+                        if (stat.size < totalSize) {
+                            throw new Error(`文件大小不完整(${stat.size}/${totalSize})`);
+                        }
                     }
-                    if (!writer.destroyed) {
-                        writer.destroy();
-                    }
-                    reject(error);
-                });
-
-                writer.on('error', (error) => {
-                    if (this.isCancelled) {
-                        return reject(this.cancelError);
-                    }
-                    reject(error);
-                });
-            });
-
-        } finally {
-            if (!writer.destroyed) {
-                writer.destroy();
+                } catch (e) {
+                    throw e;
+                }
+                return;
+            } catch (error) {
+                lastError = error;
+                logWarn(`[单线程下载] 失败(尝试 ${attempt}/${maxAttempts}):`, error?.message || String(error));
+                try { if (writer && !writer.destroyed) writer.destroy(); } catch (_) { }
+                try { if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile); } catch (_) { }
+                if (attempt < maxAttempts) {
+                    const backoff = Math.min(8000, Math.pow(2, attempt - 1) * 1000);
+                    await new Promise(r => setTimeout(r, backoff));
+                    continue;
+                }
+                throw error;
+            } finally {
+                try { if (writer && !writer.destroyed) writer.destroy(); } catch (_) { }
             }
         }
+
+        throw lastError || new Error('单线程下载失败');
     }
 
 
@@ -400,34 +458,27 @@ class MultiThreadDownloader {
             if (!fs.existsSync(tempDir)) {
                 fs.mkdirSync(tempDir, { recursive: true });
             }
-
             try {
-                const chunks = [];
-                const numChunks = Math.min(
-                    Math.ceil(fileSize / this.chunkSize),
-                    this.maxConcurrency
-                );
-                const actualChunkSize = Math.ceil(fileSize / numChunks);
-
-                for (let i = 0; i < numChunks; i++) {
-                    const start = i * actualChunkSize;
-                    const end = Math.min(start + actualChunkSize - 1, fileSize - 1);
-                    chunks.push({ index: i, start, end });
+                const totalParts = Math.ceil(fileSize / this.chunkSize);
+                const parts = [];
+                for (let i = 0; i < totalParts; i++) {
+                    const start = i * this.chunkSize;
+                    const end = Math.min(start + this.chunkSize - 1, fileSize - 1);
+                    parts.push({ index: i, start, end });
                 }
 
-                logInfo(`[多线程下载] 文件大小: ${(fileSize / 1024 / 1024).toFixed(2)} MB，分片数: ${numChunks}，每片约 ${(actualChunkSize / 1024 / 1024).toFixed(2)} MB`);
-
-                const chunkProgress = new Array(numChunks).fill(0);
-                let lastProgressReport = Date.now();
+                logInfo(`[多线程下载] 文件大小: ${(fileSize / 1024 / 1024).toFixed(2)} MB，分片数: ${totalParts}，每片 ${(this.chunkSize / 1024 / 1024).toFixed(2)} MB`);
 
                 const originalCallback = this.progressCallback;
+                const chunkProgress = new Array(totalParts).fill(0);
+                let lastProgressReport = Date.now();
+                let activeCount = 0;
 
                 const reportMultiThreadProgress = () => {
-                    const totalDownloaded = chunkProgress.reduce((sum, progress) => sum + progress, 0);
+                    const totalDownloaded = chunkProgress.reduce((sum, v) => sum + v, 0);
                     const percent = Math.min(100, (totalDownloaded / fileSize) * 100);
                     const elapsed = (Date.now() - startTime) / 1000;
-                    const speed = totalDownloaded / elapsed;
-
+                    const speed = elapsed > 0 ? (totalDownloaded / elapsed) : 0;
                     if (originalCallback) {
                         originalCallback({
                             type: 'multi',
@@ -435,7 +486,7 @@ class MultiThreadDownloader {
                             totalBytes: fileSize,
                             progress: percent,
                             speed,
-                            activeChunks: numChunks
+                            activeChunks: activeCount
                         });
                     }
                 };
@@ -447,9 +498,8 @@ class MultiThreadDownloader {
                             typeof progress.totalBytes === 'number' && isFinite(progress.totalBytes) ? progress.totalBytes : Infinity
                         );
                         chunkProgress[progress.chunkIndex] = safeDownloaded;
-
                         const now = Date.now();
-                        if (now - lastProgressReport > 500) { // 每500ms报告一次
+                        if (now - lastProgressReport > 500) {
                             reportMultiThreadProgress();
                             lastProgressReport = now;
                         }
@@ -458,109 +508,47 @@ class MultiThreadDownloader {
 
                 this.progressCallback = enhancedProgressCallback;
 
-                try {
-                    if (this.isCancelled) {
-                        throw this.cancelError || new Error('下载已取消');
-                    }
+                const results = new Array(totalParts);
+                let cursor = 0;
 
-                    let completedChunks = [];
-                    let failedChunks = [];
-                    let retryAttempts = 0;
-                    const maxRetryAttempts = 3; // 整体重试次数
-
-                    while (retryAttempts <= maxRetryAttempts) {
-                        if (this.isCancelled) {
-                            throw this.cancelError || new Error('下载已取消');
+                const runWorker = async () => {
+                    while (true) {
+                        if (this.isCancelled) throw this.cancelError || new Error('下载已取消');
+                        const idx = cursor++;
+                        if (idx >= parts.length) break;
+                        const myTask = parts[idx];
+                        activeCount++;
+                        try {
+                            const r = await this.downloadChunk(url, myTask.start, myTask.end, myTask.index, tempDir);
+                            results[myTask.index] = r;
+                        } catch (e) {
+                            throw e;
+                        } finally {
+                            activeCount--;
                         }
-
-                        const chunksToDownload = retryAttempts === 0 ? chunks : failedChunks;
-
-                        if (chunksToDownload.length === 0) {
-                            break; // 所有分片都已完成
-                        }
-
-                        logInfo(`[多线程下载] 第 ${retryAttempts + 1} 次尝试，下载 ${chunksToDownload.length} 个分片`);
-
-                        const downloadPromises = chunksToDownload.map(chunk =>
-                            this.downloadChunk(url, chunk.start, chunk.end, chunk.index, tempDir)
-                                .catch(error => ({ error, chunkIndex: chunk.index, chunk }))
-                        );
-
-                        const results = await Promise.allSettled(downloadPromises);
-
-                        const newCompletedChunks = [];
-                        const newFailedChunks = [];
-
-                        results.forEach((result, index) => {
-                            if (result.status === 'fulfilled') {
-                                const value = result.value;
-                                if (value.error) {
-                                    logWarn(`[多线程下载] 分片 ${value.chunkIndex} 下载失败:`, value.error.message);
-                                    newFailedChunks.push(value.chunk);
-                                } else {
-                                    newCompletedChunks.push(value);
-                                }
-                            } else {
-                                logError(`[多线程下载] Promise被拒绝:`, result.reason);
-                                newFailedChunks.push(chunksToDownload[index]);
-                            }
-                        });
-
-                        if (retryAttempts === 0) {
-                            completedChunks = newCompletedChunks;
-                            failedChunks = newFailedChunks;
-                        } else {
-                            completedChunks = completedChunks.concat(newCompletedChunks);
-                            failedChunks = newFailedChunks;
-                        }
-
-                        logInfo(`[多线程下载] 第 ${retryAttempts + 1} 次尝试结果: ${newCompletedChunks.length} 个成功, ${newFailedChunks.length} 个失败`);
-
-                        if (failedChunks.length === 0) {
-                            logInfo('[多线程下载] 所有分片下载完成');
-                            break;
-                        }
-
-                        if (retryAttempts < maxRetryAttempts) {
-                            const delay = Math.pow(2, retryAttempts + 1) * 1000; // 2s, 4s, 8s
-                            logInfo(`[多线程下载] ${failedChunks.length} 个分片失败，将在 ${delay / 1000}s 后重试`);
-                            await new Promise(resolve => setTimeout(resolve, delay));
-                        }
-
-                        retryAttempts++;
                     }
+                };
 
-                    if (failedChunks.length > 0) {
-                        throw new Error(`${failedChunks.length} 个分片下载失败，已达到最大重试次数`);
-                    }
+                const workerCount = Math.min(this.maxConcurrency, parts.length);
+                const workers = new Array(workerCount).fill(0).map(() => runWorker());
+                await Promise.all(workers);
 
-                    if (this.isCancelled) {
-                        throw this.cancelError || new Error('下载已取消');
-                    }
-
-                    this.progressCallback = originalCallback;
-
-                    logInfo('[多线程下载] 所有分片下载完成');
-                    reportMultiThreadProgress();
-
-                    if (originalCallback) {
-                        originalCallback({
-                            type: 'multi',
-                            downloadedBytes: fileSize,
-                            totalBytes: fileSize,
-                            progress: 100,
-                            speed: fileSize / ((Date.now() - startTime) / 1000),
-                            activeChunks: 0
-                        });
-                    }
-
-                    logInfo(`[多线程下载] 准备合并 ${completedChunks.length} 个分片`);
-                    const sortedChunks = completedChunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
-                    await this.mergeChunks(sortedChunks, outputFile);
-
-                } finally {
-                    this.progressCallback = originalCallback;
+                this.progressCallback = originalCallback;
+                reportMultiThreadProgress();
+                if (originalCallback) {
+                    originalCallback({
+                        type: 'multi',
+                        downloadedBytes: fileSize,
+                        totalBytes: fileSize,
+                        progress: 100,
+                        speed: fileSize / Math.max(0.001, (Date.now() - startTime) / 1000),
+                        activeChunks: 0
+                    });
                 }
+
+                const completedChunks = results.filter(Boolean);
+                logInfo(`[多线程下载] 分片全部完成，准备合并 ${completedChunks.length} 个分片`);
+                await this.mergeChunks(completedChunks, outputFile);
 
                 try {
                     fs.rmSync(tempDir, { recursive: true, force: true });
