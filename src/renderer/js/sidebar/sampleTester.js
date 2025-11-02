@@ -214,22 +214,51 @@ class SampleTester {
     }
 
     async updateCurrentFile() {
-        if (window.editorManager && window.editorManager.currentEditor) {
-            const currentEditor = window.editorManager.currentEditor;
+        if (window.editorManager) {
+            let activeCppFile = null;
 
-            let filePath = null;
-            if (currentEditor.getFilePath) {
-                filePath = currentEditor.getFilePath();
-            } else if (currentEditor.filePath) {
-                filePath = currentEditor.filePath;
-            } else if (currentEditor.fileName) {
-                filePath = currentEditor.fileName;
+            // 优先检查当前编辑器是否是C++文件
+            const currentEditor = window.editorManager.currentEditor;
+            if (currentEditor) {
+                let filePath = null;
+                if (currentEditor.getFilePath) {
+                    filePath = currentEditor.getFilePath();
+                } else if (currentEditor.filePath) {
+                    filePath = currentEditor.filePath;
+                } else if (currentEditor.fileName) {
+                    filePath = currentEditor.fileName;
+                }
+
+                if (filePath &&
+                    !filePath.startsWith('untitled') &&
+                    (filePath.endsWith('.cpp') || filePath.endsWith('.c') || filePath.endsWith('.cc') || filePath.endsWith('.cxx'))) {
+                    activeCppFile = filePath;
+                }
             }
 
-            if (filePath &&
-                !filePath.startsWith('untitled') &&
-                (filePath.endsWith('.cpp') || filePath.endsWith('.c') || filePath.endsWith('.cc') || filePath.endsWith('.cxx'))) {
-                this.currentFile = filePath;
+            // 如果当前编辑器不是C++文件，或者没有当前编辑器，则遍历所有打开的编辑器查找C++文件
+            if (!activeCppFile && window.editorManager.editors && Array.isArray(window.editorManager.editors)) {
+                for (const editor of window.editorManager.editors) {
+                    let editorFilePath = null;
+                    if (editor.getFilePath) {
+                        editorFilePath = editor.getFilePath();
+                    } else if (editor.filePath) {
+                        editorFilePath = editor.filePath;
+                    } else if (editor.fileName) {
+                        editorFilePath = editor.fileName;
+                    }
+
+                    if (editorFilePath &&
+                        !editorFilePath.startsWith('untitled') &&
+                        (editorFilePath.endsWith('.cpp') || editorFilePath.endsWith('.c') || editorFilePath.endsWith('.cc') || editorFilePath.endsWith('.cxx'))) {
+                        activeCppFile = editorFilePath;
+                        break; // 找到第一个C++文件就停止
+                    }
+                }
+            }
+
+            if (activeCppFile) {
+                this.currentFile = activeCppFile;
                 try {
                     await this.updateSamplesFilePath();
                 } catch (error) {
