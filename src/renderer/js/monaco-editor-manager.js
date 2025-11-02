@@ -774,6 +774,20 @@ class MonacoEditorManager {
             
             this.addWheelZoomListener(editor, monacoContainer);
             
+            // 当编辑器重新获得焦点时，主动恢复为当前编辑器，
+            // 以防在 PDF 视图激活后导致 window.editorManager.currentEditor 为空而影响依赖功能。
+            try {
+                if (editor && editor.onDidFocusEditorWidget) {
+                    editor.onDidFocusEditorWidget(() => {
+                        try {
+                            this.currentEditor = editor;
+                            if (editor.filePath) this.currentFilePath = editor.filePath;
+                            if (editor.fileName) this.currentFileName = editor.fileName;
+                        } catch (_) { /* 忽略 */ }
+                    });
+                }
+            } catch (_) { /* 忽略 */ }
+            
             
             editor.onDidType((text) => {
                 try {
