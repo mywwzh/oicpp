@@ -5383,16 +5383,25 @@ ipcMain.handle('get-recent-files', () => {
         for (const item of settings.recentFiles) {
             if (!item || !item.path) continue;
             let p = item.path;
+            let exists = false;
             try {
                 if (fs.existsSync(p)) {
+                    exists = true;
                     const st = fs.statSync(p);
                     if (st.isFile()) {
                         const dir = path.dirname(p);
                         logInfo('[最近列表迁移] 文件路径转换为目录:', p, '->', dir);
                         p = dir; changed = true;
                     }
+                } else {
+                    logInfo('[最近列表] 路径不存在，已移除:', p);
+                    changed = true;
                 }
-            } catch (_) { }
+            } catch (_) { 
+                logInfo('[最近列表] 路径检查失败，已移除:', p);
+                changed = true;
+            }
+            if (!exists) continue; // 跳过不存在的路径
             if (seen.has(p)) continue; // 去重
             seen.add(p);
             migrated.push({ ...item, path: p, name: path.basename(p) });
