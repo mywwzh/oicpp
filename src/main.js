@@ -656,14 +656,6 @@ function createMenuBar() {
                     click: () => {
                         openCodeTemplates();
                     }
-                },
-                { type: 'separator' },
-                {
-                    label: '退出',
-                    accelerator: 'CmdOrCtrl+Q',
-                    click: () => {
-                        requestSaveAllAndClose('菜单退出');
-                    }
                 }
             ]
         },
