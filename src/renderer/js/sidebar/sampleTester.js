@@ -1044,7 +1044,7 @@ class SampleTester {
 
             return {
                 status: status,
-                output: runResult.output,
+                output: this.truncateOutput(runResult.output),
                 time: runResult.time,
                 usedSpj: spjUsed
             };
@@ -1180,7 +1180,7 @@ class SampleTester {
 
             return {
                 status: status,
-                output: runResult.output,
+                output: this.truncateOutput(runResult.output),
                 time: runResult.time,
                 usedSpj: spjUsed
             };
@@ -1280,6 +1280,14 @@ class SampleTester {
         const normalizedExpected = normalize(expected || '');
 
         return normalizedActual === normalizedExpected ? 'AC' : 'WA';
+    }
+
+    truncateOutput(output) {
+        if (!output) return '';
+        if (output.length > 1000) {
+            return output.substring(0, MAX_LENGTH) + '\n... [输出过长，已截断]';
+        }
+        return output;
     }
 
     processOutputForDisplay(output, result, sampleId) {
