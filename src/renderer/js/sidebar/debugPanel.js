@@ -103,7 +103,31 @@ class DebugPanel {
             ipcRenderer.on('debug-started', () => this._setToolbarEnabled(true));
             ipcRenderer.on('debug-running', () => this._setToolbarEnabled(true));
             ipcRenderer.on('debug-variable-expanded', (_e, payload) => this._handleVariableExpanded(payload));
+            ipcRenderer.on('debug-error', (_e, msg) => {
+
+                if (this.loadingMore.size > 0) {
+                    this.loadingMore.clear();
+                    this._renderVariables(this.variableCache); 
+                }
+                console.error('Debug Error:', msg);
+            });
         } catch (_) { }
+
+        if (this.root) {
+            this.root.addEventListener('click', (ev) => {
+                const toggleBtn = ev.target.closest('.expand-toggle-btn');
+                if (toggleBtn && this.root.contains(toggleBtn)) {
+                    this._handleToggleButtonClick(toggleBtn, ev);
+                    return;
+                }
+
+                const removeBtn = ev.target.closest('.remove-watch-btn');
+                if (removeBtn && this.root.contains(removeBtn)) {
+                    this._handleRemoveWatchClick(removeBtn, ev);
+                    return;
+                }
+            });
+        }
     }
 
     _normalizeScope(scope) {
@@ -211,7 +235,29 @@ class DebugPanel {
         else if (payload.scope === 'global') scope = 'global';
         const cacheRoot = this._getCacheRoot(scope);
         if (payload.data) {
-            cacheRoot[payload.name] = payload.data;
+            if (payload.path && payload.path.length > 0) {
+                let current = cacheRoot[payload.name];
+                if (current) {
+                    for (let i = 0; i < payload.path.length - 1; i++) {
+                        const idx = payload.path[i];
+                        if (current.children && current.children[idx]) {
+                            current = current.children[idx];
+                        } else {
+                            current = null;
+                            break;
+                        }
+                    }
+                    if (current && current.children) {
+                        const lastIdx = payload.path[payload.path.length - 1];
+                        if (current.children[lastIdx]) {
+                            current.children[lastIdx] = payload.data;
+                        }
+                    }
+                }
+            } else {
+                cacheRoot[payload.name] = payload.data;
+            }
+            
             if (scope === 'watch') {
                 this.pendingWatchRemovals.delete(payload.name);
                 const alias = payload.data?.expression || payload.data?.backendName || payload.data?.varObjectName;
@@ -225,6 +271,7 @@ class DebugPanel {
     }
 
     _renderVariables(v) {
+        console.log('[DebugPanel] _renderVariables:', v);
         if (!this.root) return;
         this.loadingMore.clear();
         this.variableCache = {
@@ -286,15 +333,16 @@ class DebugPanel {
         item.className = isRoot ? 'variable-item' : 'variable-item variable-child';
         item.dataset.scope = scope;
         item.dataset.name = isRoot ? rootName : (data?.name != null ? String(data.name) : '');
+        item.dataset.root = rootName;
+        const pathSegments = Array.isArray(path) ? path.map((seg) => String(seg)) : [];
+        item.dataset.path = pathSegments.join(',');
         const backendName = this._resolveBackendName(scope, rootName, data);
-        if (backendName) {
-            item.dataset.backendName = backendName;
-        }
-        if (path.length > 0) item.dataset.path = path.join(',');
+        item.dataset.backendName = backendName || rootName || '';
 
         const header = document.createElement('div');
         header.className = 'variable-header';
         item.appendChild(header);
+        item.__variableData = data;
 
         const hasChildren = Array.isArray(data?.children) && data.children.length > 0;
         const numericCount = Number(data?.elementCount);
@@ -319,6 +367,8 @@ class DebugPanel {
             toggleEl.type = 'button';
             toggleEl.className = 'expand-toggle-btn force-visible';
             this._applyForceToggleStyles(toggleEl);
+            toggleEl.style.zIndex = '100'; // Ensure on top
+            toggleEl.style.position = 'relative';
             this._updateToggleButton(toggleEl, isExpanded);
             header.appendChild(toggleEl);
         }
@@ -336,6 +386,12 @@ class DebugPanel {
             const spacer = document.createElement('span');
             spacer.className = 'expand-spacer';
             header.appendChild(spacer);
+        } else {
+            toggleEl.dataset.nodeKey = nodeKey;
+            toggleEl.dataset.scope = scope;
+            toggleEl.dataset.root = rootName;
+            toggleEl.dataset.path = item.dataset.path || '';
+            toggleEl.dataset.backendName = backendName || rootName || '';
         }
 
         const nameEl = document.createElement('span');
@@ -367,30 +423,12 @@ class DebugPanel {
             if (watchExpression) {
                 rm.dataset.watchExpression = watchExpression;
             }
-            rm.addEventListener('click', (ev) => {
+            rm.dataset.scope = scope;
+            rm.dataset.root = rootName;
+            rm.dataset.backendName = backendName || rootName || '';
+            rm.addEventListener('mousedown', (ev) => {
                 ev.preventDefault();
                 ev.stopPropagation();
-                const removalKey = watchExpression || rootName;
-                this._ipcSend('debug-remove-watch', removalKey);
-                this._pruneExpandedKeys(scope, removalKey);
-                if (removalKey !== rootName) {
-                    this._pruneExpandedKeys(scope, rootName);
-                }
-                this.pendingWatchRemovals.add(rootName);
-                if (removalKey && removalKey !== rootName) {
-                    this.pendingWatchRemovals.add(removalKey);
-                }
-                const cacheRoot = this._getCacheRoot(scope);
-                if (cacheRoot) {
-                    if (Object.prototype.hasOwnProperty.call(cacheRoot, rootName)) {
-                        delete cacheRoot[rootName];
-                    }
-                    if (removalKey && removalKey !== rootName && Object.prototype.hasOwnProperty.call(cacheRoot, removalKey)) {
-                        delete cacheRoot[removalKey];
-                    }
-                }
-                this._renderVariableGroup('#watch-variables', this._getCacheRoot(scope), scope);
-                try { item.remove(); } catch (_) { }
             });
             header.appendChild(rm);
             removeBtn = rm;
@@ -409,47 +447,9 @@ class DebugPanel {
             if (removeBtn && (ev.target === removeBtn || removeBtn.contains(ev.target))) return;
             if (ev.target === toggleEl || toggleEl.contains(ev.target)) return;
             ev.preventDefault();
+            ev.stopPropagation();
             toggleEl.click();
         });
-
-        if (toggleEl) {
-            toggleEl.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                const currentlyExpanded = this.expandedVars.has(nodeKey);
-                if (currentlyExpanded) {
-                    this.expandedVars.delete(nodeKey);
-                    childrenWrap.style.display = 'none';
-                    this._updateToggleButton(toggleEl, false);
-                    const collapseTarget = backendName || rootName;
-                    this._ipcSend('debug-collapse-variable', collapseTarget, { scope, path, cacheKey: nodeKey });
-                } else {
-                    this.expandedVars.add(nodeKey);
-                    this._updateToggleButton(toggleEl, true);
-                    childrenWrap.style.display = 'block';
-                    const latestNode = this._getVariableNode(scope, rootName, path) || data;
-                    const candidate = latestNode || data || {};
-                    const childData = Array.isArray(candidate?.children) ? candidate.children : [];
-                    if (childData.length > 0) {
-                        this._renderVariableChildren(childrenWrap, childData, rootName, scope, path, candidate);
-                    } else {
-                        childrenWrap.innerHTML = '<div class="no-debug-message">加载中…</div>';
-                        const payload = {
-                            scope,
-                            path,
-                            cacheKey: nodeKey,
-                            start: 0
-                        };
-                        if (candidate?.varObjectName) payload.varObjectName = candidate.varObjectName;
-                        if (candidate?.expression) payload.expression = candidate.expression;
-                        if (candidate?.chunkSize && Number(candidate.chunkSize) > 0) {
-                            payload.count = Number(candidate.chunkSize);
-                        }
-                        const expandTarget = candidate?.expression || candidate?.varObjectName || backendName || rootName;
-                        this._ipcSend('debug-expand-variable', expandTarget, payload);
-                    }
-                }
-            });
-        }
 
         if (isExpanded) {
             const latestNode = this._getVariableNode(scope, rootName, path) || data;
@@ -459,21 +459,114 @@ class DebugPanel {
         return item;
     }
 
+    _parsePathSegments(pathStr) {
+        if (!pathStr) return [];
+        return pathStr
+            .split(',')
+            .filter(segment => segment.length > 0)
+            .map((segment) => {
+                const maybeNumber = Number(segment);
+                return Number.isNaN(maybeNumber) ? segment : maybeNumber;
+            });
+    }
+
+    _handleToggleButtonClick(button, ev) {
+        if (!button) return;
+        if (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+        }
+        const item = button.closest('.variable-item');
+        if (!item) return;
+        const scope = this._normalizeScope(button.dataset.scope || item.dataset.scope);
+        const rootName = button.dataset.root || item.dataset.root || item.dataset.name || '';
+        const path = this._parsePathSegments(button.dataset.path || item.dataset.path || '');
+        const nodeKey = button.dataset.nodeKey
+            || item.querySelector('.variable-children')?.dataset.nodeKey
+            || this._makeNodeKey(scope, rootName, path);
+        const backendName = button.dataset.backendName || item.dataset.backendName || rootName;
+        const childrenWrap = item.querySelector(`.variable-children[data-node-key="${nodeKey}"]`) || item.querySelector('.variable-children');
+        if (!childrenWrap) return;
+
+        const currentlyExpanded = this.expandedVars.has(nodeKey);
+        if (currentlyExpanded) {
+            this.expandedVars.delete(nodeKey);
+            childrenWrap.style.display = 'none';
+            this._updateToggleButton(button, false);
+            const collapseTarget = backendName || rootName;
+            this._ipcSend('debug-collapse-variable', collapseTarget, { scope, path, cacheKey: nodeKey });
+            return;
+        }
+
+        this.expandedVars.add(nodeKey);
+        this._updateToggleButton(button, true);
+        childrenWrap.style.display = 'block';
+        const latestNode = this._getVariableNode(scope, rootName, path);
+        const candidate = latestNode || item.__variableData || {};
+        const childData = Array.isArray(candidate?.children) ? candidate.children : [];
+        if (childData.length > 0) {
+            this._renderVariableChildren(childrenWrap, childData, rootName, scope, path, candidate);
+            return;
+        }
+
+        childrenWrap.innerHTML = '<div class="no-debug-message">加载中…</div>';
+        const payload = {
+            scope,
+            path,
+            cacheKey: nodeKey,
+            start: 0
+        };
+        if (candidate?.varObjectName) payload.varObjectName = candidate.varObjectName;
+        if (candidate?.expression) payload.expression = candidate.expression;
+        if (candidate?.chunkSize && Number(candidate.chunkSize) > 0) {
+            payload.count = Number(candidate.chunkSize);
+        }
+        const expandTarget = candidate?.expression || candidate?.varObjectName || backendName || rootName;
+        this._ipcSend('debug-expand-variable', expandTarget, payload);
+    }
+
+    _handleRemoveWatchClick(button, ev) {
+        if (!button) return;
+        if (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+        }
+        const item = button.closest('.variable-item');
+        if (!item) return;
+        const scope = this._normalizeScope(button.dataset.scope || item.dataset.scope);
+        if (scope !== 'watch') return;
+        const rootName = button.dataset.root || item.dataset.root || item.dataset.name || '';
+        const removalKey = button.dataset.watchExpression
+            || button.dataset.backendName
+            || item.dataset.backendName
+            || rootName;
+        if (!removalKey) return;
+
+        this._ipcSend('debug-remove-watch', removalKey);
+        this._pruneExpandedKeys(scope, removalKey);
+        if (removalKey !== rootName) {
+            this._pruneExpandedKeys(scope, rootName);
+        }
+        this.pendingWatchRemovals.add(rootName);
+        if (removalKey && removalKey !== rootName) {
+            this.pendingWatchRemovals.add(removalKey);
+        }
+        const cacheRoot = this._getCacheRoot(scope);
+        if (cacheRoot) {
+            if (Object.prototype.hasOwnProperty.call(cacheRoot, rootName)) {
+                delete cacheRoot[rootName];
+            }
+            if (removalKey && removalKey !== rootName && Object.prototype.hasOwnProperty.call(cacheRoot, removalKey)) {
+                delete cacheRoot[removalKey];
+            }
+        }
+        this._renderVariableGroup('#watch-variables', this._getCacheRoot(scope), scope);
+        try { item.remove(); } catch (_) { }
+    }
+
     _applyForceToggleStyles(button) {
         if (!button) return;
-        const styles = {
-            minWidth: '28px',
-            height: '24px',
-            marginRight: '8px',
-            fontSize: '16px',
-            lineHeight: '1',
-            fontWeight: '700',
-            backgroundColor: '#0e639c',
-            borderColor: '#0e639c',
-            color: '#ffffff',
-            boxShadow: '0 0 6px rgba(14, 99, 156, 0.6)'
-        };
-        Object.assign(button.style, styles);
+        button.classList.add('force-visible');
     }
 
     _updateToggleButton(button, expanded) {
@@ -602,6 +695,7 @@ class DebugPanel {
     }
 
     _ipcSend(channel, ...args) {
+        console.log(`[DebugPanel] Sending IPC: ${channel}`, args);
         try {
             const { ipcRenderer } = require('electron');
             ipcRenderer.send(channel, ...args);
