@@ -328,7 +328,6 @@ function parseGDBWatchValueRecursive(watchObj, value, start, length) {
                     
                     const newPos = parseGDBWatchValueRecursive(child, value, token_real_end, 0);
                     position = newPos;
-                    token_real_end = position;
                     
                     token_name = new Token(0,0,Token.Undefined);
                     token_value = new Token(0,0,Token.Undefined);
