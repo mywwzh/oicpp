@@ -176,43 +176,47 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    font-size: 11px;
-    color: #d0d0d0;
-    background-color: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    width: 20px;
-    height: 20px;
+    gap: 0;
+    font-size: 10px;
+    color: #cccccc;
+    background: transparent !important;
+    border: none !important;
+    width: 16px;
+    height: 16px;
     line-height: 1;
     text-align: center;
     padding: 0;
-    margin: 0;
-    border-radius: 4px;
-    transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+    margin: 0 2px 0 0;
+    border-radius: 2px;
+    transition: background-color 0.2s, color 0.2s;
+    -webkit-appearance: none;
+    appearance: none;
 }
 
 .expand-toggle-btn.force-visible {
-    min-width: 28px;
-    height: 24px;
-    padding: 0 6px;
-    margin-right: 8px;
-    font-weight: 700;
-    font-size: 16px;
-    color: #ffffff;
-    background-color: #0e639c;
-    border-color: #0e639c;
-    box-shadow: 0 0 6px rgba(14, 99, 156, 0.6);
+    min-width: 16px;
+    height: 16px;
+    padding: 0;
+    margin-right: 2px;
+    font-weight: normal;
+    font-size: 10px;
+    color: #cccccc;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 
 .expand-toggle-btn.with-label {
     width: auto;
-    min-width: 60px;
-    padding: 0 6px;
+    min-width: unset;
+    padding: 0 4px;
     justify-content: flex-start;
+    gap: 4px;
 }
 
 .expand-toggle-btn .arrow {
-    font-size: 12px;
+    font-size: 10px;
+    margin-right: 4px;
 }
 
 .expand-toggle-btn .label {
@@ -222,9 +226,8 @@ body {
 .expand-toggle-btn:hover,
 .expand-toggle-btn:focus {
     outline: none;
-    background-color: rgba(255, 255, 255, 0.12);
+    background-color: rgba(255, 255, 255, 0.1) !important;
     color: #ffffff;
-    border-color: rgba(255, 255, 255, 0.18);
 }
 
 .expand-spacer {
@@ -251,7 +254,7 @@ body {
 
 .variable-children {
     margin-left: 16px;
-    border-left: 1px dotted #464647;
+    border-left: 1px solid #3e3e42;
 }
 
 .variable-child {
@@ -309,36 +312,50 @@ body {
 }
 
 .add-watch-btn {
-    background-color: #0e639c;
-    color: #ffffff;
-    border: none;
+    background-color: transparent;
+    color: #cccccc;
+    border: 1px solid #3e3e42;
     border-radius: 3px;
     padding: 4px 8px;
     font-size: 11px;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s;
     width: 100%;
 }
 
 .add-watch-btn:hover {
-    background-color: #1177bb;
+    background-color: #3e3e42;
+    color: #ffffff;
+    border-color: #505050;
 }
 
 .remove-watch-btn {
     background-color: transparent;
-    color: #f44747;
+    color: #808080;
     border: none;
-    font-size: 14px;
+    font-size: 16px;
     cursor: pointer;
-    padding: 0 4px;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     margin-left: 4px;
-    border-radius: 2px;
-    transition: background-color 0.2s;
+    border-radius: 3px;
+    transition: all 0.2s;
+    opacity: 0;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.variable-item:hover .remove-watch-btn {
+    opacity: 1;
 }
 
 .remove-watch-btn:hover {
-    background-color: #f44747;
-    color: #ffffff;
+    background-color: rgba(244, 71, 71, 0.2);
+    color: #f44747;
 }
 
 .add-watch-dialog {
