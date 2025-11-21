@@ -252,7 +252,6 @@ function parseGDBWatchValueRecursive(watchObj, value, start, length) {
         token_real_end = token.end;
         token.trim(value);
         
-        const str = token.extractString(value);
             
         switch (token.type) {
             case Token.String:
