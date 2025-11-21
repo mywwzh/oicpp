@@ -418,7 +418,7 @@ class GDBDebugger extends EventEmitter {
             try { global.logInfo?.('[GDB>>]', trimmed); } catch (_) { }
 
             if (line.startsWith('~')) {
-                for (const [token, req] of this.pending.entries()) {
+                for (const req of this.pending.values()) {
                     if (req.captureOutput) {
                         req.captureOutput(line);
                         break; 
