@@ -4521,7 +4521,7 @@ async function compileFile(options) {
 
         const envPath = [...mingwBinPaths, systemPath].join(path.delimiter);
 
-        let includePaths = [path.join(compilerRoot, 'include')];
+        let includePaths = [];
 
         if (settings.testlibPath && fs.existsSync(settings.testlibPath)) {
             const testlibDir = path.dirname(settings.testlibPath);
