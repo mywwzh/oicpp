@@ -2189,12 +2189,27 @@ ${data.message || '程序已加载，等待开始执行'}
 
     onVariablesUpdated(variables) {
         logInfo('变量已更新');
+        if (this.isModernDebugPanelMounted()) {
+            return;
+        }
         this.updateVariablesDisplay(variables);
     }
 
     onCallStackUpdated(callStack) {
         logInfo('调用堆栈已更新');
+        if (this.isModernDebugPanelMounted()) {
+            return;
+        }
         this.updateCallStackDisplay(callStack);
+    }
+
+    isModernDebugPanelMounted() {
+        try {
+            const panelManager = window.sidebarManager?.getPanelManager?.('debug');
+            return Boolean(panelManager?.root && panelManager.root.isConnected);
+        } catch (_) {
+            return false;
+        }
     }
 
     onBreakpointHit(breakpoint) {
@@ -2305,6 +2320,9 @@ ${data.message || '程序已加载，等待开始执行'}
     }
 
     updateVariablesDisplay(variables) {
+        if (this.isModernDebugPanelMounted()) {
+            return;
+        }
         if (variables.local) {
             this.renderVariables('local-variables', variables.local, 'local');
         }
@@ -2319,6 +2337,9 @@ ${data.message || '程序已加载，等待开始执行'}
     }
 
     renderVariables(containerId, variables, scope) {
+        if (this.isModernDebugPanelMounted()) {
+            return;
+        }
         const container = document.getElementById(containerId);
         if (!container) return;
 
@@ -2372,6 +2393,9 @@ ${data.message || '程序已加载，等待开始执行'}
     }
 
     updateCallStackDisplay(callStack) {
+        if (this.isModernDebugPanelMounted()) {
+            return;
+        }
         const container = document.getElementById('call-stack');
         if (!container) return;
 
