@@ -4,80 +4,121 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>编辑器设置</title>
-    <link rel="stylesheet" href="settings.css">
+    <link rel="stylesheet" href="../css/settings.css">
 </head>
 <body>
     <div class="settings-container">
-        <div class="settings-header">
-            <h2>编辑器设置</h2>
-        </div>
-        
-        <div class="settings-content">
-            <div class="setting-group">
-                <label for="editor-font">字体：</label>
-                <div class="input-group">
-                    <select id="editor-font" class="form-select">
-                    </select>
+        <div class="settings-layout">
+            <div class="settings-sidebar">
+                <div class="sidebar-item active" data-target="general">常规设置</div>
+                <div class="sidebar-item" data-target="appearance">外观样式</div>
+                <div class="sidebar-item" data-target="behavior">编辑器行为</div>
+            </div>
+            
+            <div class="settings-main">
+                <div id="general" class="settings-section active">
+                    <div class="section-title">常规设置</div>
+                    
+                    <div class="setting-group">
+                        <label for="editor-font">字体家族</label>
+                        <div class="input-group">
+                            <select id="editor-font" class="form-select">
+                            </select>
+                        </div>
+                        <div class="hint">选择编辑器使用的主要字体</div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="editor-font-size">字体大小</label>
+                        <div class="input-group">
+                            <input type="number" id="editor-font-size" min="8" max="72" value="14">
+                            <span class="unit">px</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="editor-tab-size">缩进宽度 (Tab Size)</label>
+                        <div class="input-group">
+                            <input type="number" id="editor-tab-size" min="1" max="16" value="4">
+                            <span class="unit">spaces</span>
+                        </div>
+                    </div>
+                </div>
+                <div id="appearance" class="settings-section">
+                    <div class="section-title">外观样式</div>
+
+                    <div class="setting-group">
+                        <label for="editor-theme">颜色主题</label>
+                        <div class="input-group">
+                            <select id="editor-theme" class="form-select">
+                                <option value="dark">默认深色 (Dark)</option>
+                                <option value="light">默认浅色 (Light)</option>
+                                <option value="monokai">Monokai</option>
+                                <option value="github-light">GitHub Light</option>
+                                <option value="github-dark">GitHub Dark</option>
+                                <option value="solarized-light">Solarized Light</option>
+                                <option value="solarized-dark">Solarized Dark</option>
+                                <option value="dracula">Dracula</option>
+                            </select>
+                        </div>
+                        <div class="settings-note" style="margin-top: 8px;">
+                            <span class="settings-note-label">注意：</span>
+                            <span class="settings-note-text">更改主题后将自动应用</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="editor-font-ligatures" checked>
+                            <span class="checkmark"></span>
+                            启用字体连字 (Font Ligatures)
+                        </label>
+                        <div class="hint" style="margin-left: 28px;">需要字体支持 (如 Fira Code, JetBrains Mono)</div>
+                    </div>
+                </div>
+
+                <div id="behavior" class="settings-section">
+                    <div class="section-title">编辑器行为</div>
+
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="editor-folding" checked>
+                            <span class="checkmark"></span>
+                            启用代码折叠
+                        </label>
+                    </div>
+
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="editor-sticky-scroll" checked>
+                            <span class="checkmark"></span>
+                            启用 Sticky Scroll (顶部吸附显示当前作用域)
+                        </label>
+                    </div>
+
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="editor-auto-save-enabled" checked>
+                            <span class="checkmark"></span>
+                            启用自动保存
+                        </label>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="editor-auto-save-interval">自动保存间隔</label>
+                        <div class="input-group">
+                            <input type="number" id="editor-auto-save-interval" min="10" max="3600" value="60">
+                            <span class="unit">秒</span>
+                        </div>
+                    </div>
                 </div>
             </div>
-
-            <div class="setting-group">
-                <label for="editor-theme">主题：</label>
-                <div class="input-group">
-                    <select id="editor-theme" class="form-select">
-                        <option value="dark">深色</option>
-                        <option value="light">浅色</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="setting-group">
-                <label for="editor-font-size">字体大小：</label>
-                <input type="number" id="editor-font-size" min="8" max="72" value="14">
-            </div>
-
-            <div class="setting-group">
-                <label for="editor-font-ligatures">启用字体连字：</label>
-                <input type="checkbox" id="editor-font-ligatures" checked>
-            </div>
-
-            <div class="setting-group">
-                <label for="editor-folding">启用代码折叠：</label>
-                <input type="checkbox" id="editor-folding" checked>
-            </div>
-
-            <div class="setting-group">
-                <label for="editor-sticky-scroll">显示上级代码区域：</label>
-                <input type="checkbox" id="editor-sticky-scroll" checked>
-            </div>
-
-            <div class="setting-group">
-                <label for="editor-tab-size">Tab 缩进宽度：</label>
-                <input type="number" id="editor-tab-size" min="1" max="16" value="4">
-            </div>
-
-            <div class="setting-group">
-                <label for="editor-auto-save-enabled">启用自动保存：</label>
-                <input type="checkbox" id="editor-auto-save-enabled" checked>
-            </div>
-
-            <div class="setting-group">
-                <label for="editor-auto-save-interval">自动保存间隔（秒）：</label>
-                <input type="number" id="editor-auto-save-interval" min="10" max="3600" value="60">
-            </div>
-
-            <div class="setting-group settings-note">
-                <span class="settings-note-label">注意：</span>
-                <span class="settings-note-text">更改主题后将自动重启编辑器</span>
-            </div>
-
-
         </div>
 
         <div class="settings-footer">
             <button id="save-settings" class="btn btn-primary">保存设置</button>
             <button id="cancel-settings" class="btn btn-secondary">取消</button>
-            <button id="reset-settings" class="btn btn-warning">重置为默认值</button>
+            <button id="reset-settings" class="btn btn-warning">重置默认</button>
         </div>
     </div>
 

@@ -4,52 +4,56 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>编译器设置</title>
-    <link rel="stylesheet" href="settings.css">
+    <link rel="stylesheet" href="../css/settings.css">
 </head>
 <body>
     <div class="settings-container">
-        <div class="settings-header">
-            <h2>编译器设置</h2>
-            <div class="settings-tabs">
-                <button class="tab-btn active" data-tab="compiler">编译器</button>
-                <button class="tab-btn" data-tab="testlib">Testlib</button>
+        <div class="settings-layout">
+            <div class="settings-sidebar">
+                <div class="sidebar-item active" data-target="compiler-section">编译器配置</div>
+                <div class="sidebar-item" data-target="testlib-section">Testlib 配置</div>
             </div>
-        </div>
-        
-        <div class="settings-content">
-            <div id="compiler-tab" class="tab-content active">
-                <div class="setting-group">
-                    <label for="compiler-path">编译器路径：</label>
-                    <div class="input-group">
-                        <input type="text" id="compiler-path" placeholder="请选择 g++.exe 路径" readonly>
-                        <button id="browse-compiler" class="btn btn-secondary">浏览</button>
-                        <button id="install-compiler" class="btn btn-primary">安装编译器</button>
+            
+            <div class="settings-main">
+                <div id="compiler-section" class="settings-section active">
+                    <div class="section-title">编译器配置</div>
+                    
+                    <div class="setting-group">
+                        <label for="compiler-path">编译器路径 (g++.exe)</label>
+                        <div class="input-group">
+                            <input type="text" id="compiler-path" placeholder="请选择 g++.exe 路径" readonly>
+                            <button id="browse-compiler" class="btn btn-secondary">浏览本地</button>
+                            <button id="install-compiler" class="btn btn-primary">在线安装</button>
+                        </div>
+                        <div class="hint">选择 MinGW-w64 或其他 GCC 编译器的 g++.exe 文件</div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="compiler-options">编译选项</label>
+                        <input type="text" id="compiler-options" value="-std=c++14 -O2 -static" placeholder="例如: -std=c++14 -O2 -Wall">
+                        <div class="hint">常用的编译参数，多个参数用空格分隔</div>
                     </div>
                 </div>
 
-                <div class="setting-group">
-                    <label for="compiler-options">编译器选项：</label>
-                    <input type="text" id="compiler-options" value="-std=c++14 -O2 -static" placeholder="编译器选项">
-                </div>
-
-
-            </div>
-
-            <div id="testlib-tab" class="tab-content">
-                <div class="setting-group">
-                    <label for="testlib-path">Testlib路径：</label>
-                    <div class="input-group">
-                        <input type="text" id="testlib-path" placeholder="Testlib库路径" readonly>
-                        <button id="browse-testlib" class="btn btn-secondary">浏览</button>
-                        <button id="install-testlib" class="btn btn-primary">安装Testlib</button>
+                <div id="testlib-section" class="settings-section">
+                    <div class="section-title">Testlib 配置</div>
+                    
+                    <div class="setting-group">
+                        <label for="testlib-path">Testlib 头文件路径</label>
+                        <div class="input-group">
+                            <input type="text" id="testlib-path" placeholder="testlib.h 所在目录" readonly>
+                            <button id="browse-testlib" class="btn btn-secondary">浏览本地</button>
+                            <button id="install-testlib" class="btn btn-primary">在线安装</button>
+                        </div>
+                        <div class="hint">用于编写 Special Judge 的 testlib.h 库</div>
                     </div>
-                </div>
 
-                <div class="setting-group">
-                    <label>测试Testlib：</label>
-                    <div class="test-testlib">
-                        <button id="test-testlib" class="btn btn-secondary">测试Testlib</button>
-                        <div id="testlib-test-result" class="test-result"></div>
+                    <div class="setting-group">
+                        <label>环境检测</label>
+                        <div class="test-testlib">
+                            <button id="test-testlib" class="btn btn-secondary">测试 Testlib 环境</button>
+                            <div id="testlib-test-result" class="test-result"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -58,7 +62,7 @@
         <div class="settings-footer">
             <button id="save-settings" class="btn btn-primary">保存设置</button>
             <button id="cancel-settings" class="btn btn-secondary">取消</button>
-            <button id="reset-settings" class="btn btn-warning">重置为默认值</button>
+            <button id="reset-settings" class="btn btn-warning">重置默认</button>
         </div>
     </div>
 

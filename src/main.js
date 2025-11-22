@@ -3581,11 +3581,12 @@ function openCompilerSettings() {
     }
 
     compilerSettingsWindow = new BrowserWindow({
-        width: 600,
-        height: 500,
+        width: 800,
+        height: 600,
         parent: mainWindow,
         modal: true,
         resizable: false,
+        autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -3613,11 +3614,12 @@ function openEditorSettings() {
 
     logInfo('创建新的编辑器设置窗口');
     editorSettingsWindow = new BrowserWindow({
-        width: 600,
-        height: 500,
+        width: 900,
+        height: 700,
         parent: mainWindow,
         modal: true,
-        resizable: false,
+        resizable: true,
+        autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -3628,7 +3630,7 @@ function openEditorSettings() {
         icon: getUserIconPath()
     });
 
-    editorSettingsWindow.loadFile('src/renderer/settings/editor.html');
+    editorSettingsWindow.loadFile('src/renderer/settings/editor.html', { query: { theme: settings.theme } });
 
     editorSettingsWindow.on('closed', () => {
         logInfo('编辑器设置窗口已关闭');
@@ -3651,11 +3653,12 @@ function openCodeTemplates() {
     }
 
     codeTemplatesWindow = new BrowserWindow({
-        width: 700,
-        height: 600,
+        width: 800,
+        height: 650,
         parent: mainWindow,
         modal: true,
         resizable: true,
+        autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,

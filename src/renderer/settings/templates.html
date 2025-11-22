@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>代码模板设置</title>
-    <link rel="stylesheet" href="settings.css">
+    <link rel="stylesheet" href="../css/settings.css">
     <style>
         .template-info {
             background: rgba(0, 122, 204, 0.1);
@@ -13,11 +13,11 @@
             padding: 16px;
             margin-bottom: 20px;
             font-size: 14px;
-            color: var(--text-color);
+            color: var(--settings-text);
         }
         
         .template-info strong {
-            color: var(--text-color);
+            color: var(--settings-text);
             font-weight: 600;
         }
         
@@ -207,23 +207,23 @@
 </head>
 <body>
     <div class="settings-container">
-        <div class="settings-header">
-            <h2>代码模板设置</h2>
-            <div class="settings-tabs">
-                <button class="tab-btn active" data-tab="tpl">文件模板</button>
-                <button class="tab-btn" data-tab="snippets">代码片段</button>
-            </div>
-        </div>
-        
-        <div class="settings-content">
-            <div id="tpl-tab" class="tab-content active">
-            <div class="template-info">
-                <strong>说明：</strong>在这里可以编辑新建C++文件时使用的默认模板。模板支持标准的C++语法，保存后立即生效。
+        <div class="settings-layout">
+            <div class="settings-sidebar">
+                <div class="sidebar-item active" data-target="tpl-section">文件模板</div>
+                <div class="sidebar-item" data-target="snippets-section">代码片段</div>
             </div>
             
-            <div class="setting-group">
-                <label for="cpp-template">C++ 模板内容：</label>
-                <textarea id="cpp-template" placeholder="在这里编辑 C++ 模板内容...">#include <bits/stdc++.h>
+            <div class="settings-main">
+                <!-- Template Section -->
+                <div id="tpl-section" class="settings-section active">
+                    <div class="section-title">文件模板</div>
+                    <div class="template-info">
+                        <strong>说明：</strong>在这里可以编辑新建C++文件时使用的默认模板。模板支持标准的C++语法，保存后立即生效。
+                    </div>
+                    
+                    <div class="setting-group">
+                        <label for="cpp-template">C++ 模板内容：</label>
+                        <textarea id="cpp-template" placeholder="在这里编辑 C++ 模板内容...">#include <bits/stdc++.h>
 
 using namespace std;
 
@@ -232,48 +232,51 @@ int main()
    
     return 0;
 }</textarea>
-                
-                <div class="template-preview">
-                    <button class="preview-btn" id="preview-template">预览模板</button>
+                        
+                        <div class="template-preview">
+                            <button class="preview-btn" id="preview-template">预览模板</button>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            </div>
 
-            <div id="snippets-tab" class="tab-content">
-                <div class="template-info">
-                    <strong>关键字代码片段：</strong>在编辑器中输入关键词（如 sgt），自动补全将优先显示对应片段。（注意先翻到下面点添加再点保存）
-                </div>
-                <div class="setting-group">
-                    <div class="two-col">
-                        <div class="col-left">
-                            <label for="snippet-keyword">关键词：</label>
-                            <input id="snippet-keyword" type="text" placeholder="关键词，如: sgt">
-                        </div>
-                        <div class="col-right">
-                            <label for="snippet-desc">描述：</label>
-                            <input id="snippet-desc" type="text" placeholder="描述，如: 用户代码片段">
-                        </div>
+                <!-- Snippets Section -->
+                <div id="snippets-section" class="settings-section">
+                    <div class="section-title">代码片段</div>
+                    <div class="template-info">
+                        <strong>关键字代码片段：</strong>在编辑器中输入关键词（如 sgt），自动补全将优先显示对应片段。（注意先翻到下面点添加再点保存）
                     </div>
                     <div class="setting-group">
-                        <label for="snippet-content">片段内容：</label>
-                        <textarea id="snippet-content" placeholder="支持占位符：${1:var}，多行OK" rows="10"></textarea>
-                        <div class="hint">提示：保存后主窗口即时生效；在编辑器中输入关键词即可看到补全。</div>
-                    </div>
-                    <div class="btn-row">
-                        <button id="add-snippet" class="preview-btn">添加/更新片段</button>
-                    </div>
-                    <div class="setting-group">
-                        <label>片段列表：</label>
-                        <div id="snippets-list" class="snippets-list"></div>
+                        <div class="two-col">
+                            <div class="col-left">
+                                <label for="snippet-keyword">关键词：</label>
+                                <input id="snippet-keyword" type="text" placeholder="关键词，如: sgt">
+                            </div>
+                            <div class="col-right">
+                                <label for="snippet-desc">描述：</label>
+                                <input id="snippet-desc" type="text" placeholder="描述，如: 用户代码片段">
+                            </div>
+                        </div>
+                        <div class="setting-group">
+                            <label for="snippet-content">片段内容：</label>
+                            <textarea id="snippet-content" placeholder="支持占位符：${1:var}，多行OK" rows="10"></textarea>
+                            <div class="hint">提示：保存后主窗口即时生效；在编辑器中输入关键词即可看到补全。</div>
+                        </div>
+                        <div class="btn-row">
+                            <button id="add-snippet" class="preview-btn">添加/更新片段</button>
+                        </div>
+                        <div class="setting-group">
+                            <label>片段列表：</label>
+                            <div id="snippets-list" class="snippets-list"></div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
         
         <div class="settings-footer">
-            <button id="reset-settings" class="btn btn-warning">重置默认</button>
-            <button id="cancel-settings" class="btn btn-secondary">取消</button>
             <button id="save-settings" class="btn btn-primary">保存</button>
+            <button id="cancel-settings" class="btn btn-secondary">取消</button>
+            <button id="reset-settings" class="btn btn-warning">重置默认</button>
         </div>
     </div>
 
