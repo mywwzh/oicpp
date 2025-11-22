@@ -112,6 +112,51 @@ class EditorSettings {
                 this.notifyMainWindowPreview();
             });
         }
+
+        const opacityInput = document.getElementById('editor-opacity');
+        const opacityValue = document.getElementById('editor-opacity-value');
+        if (opacityInput && opacityValue) {
+            opacityInput.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                opacityValue.textContent = Math.round(val * 100) + '%';
+                // 实时预览透明度
+                if (window.electronAPI && window.electronAPI.updateSettings) {
+                    // 简单的防抖
+                    clearTimeout(this.opacityTimeout);
+                    this.opacityTimeout = setTimeout(() => {
+                        window.electronAPI.updateSettings({ windowOpacity: val });
+                    }, 100);
+                }
+            });
+        }
+
+        const browseBgBtn = document.getElementById('browse-bg-image');
+        const bgImageInput = document.getElementById('editor-bg-image');
+        if (browseBgBtn && bgImageInput) {
+            browseBgBtn.addEventListener('click', async () => {
+                if (window.electronAPI && window.electronAPI.showOpenDialog) {
+                    const result = await window.electronAPI.showOpenDialog({
+                        title: '选择背景图片',
+                        filters: [
+                            { name: 'Images', extensions: ['jpg', 'png', 'gif', 'jpeg', 'webp'] },
+                            { name: 'All Files', extensions: ['*'] }
+                        ],
+                        properties: ['openFile']
+                    });
+                    
+                    if (!result.canceled && result.filePaths.length > 0) {
+                        bgImageInput.value = result.filePaths[0];
+                    }
+                }
+            });
+        }
+
+        const clearBgBtn = document.getElementById('clear-bg-image');
+        if (clearBgBtn && bgImageInput) {
+            clearBgBtn.addEventListener('click', () => {
+                bgImageInput.value = '';
+            });
+        }
     }
 
     toggleAutoSaveInterval(inputElement, enabled) {
@@ -230,7 +275,9 @@ class EditorSettings {
                     foldingEnabled: allSettings.foldingEnabled !== false,
                     stickyScrollEnabled: allSettings.stickyScrollEnabled !== false,
                     autoSave: allSettings.autoSave !== false,
-                    autoSaveInterval: typeof allSettings.autoSaveInterval === 'number' ? allSettings.autoSaveInterval : 60000
+                    autoSaveInterval: typeof allSettings.autoSaveInterval === 'number' ? allSettings.autoSaveInterval : 60000,
+                    windowOpacity: typeof allSettings.windowOpacity === 'number' ? allSettings.windowOpacity : 1.0,
+                    backgroundImage: allSettings.backgroundImage || ''
                 };
                 logInfo('编辑器设置加载完成:', this.settings);
             } else {
@@ -243,7 +290,9 @@ class EditorSettings {
                     stickyScrollEnabled: true,
                     foldingEnabled: true,
                     autoSave: true,
-                    autoSaveInterval: 60000
+                    autoSaveInterval: 60000,
+                    windowOpacity: 1.0,
+                    backgroundImage: ''
                 };
             }
         } catch (error) {
@@ -256,7 +305,9 @@ class EditorSettings {
                 stickyScrollEnabled: true,
                 foldingEnabled: true,
                 autoSave: true,
-                autoSaveInterval: 60000
+                autoSaveInterval: 60000,
+                windowOpacity: 1.0,
+                backgroundImage: ''
             };
         }
     }
@@ -374,6 +425,16 @@ class EditorSettings {
             if (!Number.isNaN(parsedInterval) && parsedInterval > 0) {
                 newSettings.autoSaveInterval = parsedInterval * 1000;
             }
+        }
+
+        const opacityInput = document.getElementById('editor-opacity');
+        if (opacityInput) {
+            newSettings.windowOpacity = parseFloat(opacityInput.value);
+        }
+
+        const bgImageInput = document.getElementById('editor-bg-image');
+        if (bgImageInput) {
+            newSettings.backgroundImage = bgImageInput.value;
         }
 
         logInfo('收集到的设置:', newSettings);
@@ -501,6 +562,9 @@ class EditorSettings {
         const tabSizeInput = document.getElementById('editor-tab-size');
         const autoSaveCheckbox = document.getElementById('editor-auto-save-enabled');
         const autoSaveIntervalInput = document.getElementById('editor-auto-save-interval');
+        const opacityInput = document.getElementById('editor-opacity');
+        const opacityValue = document.getElementById('editor-opacity-value');
+        const bgImageInput = document.getElementById('editor-bg-image');
 
         logInfo('更新UI，当前设置:', this.settings);
         logInfo('字体大小输入框:', fontSizeInput, '值:', this.settings.fontSize);
@@ -550,6 +614,16 @@ class EditorSettings {
             const intervalMs = Number.isFinite(this.settings.autoSaveInterval) && this.settings.autoSaveInterval > 0 ? this.settings.autoSaveInterval : 60000;
             autoSaveIntervalInput.value = Math.max(1, Math.round(intervalMs / 1000));
             this.toggleAutoSaveInterval(autoSaveIntervalInput, autoSaveEnabled);
+        }
+
+        if (opacityInput && opacityValue) {
+            const opacity = typeof this.settings.windowOpacity === 'number' ? this.settings.windowOpacity : 1.0;
+            opacityInput.value = opacity;
+            opacityValue.textContent = Math.round(opacity * 100) + '%';
+        }
+
+        if (bgImageInput) {
+            bgImageInput.value = this.settings.backgroundImage || '';
         }
     }
 

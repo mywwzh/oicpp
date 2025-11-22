@@ -17,7 +17,9 @@ class UnifiedSettingsManager {
             autoSave: true,
             autoSaveInterval: 60000,
             lastUpdateCheck: '1970-01-01',
-            codeSnippets: []
+            codeSnippets: [],
+            windowOpacity: 1.0,
+            backgroundImage: ''
         };
     }
 
@@ -130,7 +132,7 @@ class UnifiedSettingsManager {
             if (typeof require !== 'undefined') {
                 const { ipcRenderer } = require('electron');
                 const allowedKeys = new Set([
-                    'font','fontSize','theme','tabSize','foldingEnabled','stickyScrollEnabled','compilerPath','compilerArgs','testlibPath','codeSnippets','cppTemplate','fontLigaturesEnabled','autoSave','autoSaveInterval'
+                    'font','fontSize','theme','tabSize','foldingEnabled','stickyScrollEnabled','compilerPath','compilerArgs','testlibPath','codeSnippets','cppTemplate','fontLigaturesEnabled','autoSave','autoSaveInterval','windowOpacity','backgroundImage'
                 ]);
                 const filtered = {};
                 Object.keys(newSettings || {}).forEach(k=>{ if (allowedKeys.has(k)) filtered[k]=newSettings[k]; });
