@@ -532,15 +532,38 @@ class OICPPApp {
     }
 
     applyTheme(theme) {
-        document.body.setAttribute('data-theme', theme);
-        
-        const titlebar = document.querySelector('.titlebar');
-        if (titlebar) {
-            titlebar.setAttribute('data-theme', theme);
+        const resolvedTheme = typeof theme === 'string' && theme.trim().length > 0 ? theme.trim() : 'dark';
+        const body = document.body;
+        if (!body) {
+            return;
         }
-        
+
+        const root = document.documentElement;
+        const titlebar = document.querySelector('.titlebar');
+        const normalized = resolvedTheme.toLowerCase();
+        const isLightTheme = normalized.includes('light');
+        const tone = isLightTheme ? 'light' : 'dark';
+
+        body.setAttribute('data-theme', resolvedTheme);
+        body.setAttribute('data-editor-theme', tone);
+        body.style.setProperty('color-scheme', tone);
+        root?.setAttribute('data-theme', resolvedTheme);
+        root?.setAttribute('data-editor-theme', tone);
+
+        const classNames = ['theme-light', 'theme-dark', 'light-theme', 'dark-theme'];
+        body.classList.remove(...classNames);
+        root?.classList.remove(...classNames);
+        const bodyClass = isLightTheme ? 'theme-light' : 'theme-dark';
+        const compatClass = isLightTheme ? 'light-theme' : 'dark-theme';
+        body.classList.add(bodyClass, compatClass);
+        root?.classList.add(bodyClass, compatClass);
+
+        if (titlebar) {
+            titlebar.setAttribute('data-theme', resolvedTheme);
+        }
+
         const event = new CustomEvent('theme-changed', {
-            detail: { theme: theme }
+            detail: { theme: resolvedTheme, tone }
         });
         document.dispatchEvent(event);
     }
@@ -1189,21 +1212,6 @@ class OICPPApp {
 
     showContextMenu(e) {
         logInfo('显示右键菜单');
-    }
-
-    loadCustomSnippets() {
-        const snippets = [];
-        
-        snippets.push(
-            'for (int i = 0; i < n; i++) {\n    // 代码\n}',
-            'while (cin >> n) {\n    // 代码\n}',
-            'vector<int> v(n);',
-            'sort(v.begin(), v.end());',
-            'int n, m;\ncin >> n >> m;',
-            'long long ans = 0;'
-        );
-        
-        return snippets;
     }
 
     async createNewCppFile() {

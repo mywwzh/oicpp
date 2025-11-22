@@ -142,6 +142,137 @@ class MonacoEditorManager {
                             'editorBracketPairGuide.activeBackground6': '#a5d6a755'
                         }
                     });
+                    
+                    monaco.editor.defineTheme('oicpp-monokai', {
+                        base: 'vs-dark',
+                        inherit: true,
+                        rules: [
+                            { token: 'comment', foreground: '75715e' },
+                            { token: 'keyword', foreground: 'f92672' },
+                            { token: 'string', foreground: 'e6db74' },
+                            { token: 'number', foreground: 'ae81ff' },
+                            { token: 'type', foreground: '66d9ef' },
+                            { token: 'class', foreground: 'a6e22e' },
+                            { token: 'function', foreground: 'a6e22e' }
+                        ],
+                        colors: {
+                            'editor.background': '#272822',
+                            'editor.foreground': '#f8f8f2',
+                            'editorCursor.foreground': '#f8f8f0',
+                            'editor.selectionBackground': '#49483e',
+                            'editor.lineHighlightBackground': '#3e3d32',
+                            'editorIndentGuide.background': '#464741',
+                            'editorIndentGuide.activeBackground': '#75715e'
+                        }
+                    });
+
+                    monaco.editor.defineTheme('oicpp-github-light', {
+                        base: 'vs',
+                        inherit: true,
+                        rules: [
+                            { token: 'comment', foreground: '6a737d' },
+                            { token: 'keyword', foreground: 'd73a49' },
+                            { token: 'string', foreground: '032f62' },
+                            { token: 'number', foreground: '005cc5' },
+                            { token: 'type', foreground: '6f42c1' }
+                        ],
+                        colors: {
+                            'editor.background': '#ffffff',
+                            'editor.foreground': '#24292e',
+                            'editorCursor.foreground': '#24292e',
+                            'editor.selectionBackground': '#0366d625',
+                            'editor.lineHighlightBackground': '#f6f8fa',
+                            'editorIndentGuide.background': '#d1d5da',
+                            'editorIndentGuide.activeBackground': '#959da5'
+                        }
+                    });
+
+                    monaco.editor.defineTheme('oicpp-github-dark', {
+                        base: 'vs-dark',
+                        inherit: true,
+                        rules: [
+                            { token: 'comment', foreground: '6a737d' },
+                            { token: 'keyword', foreground: 'ff7b72' },
+                            { token: 'string', foreground: 'a5d6ff' },
+                            { token: 'number', foreground: '79c0ff' },
+                            { token: 'type', foreground: 'd2a8ff' }
+                        ],
+                        colors: {
+                            'editor.background': '#24292e',
+                            'editor.foreground': '#e1e4e8',
+                            'editorCursor.foreground': '#e1e4e8',
+                            'editor.selectionBackground': '#3392FF44',
+                            'editor.lineHighlightBackground': '#2b3036',
+                            'editorIndentGuide.background': '#444d56',
+                            'editorIndentGuide.activeBackground': '#6a737d'
+                        }
+                    });
+
+                    monaco.editor.defineTheme('oicpp-solarized-light', {
+                        base: 'vs',
+                        inherit: true,
+                        rules: [
+                            { token: 'comment', foreground: '93a1a1' },
+                            { token: 'keyword', foreground: '859900' },
+                            { token: 'string', foreground: '2aa198' },
+                            { token: 'number', foreground: 'd33682' },
+                            { token: 'type', foreground: 'b58900' }
+                        ],
+                        colors: {
+                            'editor.background': '#fdf6e3',
+                            'editor.foreground': '#657b83',
+                            'editorCursor.foreground': '#657b83',
+                            'editor.selectionBackground': '#eee8d5',
+                            'editor.lineHighlightBackground': '#eee8d5',
+                            'editorIndentGuide.background': '#93a1a155',
+                            'editorIndentGuide.activeBackground': '#586e75'
+                        }
+                    });
+
+                    monaco.editor.defineTheme('oicpp-solarized-dark', {
+                        base: 'vs-dark',
+                        inherit: true,
+                        rules: [
+                            { token: 'comment', foreground: '586e75' },
+                            { token: 'keyword', foreground: '859900' },
+                            { token: 'string', foreground: '2aa198' },
+                            { token: 'number', foreground: 'd33682' },
+                            { token: 'type', foreground: 'b58900' }
+                        ],
+                        colors: {
+                            'editor.background': '#002b36',
+                            'editor.foreground': '#839496',
+                            'editorCursor.foreground': '#839496',
+                            'editor.selectionBackground': '#073642',
+                            'editor.lineHighlightBackground': '#073642',
+                            'editorIndentGuide.background': '#586e7555',
+                            'editorIndentGuide.activeBackground': '#93a1a1'
+                        }
+                    });
+
+                    monaco.editor.defineTheme('oicpp-dracula', {
+                        base: 'vs-dark',
+                        inherit: true,
+                        rules: [
+                            { token: 'comment', foreground: '6272a4' },
+                            { token: 'keyword', foreground: 'ff79c6' },
+                            { token: 'string', foreground: 'f1fa8c' },
+                            { token: 'number', foreground: 'bd93f9' },
+                            { token: 'type', foreground: '8be9fd' },
+                            { token: 'class', foreground: '50fa7b' },
+                            { token: 'function', foreground: '50fa7b' }
+                        ],
+                        colors: {
+                            'editor.background': '#282a36',
+                            'editor.foreground': '#f8f8f2',
+                            'editorCursor.foreground': '#f8f8f0',
+                            'editor.selectionBackground': '#44475a',
+                            'editor.lineHighlightBackground': '#44475a',
+                            'editorIndentGuide.background': '#6272a4',
+                            'editorIndentGuide.activeBackground': '#f8f8f2'
+                        }
+                    });
+
                     this._themesDefined = true;
                 }
             } catch (e) { logWarn('定义自定义主题失败:', e); }
@@ -397,7 +528,7 @@ class MonacoEditorManager {
 
 
 
-            let currentTheme = 'vs-dark'; // 默认深色主题
+            let currentTheme = 'dark'; // 默认深色主题
             let fontSize = 14; // 默认字体大小
             let fontFamily = 'Consolas'; // 默认字体
             let foldingEnabled = true; // 代码折叠
@@ -408,7 +539,7 @@ class MonacoEditorManager {
                 if (window.electronAPI && window.electronAPI.getAllSettings) {
                     const allSettings = await window.electronAPI.getAllSettings();
                     if (allSettings) {
-                        currentTheme = allSettings.theme === 'light' ? 'vs' : 'vs-dark';
+                        currentTheme = allSettings.theme || 'dark';
                         if (allSettings.fontSize) {
                             fontSize = parseInt(allSettings.fontSize);
                         }
@@ -437,12 +568,17 @@ class MonacoEditorManager {
                 logWarn('获取设置失败，使用默认设置:', error);
             }
             
+            let monacoTheme = 'oicpp-dark';
+            if (currentTheme === 'light') monacoTheme = 'oicpp-light';
+            else if (currentTheme === 'dark') monacoTheme = 'oicpp-dark';
+            else monacoTheme = `oicpp-${currentTheme}`;
+
             const editor = monaco.editor.create(monacoContainer, {
                 value: content,
                 language: this.getLanguageFromFileName(fileName),
-                theme: (currentTheme === 'vs' ? 'oicpp-light' : 'oicpp-dark'),
+                theme: monacoTheme,
                 automaticLayout: true,
-                glyphMargin: true, // 启用左侧符号边距用于断点
+                glyphMargin: true,
                     links: true,
                     occurrencesHighlight: true,
                     selectionHighlight: true,
@@ -464,7 +600,7 @@ class MonacoEditorManager {
                 letterSpacing: 0,
                 lineHeight: Math.round(fontSize * 1.4),
                 lineNumbers: 'on',
-                lineNumbersMinChars: 3, // 缩窄行号列宽，保证断点区可点
+                lineNumbersMinChars: 3,
                 minimap: { enabled: true },
                 scrollBeyondLastLine: true,
                 wordWrap: 'off',
@@ -522,10 +658,11 @@ class MonacoEditorManager {
                     stickyScroll: { enabled: stickyScrollEnabled }
             });
             try {
-                const enforcedTheme = (currentTheme === 'vs' ? 'oicpp-light' : 'oicpp-dark');
-                monaco.editor.setTheme(enforcedTheme);
-                if (enforcedTheme === 'oicpp-light') {
+                monaco.editor.setTheme(monacoTheme);
+                if (monacoTheme === 'oicpp-light' || monacoTheme === 'oicpp-github-light' || monacoTheme === 'oicpp-solarized-light') {
                     document.body.setAttribute('data-strong-indent-guides', '');
+                } else {
+                    document.body.removeAttribute('data-strong-indent-guides');
                 }
             } catch (_) {}
             
@@ -1583,7 +1720,11 @@ class MonacoEditorManager {
         });
         
         if (settings.theme !== undefined && typeof monaco !== 'undefined' && monaco.editor) {
-            const newTheme = settings.theme === 'light' ? 'oicpp-light' : 'oicpp-dark';
+            let newTheme = 'oicpp-dark';
+            if (settings.theme === 'light') newTheme = 'oicpp-light';
+            else if (settings.theme === 'dark') newTheme = 'oicpp-dark';
+            else newTheme = `oicpp-${settings.theme}`;
+            
             try { monaco.editor.setTheme(newTheme); } catch (e) { logWarn('切换主题失败:', e); }
         }
     }

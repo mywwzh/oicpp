@@ -18,11 +18,20 @@ class EditorSettings {
     }
 
     async init() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const themeFromUrl = urlParams.get('theme');
+        if (themeFromUrl) {
+            this.applyTheme(themeFromUrl);
+            this.settings.theme = themeFromUrl;
+        }
+
         await this.loadSettings();
 
         await this.loadSystemFonts();
 
         this.setupEventListeners();
+        
+        this.setupSidebarNavigation();
 
         this.setupThemeListener();
 
@@ -31,6 +40,26 @@ class EditorSettings {
         this.updateUI();
 
         logInfo('EditorSettings 初始化完成');
+    }
+
+    setupSidebarNavigation() {
+        const sidebarItems = document.querySelectorAll('.sidebar-item');
+        const sections = document.querySelectorAll('.settings-section');
+
+        sidebarItems.forEach(item => {
+            item.addEventListener('click', () => {
+                sidebarItems.forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+
+                sections.forEach(section => section.classList.remove('active'));
+                
+                const targetId = item.getAttribute('data-target');
+                const targetSection = document.getElementById(targetId);
+                if (targetSection) {
+                    targetSection.classList.add('active');
+                }
+            });
+        });
     }
 
     setupEventListeners() {
@@ -106,24 +135,6 @@ class EditorSettings {
 
         document.body.setAttribute('data-theme', theme);
         document.documentElement.setAttribute('data-theme', theme);
-
-        if (theme === 'light') {
-            document.documentElement.style.setProperty('--bg-color', '#ffffff');
-            document.documentElement.style.setProperty('--text-color', '#333333');
-            document.documentElement.style.setProperty('--border-color', '#e1e1e1');
-            document.documentElement.style.setProperty('--hover-bg', '#f5f5f5');
-            document.documentElement.style.setProperty('--input-bg', '#ffffff');
-            document.documentElement.style.setProperty('--button-bg', '#0066cc');
-            document.documentElement.style.setProperty('--button-hover', '#004499');
-        } else {
-            document.documentElement.style.setProperty('--bg-color', '#1e1e1e');
-            document.documentElement.style.setProperty('--text-color', '#cccccc');
-            document.documentElement.style.setProperty('--border-color', '#3c3c3c');
-            document.documentElement.style.setProperty('--hover-bg', '#2d2d30');
-            document.documentElement.style.setProperty('--input-bg', '#2d2d30');
-            document.documentElement.style.setProperty('--button-bg', '#0e639c');
-            document.documentElement.style.setProperty('--button-hover', '#1177bb');
-        }
     }
 
     setupRealTimePreview() {
