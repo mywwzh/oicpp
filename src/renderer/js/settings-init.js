@@ -43,18 +43,6 @@
             logInfo('应用主题到设置页面:', settings.theme);
             document.body.setAttribute('data-theme', settings.theme);
             document.documentElement.setAttribute('data-theme', settings.theme);
-
-            if (settings.theme === 'light') {
-                document.documentElement.style.setProperty('--bg-color', '#ffffff');
-                document.documentElement.style.setProperty('--text-color', '#333333');
-                document.documentElement.style.setProperty('--border-color', '#e1e1e1');
-                document.documentElement.style.setProperty('--hover-bg', '#f5f5f5');
-            } else {
-                document.documentElement.style.setProperty('--bg-color', '#1e1e1e');
-                document.documentElement.style.setProperty('--text-color', '#cccccc');
-                document.documentElement.style.setProperty('--border-color', '#3c3c3c');
-                document.documentElement.style.setProperty('--hover-bg', '#2d2d30');
-            }
         }
 
         if (settings.font || settings.fontSize) {

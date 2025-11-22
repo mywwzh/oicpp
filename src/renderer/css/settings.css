@@ -49,6 +49,126 @@ body[data-editor-theme="light"] {
     --settings-hover-bg: #f0f0f0;
 }
 
+body[data-theme="monokai"] {
+    background-color: #272822;
+    color: #f8f8f2;
+    
+    --settings-bg: #272822;
+    --settings-text: #f8f8f2;
+    --settings-text-secondary: #cfcfc2;
+    --settings-header-bg: #1e1f1c;
+    --settings-border: #49483e;
+    --settings-input-bg: #414339;
+    --settings-input-border: #75715e;
+    --settings-button-bg: #f92672;
+    --settings-button-hover: #ff4081;
+    --settings-warning-bg: #fd971f;
+    --settings-warning-hover: #e68a1c;
+    --settings-warning-border: #fd971f;
+    --settings-card-bg: #1e1f1c;
+    --settings-hover-bg: #3e3d32;
+}
+
+body[data-theme="github-light"] {
+    background-color: #ffffff;
+    color: #24292e;
+    
+    --settings-bg: #ffffff;
+    --settings-text: #24292e;
+    --settings-text-secondary: #586069;
+    --settings-header-bg: #f6f8fa;
+    --settings-border: #e1e4e8;
+    --settings-input-bg: #fafbfc;
+    --settings-input-border: #d1d5da;
+    --settings-button-bg: #2ea44f;
+    --settings-button-hover: #2c974b;
+    --settings-warning-bg: #dbab09;
+    --settings-warning-hover: #cb9e08;
+    --settings-warning-border: #dbab09;
+    --settings-card-bg: #f6f8fa;
+    --settings-hover-bg: #f1f8ff;
+}
+
+body[data-theme="github-dark"] {
+    background-color: #0d1117;
+    color: #c9d1d9;
+    
+    --settings-bg: #0d1117;
+    --settings-text: #c9d1d9;
+    --settings-text-secondary: #8b949e;
+    --settings-header-bg: #161b22;
+    --settings-border: #30363d;
+    --settings-input-bg: #0d1117;
+    --settings-input-border: #21262d;
+    --settings-button-bg: #238636;
+    --settings-button-hover: #2ea043;
+    --settings-warning-bg: #d29922;
+    --settings-warning-hover: #bb881f;
+    --settings-warning-border: #d29922;
+    --settings-card-bg: #161b22;
+    --settings-hover-bg: #1f2428;
+}
+
+body[data-theme="solarized-light"] {
+    background-color: #fdf6e3;
+    color: #657b83;
+    
+    --settings-bg: #fdf6e3;
+    --settings-text: #657b83;
+    --settings-text-secondary: #586e75;
+    --settings-header-bg: #eee8d5;
+    --settings-border: #d3d7cf;
+    --settings-input-bg: #fdf6e3;
+    --settings-input-border: #93a1a1;
+    --settings-button-bg: #268bd2;
+    --settings-button-hover: #2aa198;
+    --settings-warning-bg: #b58900;
+    --settings-warning-hover: #a57d00;
+    --settings-warning-border: #b58900;
+    --settings-card-bg: #eee8d5;
+    --settings-hover-bg: #eee8d5;
+}
+
+body[data-theme="solarized-dark"] {
+    background-color: #002b36;
+    color: #839496;
+    
+    --settings-bg: #002b36;
+    --settings-text: #839496;
+    --settings-text-secondary: #93a1a1;
+    --settings-header-bg: #073642;
+    --settings-border: #073642;
+    --settings-input-bg: #002b36;
+    --settings-input-border: #586e75;
+    --settings-button-bg: #268bd2;
+    --settings-button-hover: #2aa198;
+    --settings-warning-bg: #b58900;
+    --settings-warning-hover: #a57d00;
+    --settings-warning-border: #b58900;
+    --settings-card-bg: #073642;
+    --settings-hover-bg: #073642;
+}
+
+body[data-theme="dracula"] {
+    background-color: #282a36;
+    color: #f8f8f2;
+    
+    --settings-bg: #282a36;
+    --settings-text: #f8f8f2;
+    --settings-text-secondary: #bd93f9;
+    --settings-header-bg: #21222c;
+    --settings-border: #6272a4;
+    --settings-input-bg: #282a36;
+    --settings-input-border: #6272a4;
+    --settings-button-bg: #bd93f9;
+    --settings-button-hover: #d6acff;
+    --settings-warning-bg: #ffb86c;
+    --settings-warning-hover: #ffca85;
+    --settings-warning-border: #ffb86c;
+    --settings-card-bg: #44475a;
+    --settings-hover-bg: #44475a;
+}
+
 .settings-container {
     display: flex;
     flex-direction: column;
@@ -58,10 +178,77 @@ body[data-editor-theme="light"] {
     color: var(--settings-text);
 }
 
+.settings-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.settings-sidebar {
+    width: 200px;
+    background-color: var(--settings-header-bg);
+    border-right: 1px solid var(--settings-border);
+    display: flex;
+    flex-direction: column;
+    padding: 10px 0;
+}
+
+.sidebar-item {
+    padding: 10px 20px;
+    cursor: pointer;
+    color: var(--settings-text-secondary);
+    transition: all 0.2s;
+    font-size: 14px;
+    border-left: 3px solid transparent;
+}
+
+.sidebar-item:hover {
+    background-color: var(--settings-hover-bg);
+    color: var(--settings-text);
+}
+
+.sidebar-item.active {
+    background-color: var(--settings-hover-bg);
+    color: var(--settings-text);
+    border-left-color: var(--settings-button-bg);
+    font-weight: 500;
+}
+
+.settings-main {
+    flex: 1;
+    padding: 20px 30px;
+    overflow-y: auto;
+    background-color: var(--settings-bg);
+}
+
+.settings-section {
+    display: none;
+}
+
+.settings-section.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.section-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--settings-border);
+    color: var(--settings-text);
+}
+
 .settings-header {
     background-color: var(--settings-header-bg);
     padding: 16px 20px;
     border-bottom: 1px solid var(--settings-border);
+    display: none; /* Hide old header in new layout if needed, or keep it */
 }
 
 .settings-header h2 {

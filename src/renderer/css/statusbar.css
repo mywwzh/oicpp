@@ -2,12 +2,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background-color: #007acc;
+    background-color: var(--statusbar-bg, #007acc);
     color: #ffffff;
     height: 22px;
     padding: 0 12px;
     font-size: 12px;
-    border-top: 1px solid #464647;
+    border-top: 1px solid var(--border-color, #464647);
 }
 
 .status-left {
