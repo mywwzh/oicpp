@@ -68,6 +68,24 @@
                     </div>
 
                     <div class="setting-group">
+                        <label for="editor-opacity">窗口透明度</label>
+                        <div class="input-group" style="display: flex; align-items: center;">
+                            <input type="range" id="editor-opacity" min="0.2" max="1.0" step="0.01" value="1.0" style="flex: 1; margin-right: 10px;">
+                            <span id="editor-opacity-value" style="min-width: 40px;">100%</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="editor-bg-image">背景图片</label>
+                        <div class="input-group" style="display: flex;">
+                            <input type="text" id="editor-bg-image" class="form-control" placeholder="未设置背景图片" readonly style="flex: 1; margin-right: 10px; padding: 5px; border: 1px solid #444; background: #2d2d2d; color: #fff; border-radius: 4px;">
+                            <button id="browse-bg-image" class="btn btn-secondary" style="padding: 5px 10px; cursor: pointer;">浏览</button>
+                            <button id="clear-bg-image" class="btn btn-secondary" style="margin-left: 5px; padding: 5px 10px; cursor: pointer;">清除</button>
+                        </div>
+                        <div class="hint">设置自定义背景图片 (支持 PNG, JPG, GIF)</div>
+                    </div>
+
+                    <div class="setting-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="editor-font-ligatures" checked>
                             <span class="checkmark"></span>
