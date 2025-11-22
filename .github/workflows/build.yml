@@ -50,7 +50,9 @@ jobs:
           cache: 'npm'
 
       - name: Install NSIS
-        run: choco install nsis
+        run: |
+          choco install nsis
+          echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
 
       - name: Install dependencies
         run: npm install
