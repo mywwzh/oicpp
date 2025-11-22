@@ -418,7 +418,7 @@ class GDBDebugger extends EventEmitter {
             try { global.logInfo?.('[GDB>>]', trimmed); } catch (_) { }
 
             if (line.startsWith('~')) {
-                for (const [token, req] of this.pending.entries()) {
+                for (const req of this.pending.values()) {
                     if (req.captureOutput) {
                         req.captureOutput(line);
                         break; 
@@ -469,7 +469,9 @@ class GDBDebugger extends EventEmitter {
                     try { global.logInfo?.('[GDB] 状态: 运行'); } catch (_) { }
                     this.emit('running');
                 } else {
-                    try { global.logInfo?.('[GDB] 忽略意外的 *running 事件'); } catch (_) { }
+                    try { global.logInfo?.('[GDB] 警告: 收到意外的 *running 事件，已同步状态'); } catch (_) { }
+                    this._inferiorRunning = true;
+                    this.emit('running');
                 }
             } else if (line.startsWith('=thread-group-exited')) {
                 this.programExited = true;
