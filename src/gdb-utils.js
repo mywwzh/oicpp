@@ -236,7 +236,7 @@ function isLikelyName(str) {
 
 function parseGDBWatchValueRecursive(watchObj, value, start, length) {
     let position = start;
-    let token = new Token();
+    let token;
     let token_name = new Token(0,0,Token.Undefined);
     let token_value = new Token(0,0,Token.Undefined);
     let added_children = 0;
@@ -252,7 +252,6 @@ function parseGDBWatchValueRecursive(watchObj, value, start, length) {
         token_real_end = token.end;
         token.trim(value);
         
-        const str = token.extractString(value);
             
         switch (token.type) {
             case Token.String:
@@ -328,7 +327,6 @@ function parseGDBWatchValueRecursive(watchObj, value, start, length) {
                     
                     const newPos = parseGDBWatchValueRecursive(child, value, token_real_end, 0);
                     position = newPos;
-                    token_real_end = position;
                     
                     token_name = new Token(0,0,Token.Undefined);
                     token_value = new Token(0,0,Token.Undefined);
