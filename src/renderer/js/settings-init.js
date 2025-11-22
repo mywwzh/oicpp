@@ -76,6 +76,95 @@
             document.documentElement.style.setProperty('--editor-font-family', fontFamily);
             document.documentElement.style.setProperty('--editor-font-size', fontSize + 'px');
         }
+
+        if (settings.backgroundImage !== undefined) {
+            if (settings.backgroundImage) {
+                let bgPath = settings.backgroundImage.replace(/\\/g, '/');
+                if (!bgPath.startsWith('http') && !bgPath.startsWith('file://')) {
+                    if (bgPath.startsWith('/')) {
+                        bgPath = 'file://' + bgPath;
+                    } else {
+                        bgPath = 'file:///' + bgPath;
+                    }
+                }
+                
+                document.body.style.backgroundImage = `url('${bgPath}')`;
+                document.body.style.backgroundSize = 'cover';
+                document.body.style.backgroundRepeat = 'no-repeat';
+                document.body.style.backgroundPosition = 'center';
+                document.body.classList.add('has-custom-bg');
+
+                let styleEl = document.getElementById('custom-bg-style');
+                if (!styleEl) {
+                    styleEl = document.createElement('style');
+                    styleEl.id = 'custom-bg-style';
+                    document.head.appendChild(styleEl);
+                }
+                styleEl.textContent = `
+                    body.has-custom-bg .main-container,
+                    body.has-custom-bg .editor-container,
+                    body.has-custom-bg .monaco-editor-container,
+                    body.has-custom-bg .editor-group,
+                    body.has-custom-bg .editor-area,
+                    body.has-custom-bg .monaco-editor,
+                    body.has-custom-bg .monaco-editor-background,
+                    body.has-custom-bg .monaco-editor .margin {
+                        background-color: transparent !important;
+                    }
+                    
+                    body.has-custom-bg .main-container {
+                        background-color: transparent !important;
+                    }
+                    body.has-custom-bg[data-theme="light"] .main-container {
+                        background-color: transparent !important;
+                    }
+
+                    body.has-custom-bg .editor-container {
+                        background-color: rgba(30, 30, 30, 0.85) !important;
+                    }
+                    body.has-custom-bg[data-theme="light"] .editor-container {
+                        background-color: rgba(255, 255, 255, 0.85) !important;
+                    }
+                    
+                    body.has-custom-bg .sidebar {
+                        background-color: rgba(37, 37, 38, 0.4) !important;
+                    }
+                    body.has-custom-bg[data-theme="light"] .sidebar {
+                        background-color: rgba(243, 243, 243, 0.4) !important;
+                    }
+
+                    body.has-custom-bg .sidebar-icons,
+                    body.has-custom-bg .sidebar-panel,
+                    body.has-custom-bg .panel-content,
+                    body.has-custom-bg .panel-header,
+                    body.has-custom-bg .file-tree,
+                    body.has-custom-bg .sidebar-resizer {
+                        background-color: transparent !important;
+                        background: transparent !important;
+                    }
+                    
+                    body.has-custom-bg .samples-content,
+                    body.has-custom-bg .compare-content,
+                    body.has-custom-bg .debug-content {
+                        background-color: transparent !important;
+                        background: transparent !important;
+                    }
+                    
+                    body.has-custom-bg .titlebar {
+                        background-color: rgba(50, 50, 51, 0.8) !important;
+                    }
+                    body.has-custom-bg[data-theme="light"] .titlebar {
+                        background-color: rgba(243, 243, 243, 0.8) !important;
+                    }
+                `;
+            } else {
+                document.body.style.backgroundImage = '';
+                document.body.classList.remove('has-custom-bg');
+                const styleEl = document.getElementById('custom-bg-style');
+                if (styleEl) styleEl.remove();
+            }
+        }
+
         const event = new CustomEvent('settings-applied', {
             detail: settings
         });
