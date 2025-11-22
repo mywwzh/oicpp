@@ -8,28 +8,32 @@ class CompilerSettings {
         this.init();
     }
     
-    setupTabSwitching() {
-        const tabBtns = document.querySelectorAll('.tab-btn');
-        const tabContents = document.querySelectorAll('.tab-content');
-        
-        tabBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                const targetTab = btn.getAttribute('data-tab');
+    setupSidebarNavigation() {
+        const sidebarItems = document.querySelectorAll('.sidebar-item');
+        const sections = document.querySelectorAll('.settings-section');
+
+        sidebarItems.forEach(item => {
+            item.addEventListener('click', () => {
+                sidebarItems.forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+
+                sections.forEach(section => section.classList.remove('active'));
                 
-                tabBtns.forEach(b => b.classList.remove('active'));
-                tabContents.forEach(content => content.classList.remove('active'));
-                
-                btn.classList.add('active');
-                const targetContent = document.getElementById(targetTab + '-tab');
-                if (targetContent) {
-                    targetContent.classList.add('active');
+                const targetId = item.getAttribute('data-target');
+                const targetSection = document.getElementById(targetId);
+                if (targetSection) {
+                    targetSection.classList.add('active');
                 }
             });
         });
     }
 
     async init() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const themeFromUrl = urlParams.get('theme');
+        if (themeFromUrl) {
+            this.applyTheme(themeFromUrl);
+        }
         await this.loadSettings();
         this.setupEventListeners();
         this.setupThemeListener();
@@ -64,30 +68,12 @@ class CompilerSettings {
         logInfo('应用主题到编译器设置页面:', theme);
         document.body.setAttribute('data-theme', theme);
         document.documentElement.setAttribute('data-theme', theme);
-        
-        if (theme === 'light') {
-            document.documentElement.style.setProperty('--bg-color', '#ffffff');
-            document.documentElement.style.setProperty('--text-color', '#333333');
-            document.documentElement.style.setProperty('--border-color', '#e1e1e1');
-            document.documentElement.style.setProperty('--hover-bg', '#f5f5f5');
-            document.documentElement.style.setProperty('--input-bg', '#ffffff');
-            document.documentElement.style.setProperty('--button-bg', '#0066cc');
-            document.documentElement.style.setProperty('--button-hover', '#004499');
-        } else {
-            document.documentElement.style.setProperty('--bg-color', '#1e1e1e');
-            document.documentElement.style.setProperty('--text-color', '#cccccc');
-            document.documentElement.style.setProperty('--border-color', '#3c3c3c');
-            document.documentElement.style.setProperty('--hover-bg', '#2d2d30');
-            document.documentElement.style.setProperty('--input-bg', '#2d2d30');
-            document.documentElement.style.setProperty('--button-bg', '#0e639c');
-            document.documentElement.style.setProperty('--button-hover', '#1177bb');
-        }
     }
 
     setupEventListeners() {
         logInfo('[编译器设置] 开始设置事件监听器');
         
-        this.setupTabSwitching();
+        this.setupSidebarNavigation();
         
         const browseBtn = document.getElementById('browse-compiler');
         if (browseBtn) {

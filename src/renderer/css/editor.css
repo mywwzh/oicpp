@@ -60,8 +60,8 @@
 .tab-bar {
     display: flex;
     align-items: center;
-    background-color: var(--card-bg, #2d2d30);
-    border-bottom: 1px solid var(--border-color, #464647);
+    background-color: var(--tab-bg, var(--card-bg, #2d2d30));
+    border-bottom: 1px solid var(--tab-border-color, var(--border-color, #464647));
     min-height: 35px;
     overflow-x: auto;
 }
@@ -71,8 +71,8 @@
     align-items: center;
     padding: 0 12px;
     height: 35px;
-    background-color: var(--card-bg, #2d2d30);
-    border-right: 1px solid var(--border-color, #464647);
+    background-color: var(--tab-bg, var(--card-bg, #2d2d30));
+    border-right: 1px solid var(--tab-border-color, var(--border-color, #464647));
     cursor: pointer;
     transition: background-color 0.2s;
     min-width: 120px;
@@ -81,18 +81,19 @@
 }
 
 .tab:hover {
-    background-color: var(--hover-bg, #323233);
+    background-color: var(--tab-hover-bg, var(--hover-bg, #323233));
 }
 
 .tab.active {
-    background-color: var(--editor-bg, #1e1e1e);
-    border-bottom: 1px solid var(--editor-bg, #1e1e1e);
+    background-color: var(--tab-active-bg, var(--editor-bg, #1e1e1e));
+    border-bottom: 1px solid var(--tab-active-bg, var(--editor-bg, #1e1e1e));
+    box-shadow: var(--tab-active-shadow, inset 0 -1px 0 rgba(0, 0, 0, 0.45));
 }
 
 .tab-label {
     flex: 1;
     font-size: 13px;
-    color: var(--text-color, #cccccc);
+    color: var(--tab-fg, var(--text-color, #cccccc));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -100,7 +101,7 @@
 }
 
 .tab.active .tab-label {
-    color: #ffffff;
+    color: var(--tab-active-fg, #ffffff);
 }
 
 .tab-close {
@@ -110,22 +111,17 @@
     align-items: center;
     justify-content: center;
     font-size: 16px;
-    color: #858585;
+    color: var(--tab-close-color, #858585);
     cursor: pointer;
     border-radius: 3px;
     transition: background-color 0.2s, color 0.2s;
 }
 
 .tab-close:hover {
-    background-color: #464647;
-    color: #cccccc;
+    background-color: var(--tab-close-hover-bg, #464647);
+    color: var(--tab-close-hover-fg, #cccccc);
 }
 
-/* 移除新建标签页按钮样式 */
-
-/* 移除新建标签页按钮悬停样式 */
-
-/* 确保编辑器区域正确显示 */
 .editor-terminal-container {
     flex: 1;
     display: flex;
@@ -137,7 +133,7 @@
     flex: 1;
     position: relative;
     overflow: hidden;
-    background-color: #1e1e1e;
+    background-color: var(--editor-bg, #1e1e1e);
 }
 
 .split-drop-overlay {
@@ -151,7 +147,7 @@
     display: none;
     align-items: center;
     justify-content: center;
-    color: #0e639c;
+    color: var(--accent-color, #0e639c);
     font-size: 14px;
     letter-spacing: 0.5px;
     z-index: 10;
@@ -174,19 +170,16 @@
     background-color: inherit;
 }
 
-/* 自研编辑器相关样式已删除 */
-
-/* Monaco Editor 容器样式 */
 .monaco-editor-container {
     width: 100% !important;
     height: 100% !important;
-    background-color: #1e1e1e;
+    background-color: var(--editor-bg, #1e1e1e);
 }
 
 body.theme-light .monaco-editor-container,
 body[data-theme="light"] .monaco-editor-container,
 body[data-editor-theme="light"] .monaco-editor-container {
-    background-color: #ffffff;
+    background-color: var(--editor-bg, #ffffff);
 }
 
 .pdf-viewer-container {
@@ -212,10 +205,9 @@ body[data-editor-theme="light"] .monaco-editor-container {
 body.theme-light .pdf-viewer-container,
 body[data-theme="light"] .pdf-viewer-container,
 body[data-editor-theme="light"] .pdf-viewer-container {
-    background-color: #f2f2f2;
+    background-color: var(--bg-color, #f2f2f2);
 }
 
-/* 编辑器包装器 */
 .editor-wrapper {
     width: 100%;
     height: 100%;
@@ -233,11 +225,6 @@ body[data-editor-theme="light"] .pdf-viewer-container {
     align-items: flex-start;
 }
 
-/* 自研编辑器样式已删除 */
-
-/* 自研编辑器placeholder和focus样式已删除 */
-
-/* 代码高亮样式 */
 .code-highlight {
     position: absolute;
     top: 0;
@@ -252,7 +239,6 @@ body[data-editor-theme="light"] .pdf-viewer-container {
     white-space: pre;
     overflow: hidden;
     tab-size: 4;
-    /* 确保一致的文本渲染 */
     text-rendering: optimizeSpeed;
     font-kerning: none;
     -webkit-font-smoothing: subpixel-antialiased;
@@ -260,7 +246,6 @@ body[data-editor-theme="light"] .pdf-viewer-container {
     vertical-align: top;
 }
 
-/* 语法高亮颜色 */
 .keyword {
     color: #569cd6;
 }
@@ -293,9 +278,8 @@ body[data-editor-theme="light"] .pdf-viewer-container {
     color: #ffd700;
 }
 
-/* 当前行高亮 */
 .current-line {
-    background-color: #2a2a2a;
+    background-color: var(--editor-line-highlight, #2a2a2a);
     position: relative;
 }
 
@@ -310,7 +294,6 @@ body[data-editor-theme="light"] .pdf-viewer-container {
     pointer-events: none;
 }
 
-/* 搜索高亮 */
 .search-match {
     background-color: #613a00;
     border: 1px solid #f99b00;
@@ -321,22 +304,10 @@ body[data-editor-theme="light"] .pdf-viewer-container {
     color: #000000;
 }
 
-/* 错误和警告高亮 - 已禁用 */
-/* .error-highlight {
-    border-bottom: 2px wavy #e51400;
-}
-
-.warning-highlight {
-    border-bottom: 2px wavy #ffcc00;
-} */
-
-
-
-/* 浅色主题的当前行高亮 */
 body.theme-light .current-line,
 body[data-theme="light"] .current-line,
 body[data-editor-theme="light"] .current-line {
-    background-color: #f0f0f0;
+    background-color: var(--editor-line-highlight, #f0f0f0);
 }
 
 body.theme-light .current-line::before,
@@ -345,7 +316,6 @@ body[data-editor-theme="light"] .current-line::before {
     background-color: rgba(0, 0, 0, 0.04);
 }
 
-/* 浅色主题的搜索高亮 */
 body.theme-light .search-match,
 body[data-theme="light"] .search-match,
 body[data-editor-theme="light"] .search-match {
@@ -360,7 +330,6 @@ body[data-editor-theme="light"] .search-current {
     color: #ffffff;
 }
 
-/* 浅色主题的语法高亮 */
 body.theme-light .keyword,
 body[data-theme="light"] .keyword,
 body[data-editor-theme="light"] .keyword {
@@ -409,9 +378,6 @@ body[data-editor-theme="light"] .bracket {
     color: #0431fa;
 }
 
-/* 浅色主题的选择文本 */
-
-/* 响应式设计 */
 @media (max-width: 800px) {
     .tab {
         min-width: 100px;
@@ -422,13 +388,12 @@ body[data-editor-theme="light"] .bracket {
     }
 }
 
-/* 欢迎页面样式 */
 .welcome-page {
     display: flex;
     flex-direction: column;
     height: 100%;
-    background-color: #1e1e1e;
-    color: #cccccc;
+    background-color: var(--editor-bg, #1e1e1e);
+    color: var(--text-color, #cccccc);
     padding: 40px;
     overflow-y: auto;
 }
@@ -439,7 +404,7 @@ body[data-editor-theme="light"] .bracket {
 }
 
 .welcome-logo {
-    color: #0e639c;
+    color: var(--accent-color, #0e639c);
     margin-bottom: 20px;
 }
 
@@ -447,7 +412,7 @@ body[data-editor-theme="light"] .bracket {
     font-size: 32px;
     font-weight: 300;
     margin: 0 0 8px 0;
-    color: #ffffff;
+    color: var(--text-color, #ffffff);
 }
 
 .welcome-subtitle {
@@ -464,16 +429,16 @@ body[data-editor-theme="light"] .bracket {
 }
 
 .welcome-section {
-    background-color: #252526;
+    background-color: var(--card-bg, #252526);
     padding: 24px;
     border-radius: 8px;
-    border: 1px solid #383838;
+    border: 1px solid var(--border-color, #383838);
 }
 
 .welcome-section h2 {
     font-size: 18px;
     margin: 0 0 16px 0;
-    color: #ffffff;
+    color: var(--text-color, #ffffff);
     font-weight: 600;
 }
 
@@ -488,17 +453,17 @@ body[data-editor-theme="light"] .bracket {
     align-items: center;
     padding: 12px 16px;
     background-color: transparent;
-    border: 1px solid #464647;
+    border: 1px solid var(--border-color, #464647);
     border-radius: 4px;
-    color: #cccccc;
+    color: var(--text-color, #cccccc);
     cursor: pointer;
     transition: all 0.2s;
     text-align: left;
 }
 
 .welcome-button:hover {
-    background-color: #2a2d2e;
-    border-color: #0e639c;
+    background-color: var(--hover-bg, #2a2d2e);
+    border-color: var(--accent-color, #0e639c);
 }
 
 .button-icon {
@@ -516,7 +481,7 @@ body[data-editor-theme="light"] .bracket {
 
 .empty-recent {
     text-align: center;
-    color: #999999;
+    color: var(--text-muted, #999999);
     font-style: italic;
     margin-top: 20px;
 }
@@ -525,7 +490,7 @@ body[data-editor-theme="light"] .bracket {
     text-align: center;
     margin-top: 40px;
     padding-top: 20px;
-    border-top: 1px solid #383838;
+    border-top: 1px solid var(--border-color, #383838);
 }
 
 .version-info {
@@ -533,52 +498,28 @@ body[data-editor-theme="light"] .bracket {
     justify-content: center;
     gap: 20px;
     font-size: 12px;
-    color: #999999;
+    color: var(--text-muted, #999999);
 }
 
-/* 浅色主题支持 */
 body.theme-light .editor-container,
 body[data-theme="light"] .editor-container,
 body[data-editor-theme="light"] .editor-container {
-    background-color: #ffffff;
-    color: #333333;
+    background-color: var(--editor-bg, #ffffff);
+    color: var(--text-color, #333333);
 }
 
-body.theme-light .tab-bar,
-body[data-theme="light"] .tab-bar,
-body[data-editor-theme="light"] .tab-bar {
-    background-color: #f3f3f3;
-    border-bottom-color: #e1e1e1;
-}
-
-body.theme-light .tab,
-body[data-theme="light"] .tab,
-body[data-editor-theme="light"] .tab {
-    background-color: #f3f3f3;
-    border-right-color: #e1e1e1;
-    color: #333333;
-}
-
-body.theme-light .tab:hover,
-body[data-theme="light"] .tab:hover,
-body[data-editor-theme="light"] .tab:hover {
-    background-color: #e0e0e0;
-}
-
-/* 标签页拖拽样式 */
 .tab[draggable="true"] {
-    cursor: grab; /* 改为可拖拽指针 */
+    cursor: grab; 
 }
 
 .tab[draggable="true"]:active {
-    cursor: grabbing; /* 拖拽时的指针 */
+    cursor: grabbing;
 }
 
 .tab.dragging {
     opacity: 0.5;
     position: relative;
-    z-index: 1000; /* 确保拖拽元素在最上层 */
-    /* 移除旋转效果，保持标签页原始外观 */
+    z-index: 1000;
 }
 
 .tab-placeholder {
@@ -590,47 +531,14 @@ body[data-editor-theme="light"] .tab:hover {
     box-sizing: border-box;
     display: inline-block;
     transition: all 0.15s ease-out;
-    pointer-events: none; /* 确保占位符不会干扰拖拽事件 */
+    pointer-events: none; 
 }
 
-/* 浅色主题下的占位符样式 */
 body.theme-light .tab-placeholder,
 body[data-theme="light"] .tab-placeholder,
 body[data-editor-theme="light"] .tab-placeholder {
     background-color: rgba(14, 99, 156, 0.1);
     border-color: #007acc;
-}
-
-body.theme-light .tab.active,
-body[data-theme="light"] .tab.active,
-body[data-editor-theme="light"] .tab.active {
-    background-color: #ffffff;
-    border-bottom-color: #ffffff;
-}
-
-body.theme-light .tab-label,
-body[data-theme="light"] .tab-label,
-body[data-editor-theme="light"] .tab-label {
-    color: #333333;
-}
-
-body.theme-light .tab.active .tab-label,
-body[data-theme="light"] .tab.active .tab-label,
-body[data-editor-theme="light"] .tab.active .tab-label {
-    color: #000000;
-}
-
-body.theme-light .tab-close,
-body[data-theme="light"] .tab-close,
-body[data-editor-theme="light"] .tab-close {
-    color: #6a6a6a;
-}
-
-body.theme-light .tab-close:hover,
-body[data-theme="light"] .tab-close:hover,
-body[data-editor-theme="light"] .tab-close:hover {
-    background-color: #cccccc;
-    color: #333333;
 }
 
 body.theme-light .tab-add,
@@ -646,53 +554,10 @@ body[data-editor-theme="light"] .tab-add:hover {
     color: #333333;
 }
 
-body.theme-light .editor-area,
-body[data-theme="light"] .editor-area,
-body[data-editor-theme="light"] .editor-area {
-    background-color: #ffffff;
-    color: #333333;
+body.theme-light .tab.active,
+body[data-theme="light"] .tab.active,
+body[data-editor-theme="light"] .tab.active {
+    background-color: var(--tab-active-bg, #ffffff) !important;
+    border-bottom-color: var(--tab-active-bg, #ffffff) !important;
+    color: var(--tab-active-fg, #333333) !important;
 }
-
-body.theme-light .welcome-page,
-body[data-theme="light"] .welcome-page,
-body[data-editor-theme="light"] .welcome-page {
-    background-color: #ffffff;
-    color: #333333;
-}
-
-body.theme-light .welcome-header h1,
-body[data-theme="light"] .welcome-header h1,
-body[data-editor-theme="light"] .welcome-header h1 {
-    color: #000000;
-}
-
-body.theme-light .welcome-button,
-body[data-theme="light"] .welcome-button,
-body[data-editor-theme="light"] .welcome-button {
-    background-color: #0066cc;
-    color: #ffffff;
-    border-color: #0066cc;
-}
-
-body.theme-light .welcome-button:hover,
-body[data-theme="light"] .welcome-button:hover,
-body[data-editor-theme="light"] .welcome-button:hover {
-    background-color: #004499;
-    border-color: #004499;
-}
-
-body.theme-light .welcome-footer,
-body[data-theme="light"] .welcome-footer,
-body[data-editor-theme="light"] .welcome-footer {
-    border-top-color: #e1e1e1;
-}
-
-body.theme-light .version-info,
-body[data-theme="light"] .version-info,
-body[data-editor-theme="light"] .version-info {
-    color: #6a6a6a;
-}
-
-
-
-/* 自研编辑器样式已删除 */

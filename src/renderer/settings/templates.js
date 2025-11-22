@@ -12,11 +12,37 @@ class TemplatesSettings {
 
     async init() {
         logInfo('初始化模板设置页面');
+        const urlParams = new URLSearchParams(window.location.search);
+        const themeFromUrl = urlParams.get('theme');
+        if (themeFromUrl) {
+            this.applyTheme(themeFromUrl);
+        }
         await this.loadSettings();
         this.setupEventListeners();
+        this.setupSidebarNavigation();
         this.setupThemeListener();
         await this.applyCurrentTheme();
         this.updateUI();
+    }
+
+    setupSidebarNavigation() {
+        const sidebarItems = document.querySelectorAll('.sidebar-item');
+        const sections = document.querySelectorAll('.settings-section');
+
+        sidebarItems.forEach(item => {
+            item.addEventListener('click', () => {
+                sidebarItems.forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+
+                sections.forEach(section => section.classList.remove('active'));
+                
+                const targetId = item.getAttribute('data-target');
+                const targetSection = document.getElementById(targetId);
+                if (targetSection) {
+                    targetSection.classList.add('active');
+                }
+            });
+        });
     }
 
     setupThemeListener() {
@@ -46,24 +72,6 @@ class TemplatesSettings {
         
         document.body.setAttribute('data-theme', theme);
         document.documentElement.setAttribute('data-theme', theme);
-        
-        if (theme === 'light') {
-            document.documentElement.style.setProperty('--bg-color', '#ffffff');
-            document.documentElement.style.setProperty('--text-color', '#333333');
-            document.documentElement.style.setProperty('--border-color', '#e1e1e1');
-            document.documentElement.style.setProperty('--hover-bg', '#f5f5f5');
-            document.documentElement.style.setProperty('--input-bg', '#ffffff');
-            document.documentElement.style.setProperty('--button-bg', '#0066cc');
-            document.documentElement.style.setProperty('--button-hover', '#004499');
-        } else {
-            document.documentElement.style.setProperty('--bg-color', '#1e1e1e');
-            document.documentElement.style.setProperty('--text-color', '#cccccc');
-            document.documentElement.style.setProperty('--border-color', '#3c3c3c');
-            document.documentElement.style.setProperty('--hover-bg', '#2d2d30');
-            document.documentElement.style.setProperty('--input-bg', '#2d2d30');
-            document.documentElement.style.setProperty('--button-bg', '#0e639c');
-            document.documentElement.style.setProperty('--button-hover', '#1177bb');
-        }
     }
 
     setupEventListeners() {
@@ -314,7 +322,7 @@ class TemplatesSettings {
             const k = this.escapeHtml(s.keyword || '');
             const d = this.escapeHtml(s.description || '');
             return `
-                <div class="snippet-row" data-index="${i}" style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--border-color);">
+                <div class="snippet-row" data-index="${i}" style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--settings-border);">
                     <div style="flex:0 0 160px; font-weight:600;">${k}</div>
                     <div style="flex:1; opacity:.85;">${d}</div>
                     <button class="preview-btn" data-action="edit" style="background:#6c757d;">编辑</button>
