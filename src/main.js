@@ -249,6 +249,8 @@ function getDefaultSettings() {
         lastOpen: '', // 最后打开的工作区路径
         recentFiles: [], // 最近使用的文件列表
         codeSnippets: [],
+        windowOpacity: 1.0,
+        backgroundImage: '',
         cppTemplate
     };
 }
@@ -493,6 +495,7 @@ function createWindow() {
         icon: getUserIconPath(),
         frame: false, // 隐藏系统标题栏
         titleBarStyle: 'hidden',
+        opacity: settings.windowOpacity || 1.0,
         show: false
     });
 
@@ -859,6 +862,13 @@ function setupIPC() {
     ipcMain.handle('update-settings', async (event, newSettings) => {
         try {
             settings = { ...settings, ...newSettings };
+            
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                if (typeof newSettings.windowOpacity === 'number') {
+                    mainWindow.setOpacity(newSettings.windowOpacity);
+                }
+            }
+
             await saveSettings(); // 确保保存完成
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('settings-applied', settings);
@@ -4136,7 +4146,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate'];
+            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage'];
 
             for (const key of validKeys) {
                 if (savedSettings[key] !== undefined) {
@@ -4174,7 +4184,7 @@ function loadSettings() {
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'compilerArgs', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'cppTemplate', 'codeSnippets'];
+    const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -4231,9 +4241,9 @@ function updateSettings(settingsType, newSettings) {
     try {
 
         const validKeys = [
-            'compilerPath', 'compilerArgs', 'font', 'fontSize', 'theme',
+            'compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme',
             'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'autoSave', 'autoSaveInterval',
-            'codeSnippets'
+            'codeSnippets', 'windowOpacity', 'backgroundImage'
         ];
 
         for (const key in newSettings) {
@@ -4319,7 +4329,7 @@ function importSettings(filePath) {
             throw new Error('无效的设置文件格式');
         }
 
-        const validKeys = ['compilerPath', 'compilerArgs', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'cppTemplate'];
+        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage'];
         const defaultSettings = getDefaultSettings();
 
         for (const key of validKeys) {
