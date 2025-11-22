@@ -22,7 +22,9 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm install
+          npm install --os=linux --cpu=x64 sharp
 
       - name: Build Linux packages
         run: npm run dist:linux
