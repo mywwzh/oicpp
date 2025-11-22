@@ -200,7 +200,7 @@ class CompilerManager {
                 return;
             }
 
-            const filePath = currentEditor.filePath || (currentEditor.getFilePath && currentEditor.getFilePath());
+            let filePath = currentEditor.filePath || (currentEditor.getFilePath && currentEditor.getFilePath());
             const content = currentEditor.getValue();
 
             logInfo('[编译管理器] 获取到的文件路径:', filePath);
@@ -210,6 +210,13 @@ class CompilerManager {
                 logInfo('[编译管理器] 文件路径无效，提示保存文件');
                 this.showMessage('请先保存文件', 'error');
                 return;
+            }
+
+            if (filePath && typeof filePath === 'string') {
+                 const isWin = (typeof window !== 'undefined' && window.process && window.process.platform === 'win32');
+                 if (isWin) {
+                     filePath = filePath.replace(/\//g, '\\');
+                 }
             }
 
             this.isCompiling = true;
@@ -488,13 +495,23 @@ class CompilerManager {
 
     getExecutablePath(sourceFile) {
         const isWin = (typeof window !== 'undefined' && window.process && window.process.platform === 'win32');
-        const lastSlash = Math.max(sourceFile.lastIndexOf('/'), sourceFile.lastIndexOf('\\'));
-        const dir = lastSlash >= 0 ? sourceFile.substring(0, lastSlash) : '';
-        const fileName = lastSlash >= 0 ? sourceFile.substring(lastSlash + 1) : sourceFile;
+        
+        let normalizedPath = sourceFile;
+        if (isWin) {
+            normalizedPath = sourceFile.replace(/\//g, '\\');
+        } else {
+            normalizedPath = sourceFile.replace(/\\/g, '/');
+        }
+
+        const sep = isWin ? '\\' : '/';
+        const lastSlash = normalizedPath.lastIndexOf(sep);
+        const dir = lastSlash >= 0 ? normalizedPath.substring(0, lastSlash) : '';
+        const fileName = lastSlash >= 0 ? normalizedPath.substring(lastSlash + 1) : normalizedPath;
+        
         const dot = fileName.lastIndexOf('.');
         const nameWithoutExt = dot >= 0 ? fileName.substring(0, dot) : fileName;
-        const sep = sourceFile.includes('/') ? '/' : (sourceFile.includes('\\') ? '\\' : (isWin ? '\\' : '/'));
-        const base = (dir ? (dir + (dir.endsWith('/') || dir.endsWith('\\') ? '' : sep)) : '') + nameWithoutExt;
+        
+        const base = (dir ? (dir + (dir.endsWith(sep) ? '' : sep)) : '') + nameWithoutExt;
         return isWin ? base + '.exe' : base;
     }
 
