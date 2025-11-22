@@ -1,0 +1,99 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Linux packages
+        run: npm run dist:linux
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            dist/*.deb
+            dist/*.rpm
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install NSIS
+        run: choco install nsis
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Unpacked App
+        run: npm run pack
+
+      - name: Prepare and Build Installer
+        shell: powershell
+        run: |
+          $version = "${{ github.ref_name }}".Substring(1)
+          Write-Host "Building version: $version"
+          $nsiPath = "installer.nsi"
+          $content = Get-Content $nsiPath -Raw
+
+          $content = $content -replace '!define PRODUCT_VERSION ".*"', "!define PRODUCT_VERSION ""$version"""
+          $content = $content -replace 'OutFile "OICPP-.*-Setup.exe"', "OutFile ""OICPP-$version-Setup.exe"""
+          $content | Set-Content $nsiPath
+
+          Copy-Item "ConsolePauser.exe" -Destination "dist\win-unpacked\"
+          Copy-Item "oicpp.ico" -Destination "dist\win-unpacked\"
+          
+          makensis installer.nsi
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: OICPP-*-Setup.exe
+
+  release:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-artifacts'
+          merge-multiple: true
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
