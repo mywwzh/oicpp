@@ -27,7 +27,9 @@ jobs:
           npm install --os=linux --cpu=x64 sharp
 
       - name: Build Linux packages
-        run: npm run dist:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build
 
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
@@ -58,7 +60,7 @@ jobs:
         run: npm install
 
       - name: Build Unpacked App
-        run: npm run pack
+        run: npm run build
 
       - name: Prepare and Build Installer
         shell: powershell
