@@ -39,6 +39,20 @@ jobs:
             dist/*.deb
             dist/*.rpm
 
+      - name: Upload Linux packages to remote
+        if: ${{ secrets.UPLOAD_API && secrets.UPLOAD_TOKEN }}
+        run: |
+          VERSION=${{ github.ref_name }}
+          VERSION=${VERSION#v}
+          API="${{ secrets.UPLOAD_API }}"
+          TOKEN="${{ secrets.UPLOAD_TOKEN }}"
+          echo "Uploading packages for version $VERSION to $API"
+          for f in dist/*.deb dist/*.rpm; do
+            [ -f "$f" ] || continue
+            echo "Uploading $f"
+            curl -sS -X POST -H "Authorization: Bearer $TOKEN" -F "file=@$f" -F "version=$VERSION" -F "platform=linux" "$API"
+          done
+
   build-windows:
     runs-on: windows-latest
     steps:
@@ -86,6 +100,19 @@ jobs:
         with:
           name: windows-artifacts
           path: OICPP-*-Setup.exe
+
+      - name: Upload Windows installer to remote
+        if: ${{ secrets.UPLOAD_API && secrets.UPLOAD_TOKEN }}
+        shell: powershell
+        run: |
+          $version = "${{ github.ref_name }}".Substring(1)
+          Write-Host "Looking for installer for version: $version"
+          $file = Get-ChildItem -Path . -Filter "OICPP-*-Setup.exe" -Recurse | Select-Object -First 1
+          if (-not $file) { Write-Host "No installer found, skipping upload"; exit 0 }
+          $api = "${{ secrets.UPLOAD_API }}"
+          $token = "${{ secrets.UPLOAD_TOKEN }}"
+          Write-Host "Uploading $($file.FullName) to $api"
+          curl -s -X POST -H "Authorization: Bearer $token" -F "file=@$($file.FullName)" -F "version=$version" -F "platform=windows" $api
 
   release:
     needs: [build-linux, build-windows]
