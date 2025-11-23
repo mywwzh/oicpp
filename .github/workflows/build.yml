@@ -40,17 +40,17 @@ jobs:
             dist/*.rpm
 
       - name: Upload Linux packages to remote
-        if: ${{ secrets.UPLOAD_API && secrets.UPLOAD_TOKEN }}
+        env:
+          UPLOAD_API: ${{ secrets.UPLOAD_API }}
+          UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
         run: |
           VERSION=${{ github.ref_name }}
           VERSION=${VERSION#v}
-          API="${{ secrets.UPLOAD_API }}"
-          TOKEN="${{ secrets.UPLOAD_TOKEN }}"
-          echo "Uploading packages for version $VERSION to $API"
+          echo "Uploading packages for version $VERSION to $UPLOAD_API"
           for f in dist/*.deb dist/*.rpm; do
             [ -f "$f" ] || continue
             echo "Uploading $f"
-            curl -sS -X POST -H "Authorization: Bearer $TOKEN" -F "file=@$f" -F "version=$VERSION" -F "platform=linux" "$API"
+            curl -sS -X POST -H "Authorization: Bearer $UPLOAD_TOKEN" -F "file=@$f" -F "version=$VERSION" -F "platform=linux" "$UPLOAD_API"
           done
 
   build-windows:
@@ -102,17 +102,18 @@ jobs:
           path: OICPP-*-Setup.exe
 
       - name: Upload Windows installer to remote
-        if: ${{ secrets.UPLOAD_API && secrets.UPLOAD_TOKEN }}
-        shell: powershell
+        env:
+          UPLOAD_API: ${{ secrets.UPLOAD_API }}
+          UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+        shell: bash
         run: |
-          $version = "${{ github.ref_name }}".Substring(1)
-          Write-Host "Looking for installer for version: $version"
-          $file = Get-ChildItem -Path . -Filter "OICPP-*-Setup.exe" -Recurse | Select-Object -First 1
-          if (-not $file) { Write-Host "No installer found, skipping upload"; exit 0 }
-          $api = "${{ secrets.UPLOAD_API }}"
-          $token = "${{ secrets.UPLOAD_TOKEN }}"
-          Write-Host "Uploading $($file.FullName) to $api"
-          curl -s -X POST -H "Authorization: Bearer $token" -F "file=@$($file.FullName)" -F "version=$version" -F "platform=windows" $api
+          VERSION=${{ github.ref_name }}
+          VERSION=${VERSION#v}
+          echo "Looking for installer for version: $VERSION"
+          FILE=$(ls OICPP-*-Setup.exe | head -n 1)
+          if [ -z "$FILE" ]; then echo "No installer found, skipping upload"; exit 0; fi
+          echo "Uploading $FILE to $UPLOAD_API"
+          curl -s -X POST -H "Authorization: Bearer $UPLOAD_TOKEN" -F "file=@$FILE" -F "version=$VERSION" -F "platform=windows" "$UPLOAD_API"
 
   release:
     needs: [build-linux, build-windows]
