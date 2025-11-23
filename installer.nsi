@@ -14,6 +14,8 @@
 !include "nsDialogs.nsh"
 !include "WinMessages.nsh"
 
+Unicode true
+
 Var CPP_ASSOC_CHECKBOX
 
 SetCompressor lzma
