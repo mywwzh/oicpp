@@ -480,6 +480,7 @@ function requestSaveAllAndClose(context = '关闭窗口') {
 }
 
 function createWindow() {
+    loadSettings();
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
@@ -597,7 +598,6 @@ function createWindow() {
             throw err;
         }
     });
-    loadSettings();
 
     startSampleTesterServer();
 }
