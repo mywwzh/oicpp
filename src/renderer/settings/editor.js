@@ -490,12 +490,15 @@ class EditorSettings {
                 logInfo('编辑器设置保存成功');
 
                 const themeChanged = newSettings.theme && newSettings.theme !== this.settings.theme;
+                const bgImageChanged = newSettings.backgroundImage !== undefined && newSettings.backgroundImage !== this.settings.backgroundImage;
                 logInfo('主题变化检测:', { oldTheme: this.settings.theme, newTheme: newSettings.theme, changed: themeChanged });
+                logInfo('背景图片变化检测:', { oldBgImage: this.settings.backgroundImage, newBgImage: newSettings.backgroundImage, changed: bgImageChanged });
 
                 Object.assign(this.settings, newSettings);
 
-                if (themeChanged) {
-                    this.showMessage('主题已更改，正在重启编辑器...', 'info');
+                if (themeChanged || bgImageChanged) {
+                    const msg = themeChanged ? '主题已更改，正在重启编辑器...' : '背景图片已更改，正在重启编辑器...';
+                    this.showMessage(msg, 'info');
                     setTimeout(() => {
                         if (window.electronAPI && window.electronAPI.relaunchApp) {
                             window.electronAPI.relaunchApp();
