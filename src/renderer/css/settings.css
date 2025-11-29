@@ -413,20 +413,29 @@ textarea:focus {
     cursor: pointer;
     font-weight: normal;
     margin-bottom: 0;
+    position: relative;
 }
 
 .checkbox-label input[type="checkbox"] {
-    display: none;
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
 }
 
 .checkmark {
     width: 18px;
     height: 18px;
+    min-width: 18px;
     background-color: var(--settings-input-bg);
     border: 1px solid var(--settings-input-border);
     border-radius: 3px;
-    margin-right: 8px;
+    margin-right: 10px;
     position: relative;
+    flex-shrink: 0;
+    display: inline-block;
+    overflow: hidden;
     transition: all 0.2s;
 }
 
@@ -439,8 +448,8 @@ textarea:focus {
     content: '';
     position: absolute;
     left: 5px;
-    top: 2px;
-    width: 6px;
+    top: 1px;
+    width: 5px;
     height: 10px;
     border: solid white;
     border-width: 0 2px 2px 0;
