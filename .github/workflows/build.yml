@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name to release (e.g., v1.0.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -15,6 +20,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -45,7 +59,7 @@ jobs:
           UPLOAD_API: ${{ secrets.UPLOAD_API }}
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
         run: |
-          VERSION=${{ github.ref_name }}
+          VERSION=$VERSION
           VERSION=${VERSION#v}
           echo "Uploading packages for version $VERSION to $UPLOAD_API"
           for f in dist/*.deb dist/*.rpm; do
@@ -59,6 +73,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set version
+        shell: powershell
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            $version = "${{ github.event.inputs.tag }}"
+          } else {
+            $version = "${{ github.ref_name }}"
+          }
+          $version = $version.Substring(1)
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -82,7 +107,7 @@ jobs:
       - name: Prepare and Build Installer
         shell: powershell
         run: |
-          $version = "${{ github.ref_name }}".Substring(1)
+          $version = $env:VERSION
           Write-Host "Building version: $version"
           $nsiPath = "installer.nsi"
           $content = Get-Content $nsiPath -Raw
@@ -108,8 +133,7 @@ jobs:
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
         shell: bash
         run: |
-          VERSION=${{ github.ref_name }}
-          VERSION=${VERSION#v}
+          VERSION=$VERSION
           echo "Looking for installer for version: $VERSION"
           FILE=$(ls OICPP-*-Setup.exe | head -n 1)
           if [ -z "$FILE" ]; then echo "No installer found, skipping upload"; exit 0; fi
@@ -119,7 +143,7 @@ jobs:
   release:
     needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Download Artifacts
         uses: actions/download-artifact@v4
@@ -131,6 +155,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
           files: artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
