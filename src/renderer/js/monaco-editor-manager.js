@@ -669,6 +669,27 @@ class MonacoEditorManager {
             this.registerEnhancedCompletionProvider(editor);
 
             try {
+                editor.addAction({
+                    id: 'markdown-preview-split',
+                    label: '打开 Markdown 预览',
+                    keybindings: [
+                        monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyV
+                    ],
+                    precondition: null,
+                    keybindingContext: null,
+                    contextMenuGroupId: 'navigation',
+                    contextMenuOrder: 1.5,
+                    run: function(ed) {
+                        if (window.tabManager) {
+                            window.tabManager.toggleMarkdownSplitView();
+                        }
+                    }
+                });
+            } catch (e) {
+                logWarn('Failed to register markdown action:', e);
+            }
+
+            try {
                 const formatKeybinding = monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.KeyS;
                 editor.addCommand(formatKeybinding, async () => {
                     try {
@@ -911,8 +932,6 @@ class MonacoEditorManager {
             
             this.addWheelZoomListener(editor, monacoContainer);
             
-            // 当编辑器重新获得焦点时，主动恢复为当前编辑器，
-            // 以防在 PDF 视图激活后导致 window.editorManager.currentEditor 为空而影响依赖功能。
             try {
                 if (editor && editor.onDidFocusEditorWidget) {
                     editor.onDidFocusEditorWidget(() => {
@@ -920,10 +939,10 @@ class MonacoEditorManager {
                             this.currentEditor = editor;
                             if (editor.filePath) this.currentFilePath = editor.filePath;
                             if (editor.fileName) this.currentFileName = editor.fileName;
-                        } catch (_) { /* 忽略 */ }
+                        } catch (_) {}
                     });
                 }
-            } catch (_) { /* 忽略 */ }
+            } catch (_) {}
             
             
             editor.onDidType((text) => {
@@ -944,7 +963,7 @@ class MonacoEditorManager {
                     for (let line = pos.lineNumber - 1, scanned = 0; line >= 1 && scanned < 200; line--, scanned++) {
                         const raw = model.getLineContent(line);
                         const content = raw.trim();
-                        if (!content) continue; // 跳过空行
+                        if (!content) continue;
 
                         if (/;\s*$/.test(content) && !content.includes('{')) break;
 
@@ -958,7 +977,7 @@ class MonacoEditorManager {
                             const nextLineHasBrace = (!hasOpeningBraceSameLine && /{/.test(nextLineRaw));
                             const isDefinition = hasOpeningBraceSameLine || nextLineHasBrace;
                             if (!isDefinition) {
-                                continue; // 只是前向声明，继续向上查找
+                                continue;
                             }
 
                             found = true;
@@ -979,7 +998,7 @@ class MonacoEditorManager {
                         const insertRange = new monaco.Range(afterPos.lineNumber, afterPos.column, afterPos.lineNumber, afterPos.column);
                         editor.executeEdits('auto-semicolon', [{ range: insertRange, text: ';' }]);
                     }, 0);
-                } catch (_) { /* 忽略 */ }
+                } catch (_) {}
             });
 
             editor.onDidChangeModelContent((event) => {
