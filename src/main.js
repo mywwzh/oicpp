@@ -16,7 +16,7 @@ const logger = require('./utils/logger');
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 const SAVE_ALL_TIMEOUT = 4000; // 4 seconds timeout for save-all before closing
 
 function getUserIconPath() {
@@ -244,6 +244,7 @@ function getDefaultSettings() {
         stickyScrollEnabled: true,
         autoSave: true,
         autoSaveInterval: 60000,
+        markdownMode: 'split',
         lastUpdateCheck: '1970-01-01',
         pendingUpdate: null, // 待安装的更新信息
         lastOpen: '', // 最后打开的工作区路径
@@ -444,7 +445,7 @@ ipcMain.handle('get-build-info', () => {
     } catch (error) {
         logger.logwarn('读取构建信息失败:', error);
     }
-    return { version: '1.1.0', buildTime: '未知', author: 'mywwzh' };
+    return { version: '1.1.1', buildTime: '未知', author: 'mywwzh' };
 });
 
 /**
@@ -489,12 +490,13 @@ function createWindow() {
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false, // 出于安全原因，建议禁用
-            contextIsolation: true, // 推荐启用
-            webSecurity: false, // 允许加载本地文件
+            contextIsolation: true,
+            sandbox: false,
+            webSecurity: false,
             devTools: process.argv.includes('--dev')
         },
         icon: getUserIconPath(),
-        frame: false, // 隐藏系统标题栏
+        frame: false,
         titleBarStyle: 'hidden',
         opacity: settings.windowOpacity || 1.0,
         show: false
@@ -3601,6 +3603,7 @@ function openCompilerSettings() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
+            sandbox: false,
             webSecurity: false
         },
         title: '编译器设置',
@@ -3634,6 +3637,7 @@ function openEditorSettings() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
+            sandbox: false,
             webSecurity: false
         },
         title: '编辑器设置',
@@ -3673,6 +3677,7 @@ function openCodeTemplates() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
+            sandbox: false,
             webSecurity: false
         },
         title: '代码模板设置',
@@ -4146,7 +4151,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage'];
+            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage'];
 
             for (const key of validKeys) {
                 if (savedSettings[key] !== undefined) {
@@ -4184,7 +4189,7 @@ function loadSettings() {
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage'];
+    const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -4303,7 +4308,7 @@ function resetSettings(settingsType = null) {
 function exportSettings(filePath) {
     try {
         const exportData = {
-            version: '1.1.0',
+            version: '1.1.1',
             timestamp: new Date().toISOString(),
             settings: settings
         };

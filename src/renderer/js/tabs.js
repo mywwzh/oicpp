@@ -1217,6 +1217,43 @@ class TabManager {
                     logWarn('切换到PDF视图时更新编辑器状态失败:', err);
                 }
             }
+        } else if (tabData.viewType === 'wysiwyg') {
+
+            this.hideGroupViewContainers(tabData.groupId);
+            if (!tabData.wysiwygEditor) {
+                tabData.wysiwygEditor = this.createWysiwygEditor({
+                    groupId: tabData.groupId,
+                    tabId: tabData.tabId,
+                    content: tabData.content,
+                    filePath: tabData.filePath,
+                    tabData: tabData
+                });
+            }
+            if (tabData.wysiwygEditor && tabData.wysiwygEditor.container) {
+                tabData.wysiwygEditor.show();
+            }
+            if (this.monacoEditorManager) {
+                this.monacoEditorManager.groupActiveTab.set(tabData.groupId, null);
+            }
+        } else if (tabData.viewType === 'markdown-preview') {
+            this.hideGroupViewContainers(tabData.groupId);
+            if (!tabData.previewContainer) {
+                tabData.previewContainer = this.createMarkdownPreviewContainer({
+                    groupId: tabData.groupId,
+                    tabId: tabData.tabId,
+                    content: tabData.content,
+                    filePath: tabData.filePath
+                });
+            }
+            if (tabData.previewContainer) {
+                tabData.previewContainer.style.display = 'block';
+                tabData.previewContainer.style.width = '100%';
+                tabData.previewContainer.style.left = '0';
+                tabData.previewContainer.style.position = 'relative';
+            }
+            if (this.monacoEditorManager) {
+                this.monacoEditorManager.groupActiveTab.set(tabData.groupId, null);
+            }
         } else if (this.monacoEditorManager) {
             this.hideGroupViewContainers(tabData.groupId);
             const expectedTabId = this.monacoEditorManager.generateTabId(tabData.fileName, tabData.filePath || tabData.uniqueKey || null);
@@ -1766,7 +1803,11 @@ class TabManager {
                 }
             }
 
-            if (editor && editor.getModel) {
+            if (tabData.viewType === 'wysiwyg') {
+                if (tabData.wysiwygEditor && typeof tabData.wysiwygEditor.setContent === 'function') {
+                    tabData.wysiwygEditor.setContent(content);
+                }
+            } else if (editor && editor.getModel) {
                 const model = editor.getModel();
                 const viewState = editor.saveViewState ? editor.saveViewState() : null;
                 model.setValue(content);
@@ -3045,7 +3086,7 @@ class TabManager {
         if (!editorArea) {
             return;
         }
-        const panes = editorArea.querySelectorAll('.monaco-editor-container, .pdf-viewer-container');
+        const panes = editorArea.querySelectorAll('.monaco-editor-container, .pdf-viewer-container, .markdown-preview-container, .wysiwyg-editor-container');
         panes.forEach((pane) => {
             pane.style.display = 'none';
             if (pane.classList.contains('pdf-viewer-container')) {
@@ -3063,6 +3104,7 @@ class TabManager {
 
         const tabId = this.generatePdfTabId(uniqueKey);
         const tabElement = this.createTabElement(fileName, tabId);
+
         tabElement.dataset.groupId = targetGroupId;
         tabElement.dataset.viewType = 'pdf';
         tabElement.classList.add('tab-type-pdf');
@@ -3094,36 +3136,247 @@ class TabManager {
             uniqueKey,
             groupId: targetGroupId,
             viewType: 'pdf',
-            viewerContainer,
-            viewerFrame,
-            pdfViewerReady: false,
-            pdfViewerScale: null,
-            pdfViewerError: null,
             isTempFile,
-            pdfBase64: pdfBase64 || null
+            pdfBase64
         };
-        this.tabs.set(uniqueKey, tabData);
 
-        if (targetGroup) {
-            targetGroup.tabs.set(uniqueKey, tabData);
-            if (targetGroup.tabBar) {
-                this.bindTabBarEvents(targetGroup.tabBar);
-                targetGroup.tabBar.querySelectorAll('.tab').forEach((tab) => tab.classList.remove('active'));
-                targetGroup.tabBar.appendChild(tabElement);
-            }
-            targetGroup.activeTabKey = uniqueKey;
+        this.tabs.set(uniqueKey, tabData);
+        targetGroup.tabs.set(uniqueKey, tabData);
+        if (targetGroup.tabBar) {
+            this.bindTabBarEvents(targetGroup.tabBar);
+            targetGroup.tabBar.appendChild(tabElement);
         }
+        targetGroup.activeTabKey = uniqueKey;
 
         this.activeTab = fileName;
         this.activeTabKey = uniqueKey;
         this.activeGroupId = targetGroupId;
-        tabElement.classList.add('active');
 
         this.setTabElementUniqueKey(tabElement, uniqueKey);
 
         this.syncGroupTabs(targetGroupId);
 
+        tabElement.classList.add('active');
+        viewerContainer.style.display = 'flex';
+        viewerContainer.classList.add('active');
+        tabData.viewerContainer = viewerContainer;
+        tabData.viewerFrame = viewerFrame;
+        tabData.pdfBase64 = pdfBase64;
+
+        await this.registerFileWatchForTab(tabData);
         await this.activateTabByUniqueKey(uniqueKey);
+    }
+
+    createWysiwygEditor(options) {
+        const { groupId, tabId, content, filePath, tabData } = options;
+        const group = this.groups.get(groupId);
+        if (!group || !group.editorArea) return null;
+
+        if (typeof window.WysiwygEditor !== 'function') {
+            logError('WysiwygEditor 类未加载');
+            return null;
+        }
+
+        const editor = new window.WysiwygEditor({
+            filePath,
+            tabId,
+            groupId,
+            onChange: (markdown) => {
+                tabData.content = markdown;
+                tabData.modified = true;
+                if (tabData.uniqueKey) {
+                    this.markTabAsModifiedByUniqueKey(tabData.uniqueKey);
+                } else {
+                    this.markTabAsModified(tabData.fileName);
+                }
+                this.refreshTabLabels();
+            },
+            onSave: async (markdown) => {
+                tabData.content = markdown;
+                if (tabData.filePath && !tabData.isTempFile) {
+                    try {
+                        await window.electronAPI.saveFile(tabData.filePath, markdown);
+                        tabData.modified = false;
+                        if (tabData.uniqueKey) {
+                            this.markTabAsSavedByUniqueKey(tabData.uniqueKey);
+                        } else {
+                            this.markTabAsSaved(tabData.fileName);
+                        }
+                        logInfo('WYSIWYG 编辑器已保存文件:', tabData.filePath);
+                    } catch (err) {
+                        logError('保存文件失败:', err);
+                    }
+                }
+            }
+        });
+
+        editor.create(group.editorArea, content || '');
+        return editor;
+    }
+
+    hideWysiwygEditor(tabData) {
+        if (tabData?.wysiwygEditor?.container) {
+            tabData.wysiwygEditor.hide();
+        }
+    }
+
+    createMarkdownPreviewContainer(options) {
+        const { groupId, tabId, content, filePath } = options;
+        const group = this.groups.get(groupId);
+        if (!group || !group.editorArea) return null;
+
+        let container = group.editorArea.querySelector(`.markdown-preview-container[data-tab-id="${tabId}"]`);
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'markdown-preview-container markdown-body';
+            container.dataset.tabId = tabId;
+            container.dataset.groupId = groupId;
+            container.style.display = 'none';
+            container.style.overflow = 'auto';
+            container.style.backgroundColor = 'transparent';
+            container.style.width = '100%';
+            container.style.height = '100%';
+            group.editorArea.appendChild(container);
+        }
+
+        this.updateMarkdownPreview(container, content, filePath);
+        return container;
+    }
+
+    updateMarkdownPreview(container, content, filePath) {
+        if (window.markdownAPI) {
+            container.innerHTML = window.markdownAPI.render(content || '', filePath);
+        } else {
+            container.textContent = 'Markdown API not available';
+        }
+    }
+
+    setupMarkdownLiveUpdate(tabId, previewContainer, filePath) {
+        if (!this.monacoEditorManager) return;
+        const editor = this.monacoEditorManager.editors.get(tabId);
+        if (editor && !editor._markdownListenerAttached) {
+            editor.onDidChangeModelContent(() => {
+                const val = editor.getValue();
+                this.updateMarkdownPreview(previewContainer, val, filePath);
+            });
+            editor._markdownListenerAttached = true;
+
+            editor.onDidScrollChange((e) => {
+                if (!previewContainer || previewContainer.style.display === 'none') return;
+                const percentage = e.scrollTop / (e.scrollHeight - e.viewHeight);
+                if (!isNaN(percentage)) {
+                    previewContainer.scrollTop = percentage * (previewContainer.scrollHeight - previewContainer.clientHeight);
+                }
+            });
+        }
+    }
+
+    toggleMarkdownSplitView() {
+        if (!this.activeTabKey) return;
+        const tabData = this.tabs.get(this.activeTabKey);
+        if (!tabData) return;
+
+        const previewUniqueKey = `${tabData.uniqueKey}::preview`;
+        const existingPreviewTab = this.tabs.get(previewUniqueKey);
+
+        if (existingPreviewTab) {
+            this.closeTab(previewUniqueKey);
+            return;
+        }
+
+        this.openMarkdownPreviewInNewGroup(tabData);
+    }
+
+    async openMarkdownPreviewInNewGroup(sourceTabData) {
+        const sourceGroupId = sourceTabData.groupId;
+        const sourceGroup = this.groups.get(sourceGroupId);
+        if (!sourceGroup) return;
+
+        const newGroup = this.createGroup({ afterGroupId: sourceGroupId });
+        if (!newGroup) return;
+
+        const previewUniqueKey = `${sourceTabData.uniqueKey}::preview`;
+        const previewFileName = `${sourceTabData.fileName} (预览)`;
+        const previewTabId = `preview-${sourceTabData.tabId}`;
+
+        let content = sourceTabData.content || '';
+        if (this.monacoEditorManager) {
+            const editor = this.monacoEditorManager.editors.get(sourceTabData.tabId);
+            if (editor) {
+                content = editor.getValue();
+            }
+        }
+
+        const tabElement = this.createTabElement(previewFileName, previewTabId);
+        tabElement.dataset.viewType = 'markdown-preview';
+        tabElement.dataset.groupId = newGroup.id;
+        this.addTabDragListeners(tabElement);
+
+        const previewTabData = {
+            element: tabElement,
+            fileName: previewFileName,
+            modified: false,
+            content: content,
+            active: true,
+            filePath: sourceTabData.filePath,
+            tabId: previewTabId,
+            uniqueKey: previewUniqueKey,
+            groupId: newGroup.id,
+            viewType: 'markdown-preview',
+            isTempFile: false,
+            isPreviewTab: true,
+            sourceTabKey: sourceTabData.uniqueKey
+        };
+
+        this.tabs.set(previewUniqueKey, previewTabData);
+        newGroup.tabs.set(previewUniqueKey, previewTabData);
+
+        if (newGroup.tabBar) {
+            newGroup.tabBar.appendChild(tabElement);
+        }
+        newGroup.activeTabKey = previewUniqueKey;
+
+        tabElement.classList.add('active');
+        this.setTabElementUniqueKey(tabElement, previewUniqueKey);
+
+        previewTabData.previewContainer = this.createMarkdownPreviewContainer({
+            groupId: newGroup.id,
+            tabId: previewTabId,
+            content: content,
+            filePath: sourceTabData.filePath
+        });
+
+        if (previewTabData.previewContainer) {
+            previewTabData.previewContainer.style.display = 'block';
+            previewTabData.previewContainer.style.width = '100%';
+        }
+
+        this.setupMarkdownPreviewSync(sourceTabData.tabId, previewTabData);
+
+        this.syncGroupTabs(newGroup.id);
+        this.refreshTabLabels();
+    }
+
+    setupMarkdownPreviewSync(sourceTabId, previewTabData) {
+        if (!this.monacoEditorManager) return;
+        const editor = this.monacoEditorManager.editors.get(sourceTabId);
+        if (editor && !editor._markdownPreviewSyncAttached) {
+            editor.onDidChangeModelContent(() => {
+                if (previewTabData.previewContainer) {
+                    const val = editor.getValue();
+                    this.updateMarkdownPreview(previewTabData.previewContainer, val, previewTabData.filePath);
+                }
+            });
+            editor._markdownPreviewSyncAttached = true;
+
+            editor.onDidScrollChange((e) => {
+                if (!previewTabData.previewContainer || previewTabData.previewContainer.style.display === 'none') return;
+                const percentage = e.scrollTop / (e.scrollHeight - e.viewHeight);
+                if (!isNaN(percentage)) {
+                    previewTabData.previewContainer.scrollTop = percentage * (previewTabData.previewContainer.scrollHeight - previewTabData.clientHeight);
+                }
+            });
+        }
     }
 
     async openFile(fileName, content = '', isNew = false, filePath = null) {
@@ -3169,6 +3422,26 @@ class TabManager {
                 ? String(openOptions.viewType).toLowerCase()
                 : null;
             const isPdf = requestedViewType === 'pdf' || (this.isPdfFile(fileName) && !isNew);
+            const isMarkdown = fileName.toLowerCase().endsWith('.md');
+            let initialViewType = 'code';
+
+            if (isMarkdown) {
+                try {
+                    const settings = await window.electronAPI.getSettings();
+                    const rawMode = settings ? settings.markdownMode : null;
+                    const mode = typeof rawMode === 'string' ? rawMode.trim().toLowerCase() : '';
+                    if (mode === 'wysiwyg') {
+                        initialViewType = 'wysiwyg';
+                    } else if (mode === 'split') {
+                        initialViewType = 'markdown-split';
+                    } else {
+                        initialViewType = 'code';
+                    }
+                } catch (e) {
+                    logWarn('Failed to get settings for markdown mode:', e);
+                }
+            }
+
             const isTempFile = !!(openOptions && typeof openOptions === 'object' && openOptions.isTempFile);
             let targetGroup = this.groups.get(targetGroupId);
             if (!targetGroup) {
@@ -3198,19 +3471,32 @@ class TabManager {
                 return;
             }
 
-            if (this.monacoEditorManager) {
+            if (isMarkdown && initialViewType !== 'markdown-split') {
+                try {
+                    const previewUniqueKey = `${uniqueKey}::preview`;
+                    if (this.tabs.has(previewUniqueKey)) {
+                        this.closeTabByUniqueKey(previewUniqueKey, { force: true });
+                    }
+                } catch (e) {
+                    logWarn('清理遗留 Markdown 预览标签失败:', e);
+                }
+            }
+
+            if (this.monacoEditorManager && initialViewType !== 'wysiwyg') {
                 tabId = this.monacoEditorManager.generateTabId(fileName, filePath);
                 if (filePath) {
                     this.monacoEditorManager.currentFilePath = filePath;
                     this.monacoEditorManager.currentFileName = fileName;
                 }
                 await this.monacoEditorManager.createNewEditor(tabId, fileName, content, filePath, { groupId: targetGroupId });
+            } else if (initialViewType === 'wysiwyg') {
+                tabId = `wysiwyg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             } else {
                 tabId = `fallback-${Date.now()}`;
             }
 
             const tabElement = this.createTabElement(fileName, tabId);
-            tabElement.dataset.viewType = 'code';
+            tabElement.dataset.viewType = initialViewType;
 
             tabElement.dataset.groupId = targetGroupId;
             this.addTabDragListeners(tabElement);
@@ -3225,7 +3511,7 @@ class TabManager {
                 tabId: tabId,
                 uniqueKey: uniqueKey,
                 groupId: targetGroupId,
-                viewType: 'code',
+                viewType: initialViewType,
                 isTempFile,
                 externalModified: false,
                 externalChangeType: null,
@@ -3261,6 +3547,14 @@ class TabManager {
 
             await this.activateTabByUniqueKey(uniqueKey);
             this.refreshTabLabels();
+
+            if (initialViewType === 'markdown-split') {
+                tabData.viewType = 'code';
+                tabElement.dataset.viewType = 'code';
+                setTimeout(() => {
+                    this.openMarkdownPreviewInNewGroup(tabData);
+                }, 100);
+            }
         } finally {
             this._openingKeys.delete(uniqueKey);
         }
@@ -3435,7 +3729,6 @@ class TabManager {
             }
 
         });
-
         tab.addEventListener('dragend', (e) => {
             const shouldFallback = !this.dropHandled && this.lastTabDropInfo && this.draggedTabInfo;
             if (shouldFallback) {
@@ -3496,6 +3789,7 @@ class TabManager {
         const groupId = tabBar?.dataset?.groupId || null;
         this.syncTabOrder(groupId);
     }
+
 
     syncTabOrder(groupId = null) {
         if (groupId) {
@@ -3707,7 +4001,7 @@ class TabManager {
                 <div class="welcome-header">
                     <div class="welcome-logo">OICPP IDE</div>
                     <div class="welcome-subtitle">为 OIer 优化的 C++ 编程环境</div>
-                    <div class="welcome-version">版本 1.1.0</div>
+                    <div class="welcome-version">版本 1.1.1</div>
                 </div>
                 
                 <div class="welcome-content">
@@ -4089,7 +4383,7 @@ void hello() {
                 <div class="welcome-header">
                     <div class="welcome-logo">OICPP IDE</div>
                     <div class="welcome-subtitle">为 OIer 优化的 C++ 编程环境</div>
-                    <div class="welcome-version">版本 1.1.0</div>
+                    <div class="welcome-version">版本 1.1.1</div>
                 </div>
                 
                 <div class="welcome-content">
@@ -4117,7 +4411,7 @@ void hello() {
                 
                 <div class="welcome-footer">
                     <p>OICPP IDE - 为 OIer 优化的 C++ 编程环境</p>
-                    <p>版本 1.1.0, Copyright (C) 2025 mywwzh.</p>
+                    <p>版本 1.1.1, Copyright (C) 2025 mywwzh.</p>
                 </div>
             </div>
         `;
