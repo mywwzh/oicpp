@@ -13,7 +13,8 @@ class EditorSettings {
             bracketMatching: true,
             highlightCurrentLine: true,
             autoSave: true,
-            autoSaveInterval: 60000
+            autoSaveInterval: 60000,
+            markdownMode: 'split'
         };
     }
 
@@ -266,6 +267,8 @@ class EditorSettings {
             }
 
             if (allSettings) {
+                const rawMode = typeof allSettings.markdownMode === 'string' ? allSettings.markdownMode.trim().toLowerCase() : '';
+                const markdownMode = ['code', 'wysiwyg', 'split'].includes(rawMode) ? rawMode : 'split';
                 this.settings = {
                     font: allSettings.font || 'Consolas',
                     fontSize: allSettings.fontSize || 14,
@@ -277,7 +280,8 @@ class EditorSettings {
                     autoSave: allSettings.autoSave !== false,
                     autoSaveInterval: typeof allSettings.autoSaveInterval === 'number' ? allSettings.autoSaveInterval : 60000,
                     windowOpacity: typeof allSettings.windowOpacity === 'number' ? allSettings.windowOpacity : 1.0,
-                    backgroundImage: allSettings.backgroundImage || ''
+                    backgroundImage: allSettings.backgroundImage || '',
+                    markdownMode
                 };
                 logInfo('编辑器设置加载完成:', this.settings);
             } else {
@@ -292,7 +296,8 @@ class EditorSettings {
                     autoSave: true,
                     autoSaveInterval: 60000,
                     windowOpacity: 1.0,
-                    backgroundImage: ''
+                    backgroundImage: '',
+                    markdownMode: 'split'
                 };
             }
         } catch (error) {
@@ -307,7 +312,8 @@ class EditorSettings {
                 autoSave: true,
                 autoSaveInterval: 60000,
                 windowOpacity: 1.0,
-                backgroundImage: ''
+                backgroundImage: '',
+                markdownMode: 'split'
             };
         }
     }
@@ -406,6 +412,8 @@ class EditorSettings {
         if (foldingCheckbox) newSettings.foldingEnabled = !!foldingCheckbox.checked;
         const stickyScrollCheckbox = document.getElementById('editor-sticky-scroll');
         if (stickyScrollCheckbox) newSettings.stickyScrollEnabled = !!stickyScrollCheckbox.checked;
+        const markdownModeSelect = document.getElementById('markdown-mode');
+        if (markdownModeSelect) newSettings.markdownMode = markdownModeSelect.value;
         const ligaturesCheckbox = document.getElementById('editor-font-ligatures');
         if (ligaturesCheckbox) newSettings.fontLigaturesEnabled = !!ligaturesCheckbox.checked;
         const tabSizeInput = document.getElementById('editor-tab-size');
@@ -601,6 +609,10 @@ class EditorSettings {
         }
         if (stickyScrollCheckbox) {
             stickyScrollCheckbox.checked = this.settings.stickyScrollEnabled !== false;
+        }
+        const markdownModeSelect = document.getElementById('markdown-mode');
+        if (markdownModeSelect) {
+            markdownModeSelect.value = this.settings.markdownMode || 'split';
         }
         if (ligaturesCheckbox) {
             ligaturesCheckbox.checked = this.settings.fontLigaturesEnabled !== false;

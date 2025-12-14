@@ -77,10 +77,10 @@
 
                     <div class="setting-group">
                         <label for="editor-bg-image">背景图片</label>
-                        <div class="input-group" style="display: flex;">
-                            <input type="text" id="editor-bg-image" class="form-control" placeholder="未设置背景图片" readonly style="flex: 1; margin-right: 10px; padding: 5px; border: 1px solid #444; background: #2d2d2d; color: #fff; border-radius: 4px;">
-                            <button id="browse-bg-image" class="btn btn-secondary" style="padding: 5px 10px; cursor: pointer;">浏览</button>
-                            <button id="clear-bg-image" class="btn btn-secondary" style="margin-left: 5px; padding: 5px 10px; cursor: pointer;">清除</button>
+                        <div class="input-group">
+                            <input type="text" id="editor-bg-image" class="form-control" placeholder="未设置背景图片" readonly>
+                            <button id="browse-bg-image" class="btn btn-secondary">浏览</button>
+                            <button id="clear-bg-image" class="btn btn-secondary">清除</button>
                         </div>
                         <div class="hint">设置自定义背景图片 (支持 PNG, JPG, GIF)</div>
                     </div>
@@ -112,6 +112,18 @@
                             <span class="checkmark"></span>
                             启用 Sticky Scroll (顶部吸附显示当前作用域)
                         </label>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="markdown-mode">Markdown 编辑模式</label>
+                        <div class="input-group">
+                            <select id="markdown-mode" class="form-select">
+                                <option value="code">代码模式</option>
+                                <option value="split">分屏预览</option>
+                                <option value="wysiwyg">所见即所得</option>
+                            </select>
+                        </div>
+                        <div class="hint">设置打开 Markdown 文件时的默认编辑模式。所见即所得模式支持直接在渲染视图中编辑。</div>
                     </div>
 
                     <div class="setting-group">

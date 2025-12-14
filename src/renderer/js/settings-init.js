@@ -150,6 +150,12 @@
                         background: transparent !important;
                     }
                     
+                    body.has-custom-bg .markdown-preview-container,
+                    body.has-custom-bg .markdown-body {
+                        background-color: transparent !important;
+                        background: transparent !important;
+                    }
+                    
                     body.has-custom-bg .titlebar {
                         background-color: rgba(50, 50, 51, 0.8) !important;
                     }

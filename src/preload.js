@@ -1,8 +1,293 @@
 const { contextBridge, ipcRenderer, shell, clipboard } = require('electron');
+const path = require('path');
+
+const showToast = (message, type = 'info', durationMs = 1200) => {
+    try {
+        const safeMsg = String(message ?? '');
+        const safeType = ['info', 'success', 'error', 'warning'].includes(type) ? type : 'info';
+        const dur = Number.isFinite(durationMs) ? durationMs : 1200;
+
+        const ensure = () => {
+            const existing = document.querySelector('.message-toast');
+            if (existing) return existing;
+            const div = document.createElement('div');
+            div.className = 'message-toast info';
+            div.style.pointerEvents = 'none';
+            document.body.appendChild(div);
+            return div;
+        };
+
+        const show = () => {
+            const toast = ensure();
+            toast.className = `message-toast ${safeType}`;
+            toast.textContent = safeMsg;
+            toast.style.display = 'block';
+            clearTimeout(toast.__hideTimer);
+            toast.__hideTimer = setTimeout(() => {
+                try {
+                    toast.style.display = 'none';
+                } catch (_) { }
+            }, dur);
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', show, { once: true });
+        } else {
+            show();
+        }
+    } catch (_) {
+    }
+};
+
+let md = null;
+let TurndownService = null;
+let turndownInstance = null;
+
+try {
+    TurndownService = require('turndown');
+    turndownInstance = new TurndownService({
+        headingStyle: 'atx',
+        hr: '---',
+        bulletListMarker: '-',
+        codeBlockStyle: 'fenced',
+        fence: '```',
+        emDelimiter: '*',
+        strongDelimiter: '**',
+        linkStyle: 'inlined',
+    });
+
+    turndownInstance.addRule('taskListItem', {
+        filter: function (node) {
+            return node.nodeName === 'LI' && 
+                   node.classList.contains('task-list-item');
+        },
+        replacement: function (content, node) {
+            const checkbox = node.querySelector('input[type="checkbox"]');
+            const checked = checkbox && checkbox.checked;
+            const prefix = checked ? '- [x] ' : '- [ ] ';
+            return prefix + content.trim().replace(/^\[[ x]\]\s*/i, '') + '\n';
+        }
+    });
+
+    turndownInstance.addRule('fencedCodeBlock', {
+        filter: function (node) {
+            return (
+                node.nodeName === 'PRE' &&
+                node.firstChild &&
+                node.firstChild.nodeName === 'CODE'
+            );
+        },
+        replacement: function (content, node, options) {
+            const code = node.firstChild;
+            const className = code.getAttribute('class') || '';
+            const langMatch = className.match(/language-(\S+)/);
+            const lang = langMatch ? langMatch[1] : '';
+            const fence = options.fence;
+            
+            return '\n\n' + fence + lang + '\n' + code.textContent + '\n' + fence + '\n\n';
+        }
+    });
+
+    turndownInstance.addRule('hljsCodeBlock', {
+        filter: function (node) {
+            return (
+                node.nodeName === 'PRE' &&
+                node.classList.contains('hljs')
+            );
+        },
+        replacement: function (content, node, options) {
+            const codeText = node.textContent || '';
+            return '\n\n```\n' + codeText + '\n```\n\n';
+        }
+    });
+    turndownInstance.addRule('ignoreCopyButton', {
+        filter: function (node) {
+            return node.nodeName === 'BUTTON' && 
+                   node.classList.contains('copy-code-btn');
+        },
+        replacement: function () {
+            return '';
+        }
+    });
+
+    turndownInstance.addRule('codeBlockWrapper', {
+        filter: function (node) {
+            return node.nodeName === 'DIV' && 
+                   node.classList.contains('code-block-wrapper');
+        },
+        replacement: function (content, node, options) {
+            const pre = node.querySelector('pre');
+            if (pre) {
+                const codeText = pre.textContent || '';
+                return '\n\n```\n' + codeText + '\n```\n\n';
+            }
+            return content;
+        }
+    });
+
+} catch (e) {
+    console.error('Failed to initialize Turndown:', e);
+}
+
+try {
+    const MarkdownIt = require('markdown-it');
+    const mk = require('markdown-it-katex');
+    const taskLists = require('markdown-it-task-lists');
+    const imageFigures = require('markdown-it-image-figures');
+    const hljs = require('highlight.js');
+
+    md = new MarkdownIt({
+        html: true,
+        linkify: true,
+        typographer: true,
+        highlight: function (str, lang) {
+            if (lang && hljs.getLanguage(lang)) {
+                try {
+                    return '<pre class="hljs"><code>' +
+                           hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
+                           '</code></pre>';
+                } catch (__) {}
+            }
+            return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
+        }
+    })
+    .use(mk)
+    .use(taskLists)
+    .use(imageFigures, {
+        figcaption: true
+    });
+
+    const defaultFence = md.renderer.rules.fence || function(tokens, idx, options, env, self) {
+        return self.renderToken(tokens, idx, options);
+    };
+
+    md.renderer.rules.fence = function (tokens, idx, options, env, self) {
+        const token = tokens[idx];
+        const code = token.content;
+        const lang = token.info.trim();
+        
+        let highlighted;
+        try {
+            if (lang && hljs.getLanguage(lang)) {
+                highlighted = '<pre class="hljs"><code>' +
+                              hljs.highlight(code, { language: lang, ignoreIllegals: true }).value +
+                              '</code></pre>';
+            } else {
+                highlighted = '<pre class="hljs"><code>' +
+                              hljs.highlightAuto(code).value +
+                              '</code></pre>';
+            }
+        } catch (__) {
+            highlighted = '<pre class="hljs"><code>' + md.utils.escapeHtml(code) + '</code></pre>';
+        }
+        const encodedCode = encodeURIComponent(code);
+
+        return `<div class="code-block-wrapper" style="position: relative;">
+            <button class="copy-code-btn" type="button" data-code="${encodedCode}"
+                    style="position: absolute; top: 5px; right: 5px; z-index: 10; padding: 4px 8px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: inherit; cursor: pointer; font-size: 12px;">
+                Copy
+            </button>
+            ${highlighted}
+        </div>`;
+    };
+
+} catch (e) {
+    console.error('Failed to initialize markdown-it:', e);
+}
+
+contextBridge.exposeInMainWorld('markdownAPI', {
+    render: (text, filePath) => {
+        if (!md) return text;
+        try {
+            const defaultImageRender = md.renderer.rules.image || function(tokens, idx, options, env, self) {
+                return self.renderToken(tokens, idx, options);
+            };
+
+            md.renderer.rules.image = function (tokens, idx, options, env, self) {
+                const token = tokens[idx];
+                const srcIndex = token.attrIndex('src');
+                if (srcIndex >= 0) {
+                    let src = token.attrs[srcIndex][1];
+                    if (src && !src.startsWith('http') && !src.startsWith('https:') && !src.startsWith('data:') && !src.startsWith('file:')) {
+                        if (filePath) {
+                            const dir = path.dirname(filePath);
+                            if (!path.isAbsolute(src)) {
+                                src = path.join(dir, src);
+                            }
+                            src = src.replace(/\\/g, '/');
+                            if (!src.startsWith('/')) {
+                                src = '/' + src;
+                            }
+                            token.attrs[srcIndex][1] = `file://${src}`;
+                        }
+                    }
+                }
+                return defaultImageRender(tokens, idx, options, env, self);
+            };
+            return md.render(text);
+        } catch (err) {
+            console.error('Markdown render error:', err);
+            return text;
+        }
+    }
+});
+
+contextBridge.exposeInMainWorld('turndownAPI', {
+    toMarkdown: (html) => {
+        if (!turndownInstance) {
+            console.warn('Turndown not initialized, returning plain text');
+            const temp = document.createElement('div');
+            temp.innerHTML = html;
+            return temp.textContent || temp.innerText || '';
+        }
+        try {
+            return turndownInstance.turndown(html);
+        } catch (err) {
+            console.error('Turndown error:', err);
+            const temp = document.createElement('div');
+            temp.innerHTML = html;
+            return temp.textContent || temp.innerText || '';
+        }
+    }
+});
+
 if (globalThis.__oicppPreloadInitialized) {
     return;
 }
 globalThis.__oicppPreloadInitialized = true;
+
+try {
+    window.addEventListener('click', async (ev) => {
+        const target = ev.target;
+        if (!(target instanceof HTMLElement)) return;
+        const btn = target.closest('.copy-code-btn');
+        if (!(btn instanceof HTMLElement)) return;
+        const encoded = btn.getAttribute('data-code');
+        if (!encoded) return;
+
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        let text = '';
+        try {
+            text = decodeURIComponent(encoded);
+        } catch (_) {
+            text = encoded;
+        }
+
+        try {
+            if (window.electronAPI && typeof window.electronAPI.clipboardWriteText === 'function') {
+                await window.electronAPI.clipboardWriteText(text);
+            } else {
+                ipcRenderer.invoke('clipboard-write-text', text);
+            }
+            showToast('已复制到剪贴板', 'success', 1200);
+        } catch (err) {
+            showToast('复制失败', 'error', 1600);
+            try { console.error('Copy code failed:', err); } catch (_) { }
+        }
+    }, true);
+} catch (_) { }
 
 const safeIpcRenderer = {
     send: (channel, ...args) => ipcRenderer.send(channel, ...args),

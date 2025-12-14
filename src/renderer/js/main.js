@@ -1382,6 +1382,31 @@ class OICPPApp {
     }
 
     async saveCurrentFile() {
+
+        if (window.tabManager && window.tabManager.activeTabKey) {
+            const tabData = window.tabManager.tabs.get(window.tabManager.activeTabKey);
+            if (tabData && tabData.viewType === 'wysiwyg' && tabData.wysiwygEditor) {
+
+                const markdown = tabData.wysiwygEditor.getMarkdown();
+                if (tabData.filePath && !tabData.isTempFile && window.electronAPI) {
+                    try {
+                        await window.electronAPI.saveFile(tabData.filePath, markdown);
+                        tabData.content = markdown;
+                        tabData.modified = false;
+                        if (window.tabManager.markTabAsSavedByUniqueKey) {
+                            window.tabManager.markTabAsSavedByUniqueKey(tabData.uniqueKey);
+                        } else {
+                            window.tabManager.markTabAsSaved(tabData.fileName);
+                        }
+                        logInfo('WYSIWYG 文件已保存:', tabData.filePath);
+                    } catch (e) {
+                        logError('保存 WYSIWYG 文件失败:', e);
+                    }
+                }
+                return;
+            }
+        }
+
         if (this.editorManager && this.editorManager.currentEditor) {
             const content = this.editorManager.getCurrentContent();
             const filePath = this.editorManager.currentEditor.getFilePath ? 
@@ -2635,7 +2660,7 @@ ${data.message || '程序已加载，等待开始执行'}
 
 
     async showAbout() {
-        let buildInfo = { version: '1.1.0', buildTime: '未知', author: 'mywwzh' };
+        let buildInfo = { version: '1.1.1', buildTime: '未知', author: 'mywwzh' };
         try {
             const buildInfoData = window.electronAPI ? await window.electronAPI.getBuildInfo() : null;
             if (buildInfoData) {

@@ -16,6 +16,7 @@ class UnifiedSettingsManager {
             cppTemplate: '',
             autoSave: true,
             autoSaveInterval: 60000,
+            markdownMode: 'split',
             lastUpdateCheck: '1970-01-01',
             codeSnippets: [],
             windowOpacity: 1.0,
@@ -132,7 +133,7 @@ class UnifiedSettingsManager {
             if (typeof require !== 'undefined') {
                 const { ipcRenderer } = require('electron');
                 const allowedKeys = new Set([
-                    'font','fontSize','theme','tabSize','foldingEnabled','stickyScrollEnabled','compilerPath','compilerArgs','testlibPath','codeSnippets','cppTemplate','fontLigaturesEnabled','autoSave','autoSaveInterval','windowOpacity','backgroundImage'
+                    'font','fontSize','theme','tabSize','foldingEnabled','stickyScrollEnabled','compilerPath','compilerArgs','testlibPath','codeSnippets','cppTemplate','fontLigaturesEnabled','autoSave','autoSaveInterval','windowOpacity','backgroundImage','markdownMode'
                 ]);
                 const filtered = {};
                 Object.keys(newSettings || {}).forEach(k=>{ if (allowedKeys.has(k)) filtered[k]=newSettings[k]; });
