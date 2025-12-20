@@ -14,7 +14,29 @@ class SettingsManager {
                 wordWrap: false,
                 enableAutoCompletion: true,
                 bracketMatching: true,
-                highlightCurrentLine: true
+                highlightCurrentLine: true,
+                keybindings: {
+                    formatCode: 'Alt+Shift+S',
+                    showFunctionPicker: 'Ctrl+Shift+G',
+                    markdownPreview: 'Ctrl+Shift+V',
+                    renameSymbol: 'F2',
+                    deleteLine: 'Ctrl+D',
+                    duplicateLine: 'Ctrl+E',
+                    moveLineUp: 'Ctrl+Shift+Up',
+                    moveLineDown: 'Ctrl+Shift+Down',
+                    copy: 'Ctrl+C',
+                    paste: 'Ctrl+V',
+                    cut: 'Ctrl+X',
+                    compileCode: 'F9',
+                    runCode: 'F10',
+                    compileAndRun: 'F11',
+                    toggleDebug: 'F5',
+                    debugContinue: 'F6',
+                    debugStepOver: 'F7',
+                    debugStepInto: 'F8',
+                    debugStepOut: 'Shift+F8',
+                    cloudCompile: 'F12'
+                }
             },
             templates: {
                 cppTemplate: '',
@@ -240,7 +262,29 @@ class SettingsManager {
                 wordWrap: false,
                 autoCompletion: true,
                 bracketMatching: true,
-                highlightCurrentLine: true
+                highlightCurrentLine: true,
+                keybindings: {
+                    formatCode: 'Alt+Shift+S',
+                    showFunctionPicker: 'Ctrl+Shift+G',
+                    markdownPreview: 'Ctrl+Shift+V',
+                    renameSymbol: 'F2',
+                    deleteLine: 'Ctrl+D',
+                    duplicateLine: 'Ctrl+E',
+                    moveLineUp: 'Ctrl+Shift+Up',
+                    moveLineDown: 'Ctrl+Shift+Down',
+                    copy: 'Ctrl+C',
+                    paste: 'Ctrl+V',
+                    cut: 'Ctrl+X',
+                    compileCode: 'F9',
+                    runCode: 'F10',
+                    compileAndRun: 'F11',
+                    toggleDebug: 'F5',
+                    debugContinue: 'F6',
+                    debugStepOver: 'F7',
+                    debugStepInto: 'F8',
+                    debugStepOut: 'Shift+F8',
+                    cloudCompile: 'F12'
+                }
             },
             templates: {
                 cppTemplate: '',

@@ -14,8 +14,61 @@ class EditorSettings {
             highlightCurrentLine: true,
             autoSave: true,
             autoSaveInterval: 60000,
-            markdownMode: 'split'
+            markdownMode: 'split',
+            keybindings: this.getDefaultKeybindings()
         };
+
+        this.keybindingSchema = this.getKeybindingSchema();
+    }
+
+    getDefaultKeybindings() {
+        return {
+            formatCode: 'Alt+Shift+S',
+            showFunctionPicker: 'Ctrl+Shift+G',
+            markdownPreview: 'Ctrl+Shift+V',
+            renameSymbol: 'F2',
+            deleteLine: 'Ctrl+D',
+            duplicateLine: 'Ctrl+E',
+            moveLineUp: 'Ctrl+Shift+Up',
+            moveLineDown: 'Ctrl+Shift+Down',
+            copy: 'Ctrl+C',
+            paste: 'Ctrl+V',
+            cut: 'Ctrl+X',
+            compileCode: 'F9',
+            runCode: 'F10',
+            compileAndRun: 'F11',
+            toggleDebug: 'F5',
+            debugContinue: 'F6',
+            debugStepOver: 'F7',
+            debugStepInto: 'F8',
+            debugStepOut: 'Shift+F8',
+            cloudCompile: 'F12'
+        };
+    }
+
+    getKeybindingSchema() {
+        return [
+            { key: 'formatCode', label: '格式化代码' },
+            { key: 'showFunctionPicker', label: '跳转符号选择器' },
+            { key: 'markdownPreview', label: 'Markdown 预览' },
+            { key: 'renameSymbol', label: '重命名符号' },
+            { key: 'deleteLine', label: '删除行' },
+            { key: 'duplicateLine', label: '复制行' },
+            { key: 'moveLineUp', label: '上移行' },
+            { key: 'moveLineDown', label: '下移行' },
+            { key: 'copy', label: '复制' },
+            { key: 'paste', label: '粘贴' },
+            { key: 'cut', label: '剪切' },
+            { key: 'compileCode', label: '编译当前文件' },
+            { key: 'runCode', label: '运行当前文件' },
+            { key: 'compileAndRun', label: '编译并运行' },
+            { key: 'toggleDebug', label: '启动/继续调试' },
+            { key: 'debugContinue', label: '调试继续 (继续/暂停)' },
+            { key: 'debugStepOver', label: '单步跳过' },
+            { key: 'debugStepInto', label: '单步进入' },
+            { key: 'debugStepOut', label: '单步跳出' },
+            { key: 'cloudCompile', label: '云端编译' }
+        ];
     }
 
     async init() {
@@ -27,6 +80,8 @@ class EditorSettings {
         }
 
         await this.loadSettings();
+
+        this.renderKeybindingsUI();
 
         await this.loadSystemFonts();
 
@@ -83,6 +138,13 @@ class EditorSettings {
         if (resetBtn) {
             resetBtn.addEventListener('click', () => {
                 this.resetSettings();
+            });
+        }
+
+        const resetKeybindingBtn = document.getElementById('reset-keybindings');
+        if (resetKeybindingBtn) {
+            resetKeybindingBtn.addEventListener('click', () => {
+                this.resetKeybindingsToDefault();
             });
         }
 
@@ -209,6 +271,62 @@ class EditorSettings {
 
     }
 
+    normalizeKeybindings(raw) {
+        const defaults = this.getDefaultKeybindings();
+        const normalized = { ...defaults };
+        if (raw && typeof raw === 'object') {
+            Object.keys(defaults).forEach((key) => {
+                const val = raw[key];
+                if (typeof val === 'string' && val.trim()) {
+                    normalized[key] = val.trim();
+                }
+            });
+        }
+        return normalized;
+    }
+
+    renderKeybindingsUI() {
+        const container = document.getElementById('keybindings-list');
+        if (!container) return;
+        const defaults = this.getDefaultKeybindings();
+        const current = this.normalizeKeybindings(this.settings.keybindings);
+        container.innerHTML = '';
+
+        this.keybindingSchema.forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'keybinding-row';
+
+            const label = document.createElement('div');
+            label.className = 'keybinding-label';
+            label.textContent = item.label;
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'keybinding-input';
+            input.value = current[item.key] || defaults[item.key];
+            input.dataset.keybindingKey = item.key;
+            input.placeholder = defaults[item.key];
+
+            const reset = document.createElement('button');
+            reset.className = 'btn btn-secondary keybinding-reset';
+            reset.textContent = '恢复默认';
+            reset.addEventListener('click', () => {
+                input.value = defaults[item.key];
+            });
+
+            row.appendChild(label);
+            row.appendChild(input);
+            row.appendChild(reset);
+            container.appendChild(row);
+        });
+    }
+
+    resetKeybindingsToDefault() {
+        this.settings.keybindings = this.getDefaultKeybindings();
+        this.renderKeybindingsUI();
+        this.updateUI();
+    }
+
     updatePreview() {
         const currentSettings = this.collectSettings();
         const preview = document.querySelector('.settings-preview');
@@ -281,7 +399,8 @@ class EditorSettings {
                     autoSaveInterval: typeof allSettings.autoSaveInterval === 'number' ? allSettings.autoSaveInterval : 60000,
                     windowOpacity: typeof allSettings.windowOpacity === 'number' ? allSettings.windowOpacity : 1.0,
                     backgroundImage: allSettings.backgroundImage || '',
-                    markdownMode
+                    markdownMode,
+                    keybindings: this.normalizeKeybindings(allSettings.keybindings)
                 };
                 logInfo('编辑器设置加载完成:', this.settings);
             } else {
@@ -297,7 +416,8 @@ class EditorSettings {
                     autoSaveInterval: 60000,
                     windowOpacity: 1.0,
                     backgroundImage: '',
-                    markdownMode: 'split'
+                    markdownMode: 'split',
+                    keybindings: this.getDefaultKeybindings()
                 };
             }
         } catch (error) {
@@ -313,7 +433,8 @@ class EditorSettings {
                 autoSaveInterval: 60000,
                 windowOpacity: 1.0,
                 backgroundImage: '',
-                markdownMode: 'split'
+                markdownMode: 'split',
+                keybindings: this.getDefaultKeybindings()
             };
         }
     }
@@ -445,6 +566,17 @@ class EditorSettings {
             newSettings.backgroundImage = bgImageInput.value;
         }
 
+        const defaultKeybindings = this.getDefaultKeybindings();
+        const keybindingInputs = document.querySelectorAll('[data-keybinding-key]');
+        const keybindings = { ...defaultKeybindings };
+        keybindingInputs.forEach((input) => {
+            const key = input.dataset.keybindingKey;
+            if (!key) return;
+            const val = (input.value || '').trim();
+            keybindings[key] = val || defaultKeybindings[key];
+        });
+        newSettings.keybindings = keybindings;
+
         logInfo('收集到的设置:', newSettings);
         logInfo('字体大小输入框值:', fontSizeInput ? fontSizeInput.value : '未找到输入框');
 
@@ -549,6 +681,7 @@ class EditorSettings {
                 const result = await window.electronAPI.resetSettings();
                 if (result.success) {
                     await this.loadSettings();
+                    this.renderKeybindingsUI();
                     this.updateUI();
                     this.showMessage('编辑器设置已重置为默认值', 'success');
                 } else {
@@ -640,6 +773,15 @@ class EditorSettings {
         if (bgImageInput) {
             bgImageInput.value = this.settings.backgroundImage || '';
         }
+
+        const normalizedKeybindings = this.normalizeKeybindings(this.settings.keybindings);
+        const defaultKeybindings = this.getDefaultKeybindings();
+        const keybindingInputs = document.querySelectorAll('[data-keybinding-key]');
+        keybindingInputs.forEach((input) => {
+            const key = input.dataset.keybindingKey;
+            if (!key) return;
+            input.value = normalizedKeybindings[key] || defaultKeybindings[key] || '';
+        });
     }
 
     showMessage(message, type = 'info') {
