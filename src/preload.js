@@ -131,7 +131,7 @@ try {
 
 try {
     const MarkdownIt = require('markdown-it');
-    const mk = require('markdown-it-katex');
+    const mk = require('@iktakahiro/markdown-it-katex');
     const taskLists = require('markdown-it-task-lists');
     const imageFigures = require('markdown-it-image-figures');
     const hljs = require('highlight.js');
