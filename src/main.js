@@ -252,7 +252,29 @@ function getDefaultSettings() {
         codeSnippets: [],
         windowOpacity: 1.0,
         backgroundImage: '',
-        cppTemplate
+        cppTemplate,
+        keybindings: {
+            formatCode: 'Alt+Shift+S',
+            showFunctionPicker: 'Ctrl+Shift+G',
+            markdownPreview: 'Ctrl+Shift+V',
+            renameSymbol: 'F2',
+            deleteLine: 'Ctrl+D',
+            duplicateLine: 'Ctrl+E',
+            moveLineUp: 'Ctrl+Shift+Up',
+            moveLineDown: 'Ctrl+Shift+Down',
+            copy: 'Ctrl+C',
+            paste: 'Ctrl+V',
+            cut: 'Ctrl+X',
+            compileCode: 'F9',
+            runCode: 'F10',
+            compileAndRun: 'F11',
+            toggleDebug: 'F5',
+            debugContinue: 'F6',
+            debugStepOver: 'F7',
+            debugStepInto: 'F8',
+            debugStepOut: 'Shift+F8',
+            cloudCompile: 'F12'
+        }
     };
 }
 
@@ -4151,7 +4173,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage'];
+            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings'];
 
             for (const key of validKeys) {
                 if (savedSettings[key] !== undefined) {
@@ -4189,7 +4211,7 @@ function loadSettings() {
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage'];
+    const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -4248,7 +4270,7 @@ function updateSettings(settingsType, newSettings) {
         const validKeys = [
             'compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme',
             'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'autoSave', 'autoSaveInterval',
-            'codeSnippets', 'windowOpacity', 'backgroundImage'
+            'codeSnippets', 'windowOpacity', 'backgroundImage', 'markdownMode', 'keybindings'
         ];
 
         for (const key in newSettings) {
@@ -4334,7 +4356,7 @@ function importSettings(filePath) {
             throw new Error('无效的设置文件格式');
         }
 
-        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage'];
+        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings'];
         const defaultSettings = getDefaultSettings();
 
         for (const key of validKeys) {

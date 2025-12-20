@@ -29,6 +29,9 @@ class MonacoEditorManager {
         this.completionProviders = new Map(); 
         this._globalKeysRegistered = false;
         this.userSnippets = [];
+        this.defaultKeybindings = this.getDefaultKeybindings();
+        this.keybindings = { ...this.defaultKeybindings };
+        this._keybindingParseCache = new Map();
     this._headerCache = null;
     this._includePathCache = new Map();
     this._compilerIncludeDirsCache = { compilerPath: null, dirs: [] };
@@ -38,6 +41,14 @@ class MonacoEditorManager {
     this._fileIncludeCache = new Map();
         
         this.init();
+
+        document.addEventListener('settings-applied', (evt) => {
+            try {
+                this.loadKeybindingsFromSettings(evt?.detail || {});
+            } catch (e) {
+                logWarn('应用快捷键设置失败:', e);
+            }
+        });
 
         if (window.electronAPI?.onSettingsChanged) {
             try {
@@ -280,6 +291,7 @@ class MonacoEditorManager {
             this.isInitialized = true;
             logInfo('Monaco Editor 管理器初始化完成');
 
+            await this.refreshKeybindingsFromSettings();
             this.registerGlobalKeybindings();
 
             await this.loadUserSnippets();
@@ -299,6 +311,200 @@ class MonacoEditorManager {
             };
             checkMonaco();
         });
+    }
+
+    getDefaultKeybindings() {
+        return {
+            formatCode: 'Alt+Shift+S',
+            showFunctionPicker: 'Ctrl+Shift+G',
+            markdownPreview: 'Ctrl+Shift+V',
+            renameSymbol: 'F2',
+            deleteLine: 'Ctrl+D',
+            duplicateLine: 'Ctrl+E',
+            moveLineUp: 'Ctrl+Shift+Up',
+            moveLineDown: 'Ctrl+Shift+Down',
+            copy: 'Ctrl+C',
+            paste: 'Ctrl+V',
+            cut: 'Ctrl+X',
+            compileCode: 'F9',
+            runCode: 'F10',
+            compileAndRun: 'F11',
+            toggleDebug: 'F5',
+            debugContinue: 'F6',
+            debugStepOver: 'F7',
+            debugStepInto: 'F8',
+            debugStepOut: 'Shift+F8',
+            cloudCompile: 'F12'
+        };
+    }
+
+    normalizeKeybindings(raw) {
+        const defaults = this.getDefaultKeybindings();
+        const normalized = { ...defaults };
+        if (raw && typeof raw === 'object') {
+            Object.keys(defaults).forEach((key) => {
+                const candidate = raw[key];
+                if (typeof candidate === 'string' && candidate.trim()) {
+                    normalized[key] = candidate.trim();
+                }
+            });
+        }
+        return normalized;
+    }
+
+    loadKeybindingsFromSettings(allSettings = {}) {
+        this.keybindings = this.normalizeKeybindings(allSettings?.keybindings);
+        if (this._keybindingParseCache instanceof Map) {
+            this._keybindingParseCache.clear();
+        }
+    }
+
+    resolveKeybinding(action) {
+        if (!action) return null;
+        return (this.keybindings && this.keybindings[action]) || this.defaultKeybindings[action] || null;
+    }
+
+    parseKeybindingCombo(combo) {
+        if (!combo || typeof combo !== 'string') return null;
+        const cacheKey = `parse:${combo}`;
+        if (this._keybindingParseCache?.has(cacheKey)) {
+            return this._keybindingParseCache.get(cacheKey);
+        }
+
+        const parts = combo.split('+').map(p => p.trim()).filter(Boolean);
+        const result = {
+            ctrlOrCmd: false,
+            shift: false,
+            alt: false,
+            keyLower: '',
+            codeLower: '',
+            keyCode: null
+        };
+
+        const mapToMonacoKeyCode = (token) => {
+            if (typeof monaco === 'undefined' || !monaco.KeyCode) return null;
+            const upper = token.toUpperCase();
+            if (upper.length === 1 && upper >= 'A' && upper <= 'Z') {
+                result.keyLower = upper.toLowerCase();
+                result.codeLower = `key${upper.toLowerCase()}`;
+                return monaco.KeyCode[`Key${upper}`];
+            }
+            if (/^[0-9]$/.test(token)) {
+                result.keyLower = token;
+                result.codeLower = `digit${token}`;
+                return monaco.KeyCode[`Digit${token}`];
+            }
+            if (/^F([1-9]|1[0-2])$/i.test(token)) {
+                const number = token.replace(/[^0-9]/g, '');
+                result.keyLower = `f${number}`;
+                result.codeLower = `f${number}`;
+                return monaco.KeyCode[`F${number}`];
+            }
+
+            const specialMap = {
+                'UP': { code: monaco.KeyCode.UpArrow, key: 'arrowup' },
+                'DOWN': { code: monaco.KeyCode.DownArrow, key: 'arrowdown' },
+                'LEFT': { code: monaco.KeyCode.LeftArrow, key: 'arrowleft' },
+                'RIGHT': { code: monaco.KeyCode.RightArrow, key: 'arrowright' },
+                'ENTER': { code: monaco.KeyCode.Enter, key: 'enter' },
+                'RETURN': { code: monaco.KeyCode.Enter, key: 'enter' },
+                'ESC': { code: monaco.KeyCode.Escape, key: 'escape' },
+                'ESCAPE': { code: monaco.KeyCode.Escape, key: 'escape' },
+                'SPACE': { code: monaco.KeyCode.Space, key: ' ' },
+                'TAB': { code: monaco.KeyCode.Tab, key: 'tab' },
+                'BACKSPACE': { code: monaco.KeyCode.Backspace, key: 'backspace' },
+                'DELETE': { code: monaco.KeyCode.Delete, key: 'delete' },
+                'HOME': { code: monaco.KeyCode.Home, key: 'home' },
+                'END': { code: monaco.KeyCode.End, key: 'end' },
+                'PAGEUP': { code: monaco.KeyCode.PageUp, key: 'pageup' },
+                'PAGEDOWN': { code: monaco.KeyCode.PageDown, key: 'pagedown' }
+            };
+            if (specialMap[upper]) {
+                result.keyLower = specialMap[upper].key;
+                result.codeLower = specialMap[upper].key;
+                return specialMap[upper].code;
+            }
+            return null;
+        };
+
+        parts.forEach((part) => {
+            const lower = part.toLowerCase();
+            if (lower === 'ctrl' || lower === 'cmd' || lower === 'ctrlcmd' || lower === 'cmdorctrl' || lower === 'ctrlorcmd') {
+                result.ctrlOrCmd = true;
+                return;
+            }
+            if (lower === 'shift') { result.shift = true; return; }
+            if (lower === 'alt' || lower === 'option') { result.alt = true; return; }
+
+            if (!result.keyLower) {
+                result.keyCode = mapToMonacoKeyCode(part);
+                if (!result.keyLower) {
+                    result.keyLower = lower;
+                    result.codeLower = lower;
+                }
+            }
+        });
+
+        if (result.keyLower) {
+            this._keybindingParseCache?.set(cacheKey, result);
+        }
+        return result;
+    }
+
+    toMonacoKeybinding(action) {
+        const combo = this.resolveKeybinding(action);
+        if (!combo) return null;
+        const cacheKey = `monaco:${combo}`;
+        if (this._keybindingParseCache?.has(cacheKey)) {
+            return this._keybindingParseCache.get(cacheKey);
+        }
+        const parsed = this.parseKeybindingCombo(combo);
+        if (!parsed || parsed.keyCode === null || typeof parsed.keyCode === 'undefined') {
+            this._keybindingParseCache?.set(cacheKey, null);
+            return null;
+        }
+        let code = parsed.keyCode;
+        if (parsed.ctrlOrCmd) code |= monaco.KeyMod.CtrlCmd;
+        if (parsed.shift) code |= monaco.KeyMod.Shift;
+        if (parsed.alt) code |= monaco.KeyMod.Alt;
+        this._keybindingParseCache?.set(cacheKey, code);
+        return code;
+    }
+
+    doesEventMatchShortcut(event, action) {
+        const combo = this.resolveKeybinding(action);
+        if (!combo) return false;
+        const parsed = this.parseKeybindingCombo(combo);
+        if (!parsed) return false;
+
+        const ctrlLike = !!(event.ctrlKey || event.metaKey);
+        if (parsed.ctrlOrCmd !== ctrlLike) return false;
+        if (parsed.shift !== !!event.shiftKey) return false;
+        if (parsed.alt !== !!event.altKey) return false;
+
+        const eventKeyLower = (event.key || '').toLowerCase();
+        const eventCodeLower = (event.code || '').toLowerCase();
+        if (!parsed.keyLower) return false;
+        return eventKeyLower === parsed.keyLower || eventCodeLower === parsed.codeLower || eventCodeLower === parsed.keyLower;
+    }
+
+    isInputLikeTarget(target) {
+        if (!target || !target.tagName) return false;
+        const tag = target.tagName.toLowerCase();
+        return tag === 'input' || tag === 'textarea' || target.isContentEditable;
+    }
+
+    async refreshKeybindingsFromSettings() {
+        try {
+            if (window.electronAPI && window.electronAPI.getAllSettings) {
+                const allSettings = await window.electronAPI.getAllSettings();
+                this.loadKeybindingsFromSettings(allSettings);
+                return;
+            }
+        } catch (err) {
+            logWarn('加载快捷键设置失败，使用默认值', err);
+        }
+        this.loadKeybindingsFromSettings({});
     }
 
     registerGroup(groupId, element) {
@@ -409,23 +615,17 @@ class MonacoEditorManager {
         try {
             document.addEventListener('keydown', (e) => {
                 try {
-                    if (e.altKey && e.shiftKey && (e.code === 'KeyS' || e.key?.toLowerCase() === 's')) {
-                        const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
-                        if (tag === 'input' || tag === 'textarea') return;
-                        if (this.currentEditor) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            this.formatCode();
-                        }
+                    if (this.isInputLikeTarget(e.target)) return;
+                    if (this.doesEventMatchShortcut(e, 'formatCode') && this.currentEditor) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        this.formatCode();
+                        return;
                     }
-                    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.code === 'KeyG' || e.key?.toLowerCase() === 'g')) {
-                        const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
-                        if (tag === 'input' || tag === 'textarea') return;
-                        if (this.currentEditor) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            this.showFunctionPicker();
-                        }
+                    if (this.doesEventMatchShortcut(e, 'showFunctionPicker') && this.currentEditor) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        this.showFunctionPicker();
                     }
                 } catch (_) {}
             }, true);
@@ -562,6 +762,7 @@ class MonacoEditorManager {
                         if (!Number.isNaN(parsedTabSize) && parsedTabSize > 0) {
                             tabSize = parsedTabSize;
                         }
+                        this.loadKeybindingsFromSettings(allSettings);
                     }
                 }
             } catch (error) {
@@ -669,12 +870,11 @@ class MonacoEditorManager {
             this.registerEnhancedCompletionProvider(editor);
 
             try {
+                const markdownPreviewKey = this.toMonacoKeybinding('markdownPreview') || (monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyV);
                 editor.addAction({
                     id: 'markdown-preview-split',
                     label: '打开 Markdown 预览',
-                    keybindings: [
-                        monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyV
-                    ],
+                    keybindings: markdownPreviewKey ? [markdownPreviewKey] : [],
                     precondition: null,
                     keybindingContext: null,
                     contextMenuGroupId: 'navigation',
@@ -690,11 +890,11 @@ class MonacoEditorManager {
             }
 
             try {
-                const formatKeybinding = monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.KeyS;
+                const formatKeybinding = this.toMonacoKeybinding('formatCode') || (monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.KeyS);
                 editor.addCommand(formatKeybinding, async () => {
                     try {
                         await this.formatCode();
-                        logInfo('已通过 Alt+Shift+S 触发格式化');
+                        logInfo('已通过快捷键触发格式化');
                     } catch (e) {
                         logError('格式化失败:', e);
                     }
@@ -704,13 +904,14 @@ class MonacoEditorManager {
             }
 
             try {
-                const gotoSymbolKey = monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyG;
+                const gotoSymbolKey = this.toMonacoKeybinding('showFunctionPicker') || (monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyG);
                 editor.addCommand(gotoSymbolKey, () => {
                     this.showFunctionPicker();
                 });
             } catch (e) { logWarn('注册 Ctrl+Shift+G 失败:', e); }
             try {
-                editor.addCommand(monaco.KeyCode.F2, () => {
+                const renameKey = this.toMonacoKeybinding('renameSymbol') || monaco.KeyCode.F2;
+                editor.addCommand(renameKey, () => {
                     this.renameIdentifierAtCursor();
                 });
             } catch (e) { logWarn('注册 F2 重命名 失败:', e); }
@@ -740,7 +941,8 @@ class MonacoEditorManager {
                 editor.onDidBlurEditorWidget(() => applySelectionDecoration());
             } catch (e) { logWarn('选区兜底装饰器注册失败:', e); }
             
-            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, () => {
+            const copyKeybinding = this.toMonacoKeybinding('copy') || (monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC);
+            editor.addCommand(copyKeybinding, () => {
                 const activeEditor = this.currentEditor;
                 if (activeEditor) {
                     logInfo('复制命令被触发 - 使用当前活动编辑器:', this.currentFileName);
@@ -759,7 +961,7 @@ class MonacoEditorManager {
             });
             
             try {
-                const deleteKeybinding = monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyD;
+                const deleteKeybinding = this.toMonacoKeybinding('deleteLine') || (monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyD);
                 editor.addCommand(deleteKeybinding, () => {
                     const ed = this.currentEditor || editor;
                     if (!ed) return;
@@ -777,7 +979,7 @@ class MonacoEditorManager {
             } catch (e) { logWarn('注册 Ctrl+D 删除行 失败:', e); }
 
             try {
-                const duplicateKeybinding = monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyE;
+                const duplicateKeybinding = this.toMonacoKeybinding('duplicateLine') || (monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyE);
                 editor.addCommand(duplicateKeybinding, () => {
                     const ed = this.currentEditor || editor;
                     if (!ed) return;
@@ -794,7 +996,7 @@ class MonacoEditorManager {
             } catch (e) { logWarn('注册 Ctrl+E 复制行 失败:', e); }
 
             try {
-                const moveUpKey = monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.UpArrow;
+                const moveUpKey = this.toMonacoKeybinding('moveLineUp') || (monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.UpArrow);
                 editor.addCommand(moveUpKey, () => {
                     const ed = this.currentEditor || editor;
                     if (!ed) return;
@@ -803,7 +1005,7 @@ class MonacoEditorManager {
             } catch (e) { logWarn('注册 Ctrl+Shift+Up 移动行 失败:', e); }
 
             try {
-                const moveDownKey = monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.DownArrow;
+                const moveDownKey = this.toMonacoKeybinding('moveLineDown') || (monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.DownArrow);
                 editor.addCommand(moveDownKey, () => {
                     const ed = this.currentEditor || editor;
                     if (!ed) return;
@@ -811,7 +1013,8 @@ class MonacoEditorManager {
                 });
             } catch (e) { logWarn('注册 Ctrl+Shift+Down 移动行 失败:', e); }
 
-            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, async () => {
+            const pasteKeybinding = this.toMonacoKeybinding('paste') || (monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV);
+            editor.addCommand(pasteKeybinding, async () => {
                 const activeEditor = this.currentEditor;
                 if (activeEditor) {
                     logInfo('粘贴命令被触发 - 使用当前活动编辑器:', this.currentFileName);
@@ -851,7 +1054,8 @@ class MonacoEditorManager {
                 }
             });
             
-            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, () => {
+            const cutKeybinding = this.toMonacoKeybinding('cut') || (monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX);
+            editor.addCommand(cutKeybinding, () => {
                 const activeEditor = this.currentEditor;
                 if (activeEditor) {
                     logInfo('剪切命令被触发 - 使用当前活动编辑器:', this.currentFileName);

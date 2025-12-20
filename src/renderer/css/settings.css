@@ -1024,3 +1024,9 @@ body[data-editor-theme="light"] .setting-group textarea:hover {
 .snippets-list { border: 1px solid var(--settings-border); border-radius: 8px; padding: 10px; }
 .snippets-list .snippet-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px dashed var(--settings-border); }
 .snippets-list .snippet-row:last-child { border-bottom:none; }
+
+.keybindings-grid { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.keybinding-row { display: flex; align-items: center; gap: 10px; background: var(--settings-card-bg); border: 1px solid var(--settings-border); border-radius: 6px; padding: 8px 10px; }
+.keybinding-label { width: 180px; color: var(--settings-text); }
+.keybinding-input { flex: 1; padding: 8px; border: 1px solid var(--settings-input-border); border-radius: 4px; background: var(--settings-input-bg); color: var(--settings-text); }
+.keybinding-reset { white-space: nowrap; }
