@@ -27,6 +27,7 @@
     "webpack-cli": "^6.0.1"
   },
   "dependencies": {
+    "@iktakahiro/markdown-it-katex": "^4.0.1",
     "7zip-bin": "^5.2.0",
     "axios": "latest",
     "extract-zip": "latest",
