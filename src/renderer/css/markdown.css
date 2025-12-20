@@ -48,6 +48,8 @@ body.has-custom-bg .markdown-preview-container {
     margin-bottom: 16px;
 }
 
+
+
 .markdown-body code {
     padding: 0.2em 0.4em;
     margin: 0;
@@ -87,7 +89,7 @@ body.has-custom-bg .markdown-preview-container {
     border: 0;
 }
 
-/* Prevent per-line square markers in some environments */
+
 .markdown-body pre,
 .markdown-body pre code,
 .wysiwyg-editor-area pre,
@@ -138,7 +140,7 @@ body.has-custom-bg .markdown-preview-container {
     background-color: rgba(127, 127, 127, 0.05);
 }
 
-/* Dark mode adjustments - now using CSS variables for theme compatibility */
+
 .dark-theme .markdown-body,
 [data-theme="dark"] .markdown-body {
     color: #c9d1d9;
@@ -165,7 +167,7 @@ body.has-custom-bg .markdown-preview-container {
     border-top-color: #21262d;
 }
 
-/* Split view layout */
+
 .split-view-container {
     display: flex;
     width: 100%;
@@ -210,7 +212,7 @@ body.has-custom-bg .wysiwyg-container {
     vertical-align: middle;
 }
 
-/* Highlight.js Theme (VS Code Dark/Light adaptive) */
+
 .hljs {
   display: block;
   overflow-x: auto;
@@ -223,7 +225,7 @@ body.has-custom-bg .wysiwyg-container {
     color: #24292e;
 }
 
-/* Ensure highlight tokens visible in WYSIWYG area too */
+
 .wysiwyg-editor-area .hljs-comment,
 .wysiwyg-editor-area .hljs-quote,
 .hljs-comment,
@@ -328,7 +330,6 @@ body.has-custom-bg .wysiwyg-container {
     text-decoration: underline;
 }
 
-/* Strong fallback: prevent other CSS from flattening token colors in WYSIWYG */
 .wysiwyg-editor-area pre code span[class^="hljs-"] {
     color: inherit;
 }
@@ -442,7 +443,7 @@ body.has-custom-bg .wysiwyg-container {
   text-decoration: underline;
 }
 
-/* Copy button styles */
+
 .code-block-wrapper:hover .copy-code-btn {
     opacity: 1;
 }
@@ -535,7 +536,7 @@ body.has-custom-bg .wysiwyg-container {
 }
 
 .wysiwyg-editor-area:empty::before {
-    content: '开始编写 Markdown 内容...';
+    content: '开始编�?Markdown 内容...';
     color: var(--placeholder-color, #999);
     pointer-events: none;
 }
