@@ -1285,7 +1285,7 @@ class SampleTester {
     truncateOutput(output) {
         if (!output) return '';
         if (output.length > 1000) {
-            return output.substring(0, MAX_LENGTH) + '\n... [输出过长，已截断]';
+            return output.substring(0, 1000) + '\n... [输出过长，已截断]';
         }
         return output;
     }
