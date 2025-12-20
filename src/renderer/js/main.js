@@ -411,6 +411,14 @@ class OICPPApp {
             this.settings = { ...this.settings, ...newSettings };
         }
         
+        if (window.monacoEditorManager && typeof window.monacoEditorManager.loadKeybindingsFromSettings === 'function') {
+            try {
+                window.monacoEditorManager.loadKeybindingsFromSettings(this.settings);
+            } catch (err) {
+                logWarn('应用快捷键设置失败，将使用默认快捷键', err);
+            }
+        }
+
         this.updateEditorSettings();
         
         this.applyTheme(this.settings.theme);
@@ -664,6 +672,19 @@ class OICPPApp {
                           e.target.closest('.monaco-editor-container') ||
                           e.target.classList.contains('monaco-editor') ||
                           e.target.classList.contains('monaco-editor-container');
+        const matches = (action) => {
+            return this.editorManager && typeof this.editorManager.doesEventMatchShortcut === 'function'
+                ? this.editorManager.doesEventMatchShortcut(e, action)
+                : false;
+        };
+        const isInputLike = this.editorManager && typeof this.editorManager.isInputLikeTarget === 'function'
+            ? this.editorManager.isInputLikeTarget(e.target)
+            : false;
+        const handle = (fn) => {
+            e.preventDefault();
+            e.stopPropagation();
+            fn();
+        };
         
         if (isInEditor) {
             if (e.ctrlKey || e.metaKey) {
@@ -682,47 +703,19 @@ class OICPPApp {
                         return;
                 }
             }
-        switch (e.key) {
-                case 'F5':
-                    e.preventDefault();
-                    if (this.isDebugging) this.handleDebugContinue();
-                    else this.startDebug();
-                    return;
-                case 'F9':
-                    e.preventDefault();
-                    this.compileCode();
-                    return;
-                case 'F7':
-                    e.preventDefault();
-                    if (this.isDebugging) this.handleDebugStepOver();
-                    return;
-                case 'F8':
-                    e.preventDefault();
-                    if (this.isDebugging) {
-                        if (e.shiftKey) this.handleDebugStepOut();
-                        else this.handleDebugStepInto();
-                    }
-                    return;
-                case 'F6':
-                    e.preventDefault();
-                    if (this.isDebugging) this.handleDebugContinue();
-                    return;
-                case 'F10':
-                    e.preventDefault();
-                    if (!this.isDebugging) this.runCode();
-                    return;
-                case 'F11':
-                    e.preventDefault();
-                    if (!this.isDebugging) this.compileAndRun();
-                    return;
-                case 'F12':
-                    e.preventDefault();
-                    if (this.compilerManager && typeof this.compilerManager.cloudCompileCurrentFile === 'function') {
-                        this.compilerManager.cloudCompileCurrentFile();
-                    }
-                    return;
+
+            if (matches('toggleDebug')) return handle(() => { this.isDebugging ? this.handleDebugContinue() : this.startDebug(); });
+            if (matches('debugContinue') && this.isDebugging) return handle(() => this.handleDebugContinue());
+            if (matches('debugStepOver') && this.isDebugging) return handle(() => this.handleDebugStepOver());
+            if (matches('debugStepInto') && this.isDebugging) return handle(() => this.handleDebugStepInto());
+            if (matches('debugStepOut') && this.isDebugging) return handle(() => this.handleDebugStepOut());
+            if (matches('compileAndRun') && !this.isDebugging) return handle(() => this.compileAndRun());
+            if (matches('runCode') && !this.isDebugging) return handle(() => this.runCode());
+            if (matches('compileCode')) return handle(() => this.compileCode());
+            if (matches('cloudCompile') && this.compilerManager && typeof this.compilerManager.cloudCompileCurrentFile === 'function') {
+                return handle(() => this.compilerManager.cloudCompileCurrentFile());
             }
-            
+
             if (e.shiftKey && e.altKey && e.key === 'F') {
                 e.preventDefault();
                 this.formatCode();
@@ -737,7 +730,7 @@ class OICPPApp {
             logInfo(`当前标签页ID:`, this.editorManager ? this.editorManager.currentTabId : '无');
         }
         
-    if (e.ctrlKey || e.metaKey) {
+        if (e.ctrlKey || e.metaKey) {
             switch (e.key) {
                 case 'n':
                     e.preventDefault();
@@ -747,58 +740,24 @@ class OICPPApp {
                     e.preventDefault();
                     this.saveCurrentFile();
                     break;
-        case 'k':
-            e.preventDefault();
-            this.openFolder();
-            break;
+                case 'k':
+                    e.preventDefault();
+                    this.openFolder();
+                    break;
             }
         }
-        
-        if (e.key === 'F9') {
-            e.preventDefault();
-            this.compileCode();
-        }
-        
-        if (e.key === 'F5') {
-            e.preventDefault();
-            if (this.isDebugging) this.handleDebugContinue();
-            else this.startDebug();
-        }
-        
-        if (e.key === 'F7') {
-            e.preventDefault();
-            if (this.isDebugging) this.handleDebugStepOver();
-        }
-        
-        if (e.key === 'F8') {
-            e.preventDefault();
-            if (this.isDebugging) {
-                if (e.shiftKey) this.handleDebugStepOut();
-                else this.handleDebugStepInto();
-            }
-        }
-        
-        if (e.key === 'F6') {
-            e.preventDefault();
-            if (this.isDebugging) this.handleDebugContinue();
-        }
 
-        if (e.key === 'F10') {
-            e.preventDefault();
-            if (!this.isDebugging) this.runCode();
-        }
-
-        if (e.key === 'F11') {
-            e.preventDefault();
-            if (!this.isDebugging) this.compileAndRun();
-        }
-
-        if (e.key === 'F12') {
-            const isEditable = (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable));
-            if (isEditable) return;
-            e.preventDefault();
-            if (this.compilerManager && typeof this.compilerManager.cloudCompileCurrentFile === 'function') {
-                this.compilerManager.cloudCompileCurrentFile();
+        if (!isInputLike) {
+            if (matches('toggleDebug')) return handle(() => { this.isDebugging ? this.handleDebugContinue() : this.startDebug(); });
+            if (matches('debugContinue') && this.isDebugging) return handle(() => this.handleDebugContinue());
+            if (matches('debugStepOver') && this.isDebugging) return handle(() => this.handleDebugStepOver());
+            if (matches('debugStepInto') && this.isDebugging) return handle(() => this.handleDebugStepInto());
+            if (matches('debugStepOut') && this.isDebugging) return handle(() => this.handleDebugStepOut());
+            if (matches('compileAndRun') && !this.isDebugging) return handle(() => this.compileAndRun());
+            if (matches('runCode') && !this.isDebugging) return handle(() => this.runCode());
+            if (matches('compileCode')) return handle(() => this.compileCode());
+            if (matches('cloudCompile') && this.compilerManager && typeof this.compilerManager.cloudCompileCurrentFile === 'function') {
+                return handle(() => this.compilerManager.cloudCompileCurrentFile());
             }
         }
     }
