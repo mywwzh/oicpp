@@ -13,6 +13,7 @@
                 <div class="sidebar-item active" data-target="general">常规设置</div>
                 <div class="sidebar-item" data-target="appearance">外观样式</div>
                 <div class="sidebar-item" data-target="behavior">编辑器行为</div>
+                <div class="sidebar-item" data-target="keybindings">快捷键</div>
             </div>
             
             <div class="settings-main">
@@ -139,6 +140,17 @@
                         <div class="input-group">
                             <input type="number" id="editor-auto-save-interval" min="10" max="3600" value="60">
                             <span class="unit">秒</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="keybindings" class="settings-section">
+                    <div class="section-title">快捷键</div>
+                    <div class="setting-group">
+                        <div class="hint">输入组合键（如 Ctrl+Shift+G）。留空将使用默认值。</div>
+                        <div id="keybindings-list" class="keybindings-grid"></div>
+                        <div style="margin-top: 10px; display: flex; gap: 10px;">
+                            <button id="reset-keybindings" class="btn btn-secondary">恢复全部默认快捷键</button>
                         </div>
                     </div>
                 </div>
