@@ -27,6 +27,8 @@
 - [x] 调试
 - [x] 基于浏览器插件的 atcoder、cf、luogu、hetao 样例抓取
 - [x] 分屏与查看 PDF
+- [x] markdown 侧边预览
+- [x] markdown 所见即所得模式编辑  
 - [x] 云编译，可一键测试代码在 Linux 下能否通过编译
 - [x] 支持 NOI Linux
 
