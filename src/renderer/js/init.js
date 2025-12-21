@@ -2,6 +2,17 @@ document.addEventListener('DOMContentLoaded', function() {
     logInfo('DOM 加载完成，开始初始化应用...');
     setUserIconPath();
     initializeApp();
+    setTimeout(() => {
+        try {
+            const now = new Date();
+            const shouldShow = (now.getMonth() === 0 && now.getDate() === 1);
+            if (shouldShow && window.dialogManager && typeof window.dialogManager.showNewYearGreeting === 'function') {
+                window.dialogManager.showNewYearGreeting(now);
+            }
+        } catch (e) {
+            try { logWarn('新年弹窗触发失败:', e); } catch (_) { }
+        }
+    }, 350);
 });
 
 async function setUserIconPath() {
