@@ -536,7 +536,7 @@ body.has-custom-bg .wysiwyg-container {
 }
 
 .wysiwyg-editor-area:empty::before {
-    content: '开始编�?Markdown 内容...';
+    content: '开始编写 Markdown 内容...';
     color: var(--placeholder-color, #999);
     pointer-events: none;
 }
