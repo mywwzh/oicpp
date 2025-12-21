@@ -259,6 +259,120 @@
     background-color: transparent;
 }
 
+.newyear-container {
+    min-width: 360px;
+    max-width: 560px;
+}
+
+.newyear-header {
+    position: relative;
+    border-bottom: 1px solid var(--border-color, #3c3c3c);
+    background: linear-gradient(135deg, var(--primary-bg, #252526) 0%, var(--card-bg, #2d2d30) 100%);
+}
+
+.newyear-header::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, var(--primary-color, #007acc) 50%, transparent 100%);
+    opacity: 0.9;
+}
+
+.newyear-body {
+    position: relative;
+    padding: 22px 24px;
+    background: var(--primary-bg, #252526);
+    overflow: hidden;
+}
+
+.newyear-body::before {
+    content: '';
+    position: absolute;
+    inset: -40px;
+    background:
+        radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.08) 0%, transparent 55%),
+        radial-gradient(circle at 78% 18%, rgba(255, 255, 255, 0.06) 0%, transparent 50%),
+        radial-gradient(circle at 70% 78%, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+.newyear-hero {
+    position: relative;
+    display: flex;
+    gap: 14px;
+    align-items: center;
+}
+
+.newyear-badge {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--hover-bg, #2a2d2e);
+    border: 1px solid var(--border-color, #3c3c3c);
+    font-size: 26px;
+    flex: 0 0 auto;
+}
+
+.newyear-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-color, #cccccc);
+    line-height: 1.15;
+    margin: 0;
+}
+
+.newyear-subtitle {
+    margin-top: 6px;
+    color: var(--text-secondary, #9a9a9a);
+    line-height: 1.5;
+}
+
+.newyear-wishes {
+    position: relative;
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color, #3c3c3c);
+    background: var(--card-bg, #2d2d30);
+}
+
+.newyear-wishes p {
+    margin: 0;
+    color: var(--text-color, #cccccc);
+}
+
+.newyear-wishes .muted {
+    margin-top: 6px;
+    color: var(--text-secondary, #9a9a9a);
+    font-size: 12px;
+}
+
+.newyear-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px 20px;
+    border-top: 1px solid var(--border-color, #3c3c3c);
+    background-color: var(--card-bg, #2d2d30);
+}
+
+.dialog-btn-primary {
+    background-color: var(--primary-color, #007acc);
+    color: #ffffff;
+    border: 1px solid var(--primary-color, #007acc);
+}
+
+.dialog-btn-primary:hover {
+    background-color: var(--primary-color-hover, #4a9eff);
+    border-color: var(--primary-color-hover, #4a9eff);
+}
+
 .about-header h2 {
     margin: 0;
     color: var(--text-color);
