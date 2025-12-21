@@ -1,6 +1,7 @@
 class DialogManager {
     constructor() {
         this.currentDialog = null;
+        this._keydownHandler = null;
         this.createDialogContainer();
     }
 
@@ -9,6 +10,7 @@ class DialogManager {
         overlay.className = 'dialog-overlay';
         overlay.id = 'dialog-overlay';
         overlay.style.display = 'none';
+        overlay.dataset.closeOnBackdrop = '0';
 
         const dialog = document.createElement('div');
         dialog.className = 'dialog-container';
@@ -16,10 +18,51 @@ class DialogManager {
 
         overlay.appendChild(dialog);
         document.body.appendChild(overlay);
+
+        overlay.addEventListener('click', (e) => {
+            try {
+                if (e.target !== overlay) return;
+                if (overlay.dataset.closeOnBackdrop !== '1') return;
+                this.hideDialog();
+            } catch (_) {
+            }
+        });
+    }
+
+    resetDialogState() {
+        const overlay = document.getElementById('dialog-overlay');
+        const container = document.getElementById('dialog-container');
+        if (overlay) {
+            overlay.dataset.closeOnBackdrop = '0';
+        }
+        if (container) {
+            container.classList.remove('newyear-container');
+        }
+    }
+
+    attachEscapeToClose() {
+        try {
+            if (this._keydownHandler) {
+                document.removeEventListener('keydown', this._keydownHandler, true);
+                this._keydownHandler = null;
+            }
+            this._keydownHandler = (e) => {
+                try {
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        this.hideDialog();
+                    }
+                } catch (_) {
+                }
+            };
+            document.addEventListener('keydown', this._keydownHandler, true);
+        } catch (_) {
+        }
     }
 
     showInputDialog(title, defaultValue = '', placeholder = '') {
         return new Promise((resolve, reject) => {
+            this.resetDialogState();
             const overlay = document.getElementById('dialog-overlay');
             const container = document.getElementById('dialog-container');
 
@@ -75,6 +118,7 @@ class DialogManager {
 
     showConfirmDialog(title, message) {
         return new Promise((resolve, reject) => {
+            this.resetDialogState();
             const overlay = document.getElementById('dialog-overlay');
             const container = document.getElementById('dialog-container');
 
@@ -101,6 +145,57 @@ class DialogManager {
         });
     }
 
+    showNewYearGreeting(now = new Date()) {
+        return new Promise((resolve) => {
+            this.resetDialogState();
+
+            const overlay = document.getElementById('dialog-overlay');
+            const container = document.getElementById('dialog-container');
+            if (!overlay || !container) {
+                resolve(false);
+                return;
+            }
+
+            const isTestDate = (now instanceof Date) && (now.getMonth() === 11) && (now.getDate() === 21);
+            const displayYear = isTestDate ? (now.getFullYear() + 1) : now.getFullYear();
+
+            overlay.dataset.closeOnBackdrop = '1';
+            container.classList.add('newyear-container');
+
+            const safeYear = this.escapeHtml(String(displayYear));
+            container.innerHTML = `
+                <div class="dialog-header newyear-header">
+                    <h3>新年快乐</h3>
+                    <button class="dialog-close" onclick="dialogManager.hideDialog()" aria-label="关闭">&times;</button>
+                </div>
+                <div class="newyear-body">
+                    <div class="newyear-hero">
+                        <div class="newyear-badge" aria-hidden="true">✨</div>
+                        <div>
+                            <p class="newyear-title">欢迎来到 ${safeYear}</p>
+                            <div class="newyear-subtitle">愿你：灵感常在，思路清晰，提交一次就 AC。</div>
+                        </div>
+                    </div>
+                    <div class="newyear-wishes">
+                        <p>新的一年，继续把热爱写进每一行代码。</p>
+                        <p class="muted">提示：点击空白处或按 Esc 也可关闭。</p>
+                    </div>
+                </div>
+                <div class="newyear-footer">
+                    <button class="dialog-btn dialog-btn-primary" onclick="dialogManager.confirmDialog()">开启新一年</button>
+                </div>
+            `;
+
+            overlay.style.display = 'flex';
+            this.attachEscapeToClose();
+
+            this.currentDialog = {
+                resolve: resolve,
+                reject: () => {}
+            };
+        });
+    }
+
     confirmDialog() {
         if (!this.currentDialog) return;
 
@@ -120,8 +215,23 @@ class DialogManager {
 
     hideDialog() {
         const overlay = document.getElementById('dialog-overlay');
-        overlay.style.display = 'none';
+        const pending = this.currentDialog;
         this.currentDialog = null;
+        try {
+            if (pending && typeof pending.resolve === 'function') {
+                pending.resolve(null);
+            }
+        } catch (_) {
+        }
+        overlay.style.display = 'none';
+        this.resetDialogState();
+        try {
+            if (this._keydownHandler) {
+                document.removeEventListener('keydown', this._keydownHandler, true);
+                this._keydownHandler = null;
+            }
+        } catch (_) {
+        }
     }
 
     showGotoLineDialog() {
@@ -140,6 +250,7 @@ class DialogManager {
     }
 
     showError(message) {
+        this.resetDialogState();
         try { logError('[DialogShowError]', { message: String(message) }); } catch (_) { }
         const overlay = document.getElementById('dialog-overlay');
         const container = document.getElementById('dialog-container');
