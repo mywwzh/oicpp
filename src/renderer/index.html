@@ -244,12 +244,12 @@
                     </div>
                     <div class="samples-content">
                         <div class="no-file-message" id="no-file-message" style="display: none;">
-                            <div class="message-icon">📄</div>
+                            <div class="message-icon" data-ui-icon="file"></div>
                             <p>请先打开一个C++文件</p>
                             <p class="sub-text">样例测试器需要一个活动的C++文件才能工作</p>
                         </div>
                         <div class="no-samples-message" id="no-samples-message">
-                            <div class="message-icon">✨</div>
+                            <div class="message-icon" data-ui-icon="sparkle"></div>
                             <p>还没有样例组</p>
                             <p class="sub-text">点击上方的 + 按钮添加第一个样例组</p>
                         </div>
@@ -264,7 +264,7 @@
                     </div>
                     <div class="compare-content">
                         <div class="no-compiler-message" id="no-compiler-message" style="display: none;">
-                            <div class="message-icon">⚙️</div>
+                            <div class="message-icon" data-ui-icon="gear"></div>
                             <p>请先设置编译器</p>
                             <p class="sub-text">对拍器需要编译器才能工作，请前往设置页面配置编译器</p>
                             <button class="empty-state-button" onclick="window.electronAPI?.openCompilerSettings?.()">
@@ -274,7 +274,7 @@
 
                         <div class="compare-file-section" id="compare-file-section">
                             <div class="compare-notice">
-                                <div class="notice-icon">⚠️</div>
+                                <div class="notice-icon" data-ui-icon="warning"></div>
                                 <div class="notice-text">
                                     <strong>重要提醒：</strong>所有程序的输入输出均要从标准输入输出(stdin/stdout)进行，不要使用文件读写。
                                 </div>
@@ -444,7 +444,7 @@
             <span class="status-item language">C++</span>
         </div>
         <div class="status-right">
-            <span class="status-item">✓ 就绪</span>
+            <span class="status-item"><span class="status-icon" data-ui-icon="check"></span>就绪</span>
         </div>
     </div>
 
@@ -493,6 +493,7 @@
     </script>
     
     <script src="js/electron-helper.js"></script>
+    <script src="js/ui/icons.js"></script>
     <script src="../utils/font-detector.js"></script>
     <script src="js/settings-init.js"></script>
     <script src="js/dialog.js"></script>
