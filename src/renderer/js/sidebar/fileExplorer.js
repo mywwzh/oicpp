@@ -329,7 +329,7 @@ class FileExplorer {
 
         fileTree.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">📁</div>
+                <div class="empty-state-icon" data-ui-icon="folder"></div>
                 <div class="empty-state-title">没有打开的文件夹</div>
                 <div class="empty-state-subtitle">您还没有打开文件夹</div>
                 <button class="empty-state-button" onclick="window.oicppApp.openFolder()">
@@ -337,6 +337,10 @@ class FileExplorer {
                 </button>
             </div>
         `;
+
+        if (window.uiIcons && typeof window.uiIcons.hydrate === 'function') {
+            window.uiIcons.hydrate(fileTree);
+        }
     }
 
     loadWorkspaceFiles() {
@@ -513,7 +517,12 @@ class FileExplorer {
         const item = document.createElement('div');
         item.className = 'tree-item';
         item.dataset.path = file.path;
-        item.dataset.type = file.type;
+        if (file.type === 'folder') {
+            item.dataset.type = 'folder';
+        } else {
+            const ext = (file.extension || '').toLowerCase();
+            item.dataset.type = ext ? ext.replace(/^\./, '') : 'file';
+        }
         item.style.paddingLeft = `${level * 16 + 8}px`;
 
         const content = document.createElement('div');
@@ -528,7 +537,12 @@ class FileExplorer {
 
         const icon = document.createElement('span');
         icon.className = 'tree-item-icon';
-        icon.textContent = this.getFileIcon(file);
+        const iconName = this.getFileIcon(file);
+        if (window.uiIcons && typeof window.uiIcons.svg === 'function') {
+            icon.innerHTML = window.uiIcons.svg(iconName);
+        } else {
+            icon.textContent = '';
+        }
 
         const label = document.createElement('span');
         label.className = 'tree-item-label';
@@ -545,36 +559,35 @@ class FileExplorer {
 
     getFileIcon(file) {
         if (file.type === 'folder') {
-            return '📁';
+            return 'folder';
         }
 
-        const ext = file.extension;
+        const ext = (file.extension || '').toLowerCase();
         switch (ext) {
             case '.cpp':
             case '.cc':
             case '.cxx':
-                return '🔷';
             case '.c':
-                return '🔵';
+                return 'fileCode';
             case '.h':
             case '.hpp':
-                return '🟦';
-            case '.pdf':
-                return '📕';
-            case '.txt':
-                return '📄';
+                return 'fileHeader';
             case '.md':
-                return '📝';
+                return 'fileMarkdown';
+            case '.txt':
+                return 'fileText';
+            case '.pdf':
+                return 'filePdf';
             case '.json':
-                return '⚙️';
+                return 'fileJson';
             case '.in':
-                return '📥';
+                return 'fileIn';
             case '.out':
-                return '📤';
+                return 'fileOut';
             case '.ans':
-                return '✅';
+                return 'check';
             default:
-                return '📄';
+                return 'file';
         }
     }
 

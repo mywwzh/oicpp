@@ -675,9 +675,7 @@ body[data-theme="solarized-light"] {
 }
 
 .tab.modified .tab-label::after {
-    content: '●';
-    color: var(--editor-warning);
-    margin-left: 4px;
+    content: '';
 }
 
 .monaco-loading {

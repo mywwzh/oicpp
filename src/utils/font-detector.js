@@ -76,7 +76,7 @@ class FontDetector {
         message.className = 'font-warning-message';
         message.innerHTML = `
             <div class="font-warning-content">
-                <div class="font-warning-icon">⚠️</div>
+                <div class="font-warning-icon" data-ui-icon="warning"></div>
                 <div class="font-warning-text">
                     <strong>字体不可用</strong><br>
                     系统中未找到字体 "${fontName}"，已自动切换到 "${this.defaultFont}"
@@ -114,6 +114,10 @@ class FontDetector {
             flex-shrink: 0;
             margin-top: 2px;
         `;
+
+        if (window.uiIcons && typeof window.uiIcons.hydrate === 'function') {
+            window.uiIcons.hydrate(message);
+        }
         
         const text = message.querySelector('.font-warning-text');
         text.style.cssText = `

@@ -54,18 +54,18 @@ class WysiwygEditor {
             { type: 'separator' },
             { icon: '•', command: 'insertUnorderedList', title: '无序列表' },
             { icon: '1.', command: 'insertOrderedList', title: '有序列表' },
-            { icon: '☐', command: 'taskList', title: '任务列表', custom: true },
+            { iconSvg: 'task', command: 'taskList', title: '任务列表', custom: true },
             { type: 'separator' },
             { icon: '""', command: 'blockquote', title: '引用', custom: true },
             { icon: '< >', command: 'code', title: '行内代码', custom: true },
             { icon: '```', command: 'codeBlock', title: '代码块', custom: true },
             { type: 'separator' },
-            { icon: '🔗', command: 'link', title: '链接 (Ctrl+K)', custom: true },
-            { icon: '🖼️', command: 'image', title: '图片', custom: true },
+            { iconSvg: 'link', command: 'link', title: '链接 (Ctrl+K)', custom: true },
+            { iconSvg: 'image', command: 'image', title: '图片', custom: true },
             { icon: '—', command: 'insertHorizontalRule', title: '分割线' },
             { type: 'separator' },
-            { icon: '↩️', command: 'undo', title: '撤销 (Ctrl+Z)' },
-            { icon: '↪️', command: 'redo', title: '重做 (Ctrl+Y)' },
+            { iconSvg: 'undo', command: 'undo', title: '撤销 (Ctrl+Z)' },
+            { iconSvg: 'redo', command: 'redo', title: '重做 (Ctrl+Y)' },
         ];
 
         buttons.forEach(btn => {
@@ -76,7 +76,11 @@ class WysiwygEditor {
             } else {
                 const button = document.createElement('button');
                 button.className = 'wysiwyg-toolbar-btn';
-                button.innerHTML = btn.icon;
+                if (btn.iconSvg && window.uiIcons && typeof window.uiIcons.svg === 'function') {
+                    button.innerHTML = window.uiIcons.svg(btn.iconSvg);
+                } else {
+                    button.innerHTML = btn.icon;
+                }
                 button.title = btn.title;
                 if (btn.style) {
                     button.style.cssText = btn.style;
