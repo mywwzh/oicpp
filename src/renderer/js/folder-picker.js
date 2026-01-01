@@ -147,13 +147,16 @@
                     }
                     list.forEach(d => {
                         const item = E('div', 'folder-picker-item folder');
-                        item.innerHTML = '<span class="folder-picker-icon">📁</span><span>' + d.name + '</span>';
+                        item.innerHTML = '<span class="folder-picker-icon" data-ui-icon="folder" aria-hidden="true"></span><span>' + d.name + '</span>';
                         item.onclick = (ev) => {
                             selectItem(item, d);
                         };
                         item.ondblclick = () => { cur = d.path; reload(); };
                         treeWrap.appendChild(item);
                     });
+                    if (window.uiIcons && typeof window.uiIcons.hydrate === 'function') {
+                        window.uiIcons.hydrate(treeWrap);
+                    }
                     choose.disabled = false;
                 }
 

@@ -521,7 +521,8 @@ class SampleTester {
         if (isFromFile) {
             const filePath = type === 'input' ? sample.input : sample.output;
             const abbreviatedPath = this.abbreviateFilePath(filePath);
-            return `<div class="file-reference" title="${filePath}">file: ${abbreviatedPath}</div>`;
+            const icon = (window.uiIcons && typeof window.uiIcons.svg === 'function') ? window.uiIcons.svg('folder') : '';
+            return `<div class="file-reference" title="${filePath}"><span class="file-reference-icon" aria-hidden="true">${icon}</span><span>file: ${abbreviatedPath}</span></div>`;
         } else {
             const content = type === 'input' ? sample.input : sample.output;
             const lines = (content || '').split('\n').length;
@@ -1386,7 +1387,8 @@ class SampleTester {
                 if (diffCharacter) {
                     result += beforeDiff + `<span class="diff-highlight">${diffCharacter}</span>` + afterDiff;
                 } else {
-                    result += beforeDiff + '<span class="diff-highlight">⬚</span>';
+                    const icon = (window.uiIcons && typeof window.uiIcons.svg === 'function') ? window.uiIcons.svg('emptyBox') : '';
+                    result += beforeDiff + `<span class="diff-highlight">${icon}</span>`;
                 }
             } else {
                 result += this.escapeHtml(actualLine);

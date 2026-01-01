@@ -295,9 +295,11 @@
     gap: 8px;
 }
 
-.file-reference::before {
-    content: "📁";
+.file-reference-icon {
     opacity: 0.7;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .program-output-group {

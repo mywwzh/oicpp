@@ -219,7 +219,16 @@
 
 .tree-item-icon {
     margin-right: 6px;
-    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tree-item-icon .ui-icon {
+    width: 14px;
+    height: 14px;
 }
 
 .tree-item-label {
