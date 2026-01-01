@@ -889,3 +889,11 @@ body[data-theme] .setting-item textarea {
 body[data-theme] .settings-close {
     color: var(--text-color);
 }
+
+.ui-icon {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    pointer-events: none;
+}

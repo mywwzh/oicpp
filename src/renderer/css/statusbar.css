@@ -60,6 +60,12 @@
     margin-right: 4px;
 }
 
+.status-icon .ui-icon {
+    width: 16px;
+    height: 16px;
+    vertical-align: -0.125em;
+}
+
 .progress-bar {
     width: 100px;
     height: 2px;

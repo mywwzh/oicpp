@@ -1941,7 +1941,9 @@ class TabManager {
             group.tabs = group.tabs || new Map();
             const tabElements = group.tabBar ? Array.from(group.tabBar.querySelectorAll('.tab')) : [];
             tabElements.forEach((tabEl) => {
-                const fileName = tabEl.dataset.file || tabEl.querySelector('.tab-label')?.textContent?.trim() || 'untitled';
+                const labelEl = tabEl.querySelector('.tab-label');
+                const labelText = labelEl?.querySelector?.('.tab-label-text')?.textContent || labelEl?.textContent || '';
+                const fileName = tabEl.dataset.file || labelText.trim() || 'untitled';
                 const uniqueKey = tabEl.dataset.uniqueKey || tabEl.dataset.filePath || fileName;
                 const tabData = {
                     element: tabEl,
@@ -2437,14 +2439,26 @@ class TabManager {
                         }
                     }
 
-                    const prefixes = [];
-                    if (tabData.modified) {
-                        prefixes.push('●');
+                    const prefixSvgs = [];
+                    if (tabData.modified && window.uiIcons && typeof window.uiIcons.svg === 'function') {
+                        prefixSvgs.push(window.uiIcons.svg('dot'));
                     }
-                    if (tabData.externalModified) {
-                        prefixes.push(tabData.externalChangeType === 'deleted' ? '⚠' : '⟳');
+                    if (tabData.externalModified && window.uiIcons && typeof window.uiIcons.svg === 'function') {
+                        prefixSvgs.push(window.uiIcons.svg(tabData.externalChangeType === 'deleted' ? 'warning' : 'refresh'));
                     }
-                    labelElement.textContent = prefixes.length ? `${prefixes.join(' ')} ${baseLabel}` : baseLabel;
+
+                    const textSpan = document.createElement('span');
+                    textSpan.className = 'tab-label-text';
+                    textSpan.textContent = baseLabel;
+
+                    if (prefixSvgs.length) {
+                        const prefixSpan = document.createElement('span');
+                        prefixSpan.className = 'tab-label-prefixes';
+                        prefixSpan.innerHTML = prefixSvgs.join('');
+                        labelElement.replaceChildren(prefixSpan, textSpan);
+                    } else {
+                        labelElement.replaceChildren(textSpan);
+                    }
                 });
             }
         } catch (err) {
@@ -3567,8 +3581,8 @@ class TabManager {
         for (const tabEl of allTabs) {
             const tabLabel = tabEl.querySelector('.tab-label');
             const datasetFileName = typeof tabEl.dataset?.file === 'string' ? tabEl.dataset.file : '';
-            const labelText = tabLabel?.textContent || '';
-            const strippedLabel = labelText.replace(/^●\s*/, '').split(' — ')[0].trim();
+            const labelText = tabLabel?.querySelector?.('.tab-label-text')?.textContent || tabLabel?.textContent || '';
+            const strippedLabel = labelText.split(' — ')[0].trim();
             const candidateName = datasetFileName || strippedLabel;
 
             if (candidateName === fileName) {
@@ -3591,7 +3605,10 @@ class TabManager {
 
         const label = document.createElement('span');
         label.className = 'tab-label';
-        label.textContent = fileName;
+        const labelText = document.createElement('span');
+        labelText.className = 'tab-label-text';
+        labelText.textContent = fileName;
+        label.appendChild(labelText);
 
         const closeBtn = document.createElement('span');
         closeBtn.className = 'tab-close';
@@ -3982,6 +3999,10 @@ class TabManager {
 
         welcomeContainer.innerHTML = this.getWelcomePageContent();
 
+        if (window.uiIcons && typeof window.uiIcons.hydrate === 'function') {
+            window.uiIcons.hydrate(welcomeContainer);
+        }
+
         this.setupWelcomeEventListeners(welcomeContainer);
 
         const welcomeTab = {
@@ -4009,7 +4030,7 @@ class TabManager {
                         <h3>开始</h3>
                         <div class="welcome-actions">
                             <a href="#" class="welcome-action" data-action="open-folder">
-                                <span class="icon">📁</span>
+                                <span class="icon" data-ui-icon="folder" aria-hidden="true"></span>
                                 <span>打开文件夹</span>
                                 <span class="shortcut">Ctrl+K</span>
                             </a>
@@ -4043,6 +4064,10 @@ class TabManager {
             welcomeContainer = document.createElement('div');
             welcomeContainer.id = 'welcome-container';
             welcomeContainer.innerHTML = this.getWelcomePageContent();
+
+            if (window.uiIcons && typeof window.uiIcons.hydrate === 'function') {
+                window.uiIcons.hydrate(welcomeContainer);
+            }
 
             const editorTerminalContainer = document.querySelector('.editor-terminal-container');
             if (editorTerminalContainer) {
@@ -4091,22 +4116,29 @@ class TabManager {
             if (!recentFiles || recentFiles.length === 0) {
                 recentContainer.innerHTML = `
                     <div class="welcome-recent-item">
-                        <span class="icon">📄</span>
+                        <span class="icon" data-ui-icon="file" aria-hidden="true"></span>
                         <span>暂无最近文件</span>
                     </div>
                 `;
+                if (window.uiIcons && typeof window.uiIcons.hydrate === 'function') {
+                    window.uiIcons.hydrate(recentContainer);
+                }
                 return;
             }
 
             recentContainer.innerHTML = recentFiles.map(file => `
                 <div class="welcome-recent-item" data-path="${file.path}">
-                    <span class="icon">📁</span>
+                    <span class="icon" data-ui-icon="folder" aria-hidden="true"></span>
                     <div class="file-info">
                         <span class="file-name">${file.name}</span>
                         <span class="file-path">${file.path}</span>
                     </div>
                 </div>
             `).join('');
+
+            if (window.uiIcons && typeof window.uiIcons.hydrate === 'function') {
+                window.uiIcons.hydrate(recentContainer);
+            }
 
             const recentItems = recentContainer.querySelectorAll('.welcome-recent-item[data-path]');
             recentItems.forEach(item => {
@@ -4391,7 +4423,7 @@ void hello() {
                         <h3>开始</h3>
                         <div class="welcome-actions">
                             <a href="#" class="welcome-action" data-action="open-folder">
-                                <span class="icon">📁</span>
+                                <span class="icon" data-ui-icon="folder" aria-hidden="true"></span>
                                 <span>打开文件夹</span>
                                 <span class="shortcut">Ctrl+K</span>
                             </a>
@@ -4402,7 +4434,7 @@ void hello() {
                         <h3>最近打开</h3>
                         <div class="welcome-recent" id="welcome-recent">
                             <div class="welcome-recent-item">
-                                <span class="icon">📄</span>
+                                <span class="icon" data-ui-icon="file" aria-hidden="true"></span>
                                 <span>暂无最近文件</span>
                             </div>
                         </div>

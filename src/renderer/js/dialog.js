@@ -170,7 +170,7 @@ class DialogManager {
                 </div>
                 <div class="newyear-body">
                     <div class="newyear-hero">
-                        <div class="newyear-badge" aria-hidden="true">✨</div>
+                        <div class="newyear-badge" aria-hidden="true" data-ui-icon="sparkle"></div>
                         <div>
                             <p class="newyear-title">欢迎来到 ${safeYear}</p>
                             <div class="newyear-subtitle">愿你：灵感常在，思路清晰，提交一次就 AC。</div>
@@ -185,6 +185,10 @@ class DialogManager {
                     <button class="dialog-btn dialog-btn-primary" onclick="dialogManager.confirmDialog()">开启新一年</button>
                 </div>
             `;
+
+            if (window.uiIcons && typeof window.uiIcons.hydrate === 'function') {
+                window.uiIcons.hydrate(container);
+            }
 
             overlay.style.display = 'flex';
             this.attachEscapeToClose();

@@ -1068,7 +1068,8 @@ class CodeComparer {
         }
         const result = this.escapeHtml(t1);
         if (t1.length < t2.length) {
-            return result + '<span class="diff-highlight">⬚</span>';
+            const icon = (window.uiIcons && typeof window.uiIcons.svg === 'function') ? window.uiIcons.svg('emptyBox') : '';
+            return result + `<span class="diff-highlight">${icon}</span>`;
         }
         return result;
     }
