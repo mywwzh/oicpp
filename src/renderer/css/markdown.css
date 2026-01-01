@@ -527,6 +527,8 @@ body.has-custom-bg .wysiwyg-container {
     flex: 1;
     overflow-y: auto;
     padding: 20px 45px;
+    max-width: none;
+    margin: 0;
     outline: none;
     min-height: 100px;
 }
