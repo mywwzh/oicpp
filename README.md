@@ -5,6 +5,11 @@
   <a href="https://github.com/mywwzh/oicpp/issues"><img src="https://img.shields.io/github/issues/mywwzh/oicpp.svg?style=for-the-badge&new=1" alt="Issues"></a>
   <a href="https://github.com/mywwzh/oicpp/network/members"><img src="https://img.shields.io/github/forks/mywwzh/oicpp.svg?style=for-the-badge&new=1" alt="Forks"></a>
   <a href="https://github.com/mywwzh/oicpp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/mywwzh/oicpp.svg?style=for-the-badge&new=1" alt="License"></a>
+  <br>
+  <img src="https://img.shields.io/badge/Electron-37.2+-47848F?style=flat&logo=electron&logoColor=white" alt="Electron"/> 
+  <img src="https://img.shields.io/badge/Node.js-20+-339933?style=flat&logo=node.js&logoColor=white" alt="Node.js"/> 
+  <img src="https://img.shields.io/badge/JavaScript-ES6+-F7DF1E?style=flat&logo=javascript&logoColor=black" alt="JavaScript"/> 
+  <img src="https://img.shields.io/badge/Monaco_Editor-0.52+-007ACC?style=flat&logo=visual-studio-code&logoColor=white" alt="Monaco Editor"/>
 </p>
 <br>
 <p>OICPP IDE 起源于一个退役高中 OIer 对信息学竞赛的热爱与对编程工具的思考。</p>
@@ -18,6 +23,7 @@
 - [x] 代码编辑与运行
 - [x] 多标签页支持
 - [x] 深浅主题切换与代码高亮
+- [x] 自定义编辑器背景图片与窗口透明度 
 - [x] 代码补全
 - [x] 工作区文件快速搜索 
 - [x] 一键下载编译器、testlib 并自动配置
