@@ -16,7 +16,7 @@ const logger = require('./utils/logger');
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
-const APP_VERSION = '1.1.3';
+const APP_VERSION = '1.1.4';
 const SAVE_ALL_TIMEOUT = 4000; // 4 seconds timeout for save-all before closing
 
 function getUserIconPath() {
@@ -46,11 +46,6 @@ global.logerror = (...args) => { try { logger.logerror(...args); } catch (_) { }
 global.logWarn = global.logwarn;
 global.logError = global.logerror;
 
-/**
- * Validates file or folder name for illegal characters
- * @param {string} name - The file or folder name to validate
- * @returns {Object} - { valid: boolean, error: string }
- */
 function validateFileName(name) {
     if (!name || typeof name !== 'string') {
         return { valid: false, error: '名称不能为空' };
@@ -60,10 +55,6 @@ function validateFileName(name) {
     if (trimmedName.length === 0) {
         return { valid: false, error: '名称不能为空' };
     }
-
-    // Check for illegal characters based on platform
-    // Windows: < > : " / \ | ? *
-    // Unix/Linux/macOS: /
     const illegalCharsWin = /[<>:"/\\|?*]/;
     const illegalCharsUnix = /\//;
     
@@ -76,7 +67,6 @@ function validateFileName(name) {
         return { valid: false, error: platformMsg };
     }
 
-    // Check for reserved names on Windows
     if (process.platform === 'win32') {
         const reservedNames = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i;
         if (reservedNames.test(trimmedName)) {
@@ -84,9 +74,6 @@ function validateFileName(name) {
         }
     }
 
-    // Check if the original name (before trim) ends with space or period (Windows restriction)
-    // Note: We check the original 'name' not 'trimmedName' because Windows does not allow
-    // trailing spaces or periods, even though String.trim() would remove them
     if (process.platform === 'win32' && /[\s.]$/.test(name)) {
         return { valid: false, error: '文件名不能以空格或句点结尾' };
     }
@@ -467,13 +454,9 @@ ipcMain.handle('get-build-info', () => {
     } catch (error) {
         logger.logwarn('读取构建信息失败:', error);
     }
-    return { version: '1.1.3', buildTime: '未知', author: 'mywwzh' };
+    return { version: '1.1.4 (v23)', buildTime: '未知', author: 'mywwzh' };
 });
 
-/**
- * Requests save-all and closes the main window after completion or timeout
- * @param {string} context - Context string for logging (e.g., '菜单退出', '关闭窗口')
- */
 function requestSaveAllAndClose(context = '关闭窗口') {
     if (!mainWindow || mainWindow.isDestroyed()) {
         return;
@@ -577,7 +560,7 @@ function createWindow() {
                 setTimeout(() => {
                     logInfo('[启动] 自动打开工作区:', target);
                     mainWindow.webContents.send('folder-opened', target);
-                }, 1200); // 适当缩短等待
+                }, 1200);
             }
         })();
 
@@ -4330,7 +4313,7 @@ function resetSettings(settingsType = null) {
 function exportSettings(filePath) {
     try {
         const exportData = {
-            version: '1.1.3',
+            version: '1.1.4 (v23)',
             timestamp: new Date().toISOString(),
             settings: settings
         };
