@@ -5,9 +5,18 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
         try {
             const now = new Date();
-            const shouldShow = (now.getMonth() === 0 && now.getDate() === 1);
-            if (shouldShow && window.dialogManager && typeof window.dialogManager.showNewYearGreeting === 'function') {
+            const isNewYearDay = (now.getMonth() === 0 && now.getDate() === 1);
+            const isSpringFestivalDay = (now.getMonth() === 1 && now.getDate() === 17);
+
+            if (!window.dialogManager) return;
+
+            if (isNewYearDay && typeof window.dialogManager.showNewYearGreeting === 'function') {
                 window.dialogManager.showNewYearGreeting(now);
+                return;
+            }
+
+            if (isSpringFestivalDay && typeof window.dialogManager.showSpringFestivalGreeting === 'function') {
+                window.dialogManager.showSpringFestivalGreeting(now);
             }
         } catch (e) {
             try { logWarn('新年弹窗触发失败:', e); } catch (_) { }
