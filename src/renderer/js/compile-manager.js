@@ -17,6 +17,13 @@ class CompilerManager {
         this.cloudProgressLine = null;
         this.cloudQueueLastCount = null;
         this.cloudCompileStartTime = null;
+        this.analysisList = null;
+        this.analysisEmptyState = null;
+        this.activePane = 'raw';
+        this.analysisHasContent = false;
+        this.tabButtons = [];
+        this.analysisHint = null;
+        this.analysisAvailable = false;
     }
 
     init() {
@@ -50,8 +57,23 @@ class CompilerManager {
                 </div>
             </div>
             <div class="compile-output-content">
-                <div class="compile-output-text" id="compile-output-messages">
-                    <div id="compile-command-text" class="output-line output-command" style="display: none;"></div>
+                <div class="compile-output-toolbar">
+                    <div class="compile-output-tabs" role="tablist" aria-label="编译输出视图切换">
+                        <button class="compile-tab-btn active" data-pane="raw" role="tab" aria-selected="true">原始输出</button>
+                        <button class="compile-tab-btn" data-pane="analysis" role="tab" aria-selected="false">报错解析</button>
+                    </div>
+                    <div class="compile-output-hint">遇到警告/错误时自动切换至解析视图</div>
+                </div>
+                <div class="compile-output-body">
+                    <div class="compile-pane compile-pane-raw active" data-pane="raw">
+                        <div class="compile-output-text" id="compile-output-messages">
+                            <div id="compile-command-text" class="output-line output-command" style="display: none;"></div>
+                        </div>
+                    </div>
+                    <div class="compile-pane compile-pane-analysis" data-pane="analysis">
+                        <div class="analysis-empty" id="compile-analysis-empty">暂无可解析的内容，先查看原始输出或等待下一次编译。</div>
+                        <div class="analysis-list" id="compile-analysis-list"></div>
+                    </div>
                 </div>
             </div>
             <div class="compile-output-resizer" title="拖拽调整高度"></div>
@@ -70,6 +92,17 @@ class CompilerManager {
 
         this.compileOutput.querySelector('.compile-output-close').addEventListener('click', () => {
             this.hideOutput();
+        });
+
+        this.analysisList = this.compileOutput.querySelector('#compile-analysis-list');
+        this.analysisEmptyState = this.compileOutput.querySelector('#compile-analysis-empty');
+        this.analysisHint = this.compileOutput.querySelector('.compile-output-hint');
+        this.tabButtons = Array.from(this.compileOutput.querySelectorAll('.compile-tab-btn'));
+        this.tabButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const target = btn.dataset.pane === 'analysis' ? 'analysis' : 'raw';
+                this.switchOutputPane(target);
+            });
         });
 
         try {
@@ -107,6 +140,9 @@ class CompilerManager {
             resizer.addEventListener('mousedown', onDown);
             resizer.addEventListener('touchstart', onDown);
         }
+
+        this.switchOutputPane(this.activePane || 'raw');
+        this.updateAnalysisVisibility();
     }
 
     setupEventListeners() {
@@ -726,6 +762,330 @@ class CompilerManager {
         }
     }
 
+    switchOutputPane(pane) {
+        if (!this.compileOutput) this.createCompileOutputWindow();
+        if (!this.compileOutput) return;
+        let target = pane === 'analysis' ? 'analysis' : 'raw';
+        if (target === 'analysis' && !this.analysisAvailable) {
+            target = 'raw';
+        }
+        this.activePane = target;
+
+        const panes = this.compileOutput.querySelectorAll('.compile-pane');
+        panes.forEach((p) => {
+            const isActive = p.dataset.pane === target;
+            p.classList.toggle('active', isActive);
+            if (isActive) {
+                p.removeAttribute('aria-hidden');
+            } else {
+                p.setAttribute('aria-hidden', 'true');
+            }
+        });
+
+        this.tabButtons.forEach((btn) => {
+            const isActive = btn.dataset.pane === target;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+
+        if (target === 'analysis' && this.analysisList) {
+            this.analysisList.scrollTop = 0;
+        }
+    }
+
+    updateAnalysisVisibility() {
+        const analysisBtn = this.tabButtons.find((btn) => btn.dataset.pane === 'analysis');
+        if (analysisBtn) {
+            analysisBtn.style.display = this.analysisAvailable ? '' : 'none';
+        }
+        if (this.analysisHint) {
+            this.analysisHint.style.display = this.analysisAvailable ? '' : 'none';
+        }
+
+        if (!this.analysisAvailable && this.activePane === 'analysis') {
+            this.switchOutputPane('raw');
+        }
+    }
+
+    setAnalysisEmptyState(isEmpty) {
+        if (this.analysisEmptyState) {
+            this.analysisEmptyState.style.display = isEmpty ? '' : 'none';
+        }
+        if (this.analysisList) {
+            this.analysisList.style.display = isEmpty ? 'none' : 'block';
+        }
+        this.analysisHasContent = !isEmpty;
+        this.analysisAvailable = !isEmpty;
+        this.updateAnalysisVisibility();
+    }
+
+    renderSmartAnalysis(payload = {}) {
+        if (!this.analysisList) this.createCompileOutputWindow();
+        if (!this.analysisList) return false;
+
+        this.analysisList.innerHTML = '';
+        const items = this.buildAnalysisItems(payload);
+
+        if (!items.length) {
+            this.setAnalysisEmptyState(true);
+            this.analysisAvailable = false;
+            this.updateAnalysisVisibility();
+            return false;
+        }
+
+        this.setAnalysisEmptyState(false);
+        this.analysisAvailable = true;
+        this.updateAnalysisVisibility();
+
+        items.forEach((item) => {
+            const card = document.createElement('div');
+            card.className = `analysis-card severity-${item.severity || 'info'}`;
+
+            const header = document.createElement('div');
+            header.className = 'analysis-card-header';
+
+            const badge = document.createElement('span');
+            badge.className = `analysis-badge severity-${item.severity || 'info'}`;
+            badge.textContent = item.severity === 'warning' ? '警告' : (item.severity === 'error' ? '错误' : '提示');
+
+            const location = document.createElement('span');
+            location.className = 'analysis-location';
+            location.textContent = item.location || '位置未知';
+
+            header.appendChild(badge);
+            header.appendChild(location);
+
+            const message = document.createElement('div');
+            message.className = 'analysis-message';
+            message.textContent = item.message || '';
+
+            const hint = document.createElement('div');
+            hint.className = 'analysis-hint';
+            hint.textContent = item.hint || '暂无更详细的提示，可查看原始输出。';
+
+            card.appendChild(header);
+            card.appendChild(message);
+            card.appendChild(hint);
+
+            if (item.suggestion) {
+                const suggestion = document.createElement('div');
+                suggestion.className = 'analysis-suggestion';
+                suggestion.textContent = item.suggestion;
+                card.appendChild(suggestion);
+            }
+
+            this.analysisList.appendChild(card);
+        });
+
+        return true;
+    }
+
+    buildAnalysisItems(payload = {}) {
+        const items = [];
+        const seen = new Set();
+
+        const diagnostics = Array.isArray(payload.diagnostics) ? payload.diagnostics : [];
+        diagnostics.forEach((diag) => {
+            const rawMsg = diag.raw || diag.message || '';
+            const hint = this.buildHintFromMessage(rawMsg);
+            const translated = this.translateMessage(rawMsg);
+            const locationParts = [];
+            if (diag.file) {
+                locationParts.push(this.extractFileName(diag.file));
+            }
+            if (diag.line) {
+                locationParts.push(`行 ${diag.line}`);
+            }
+            if (diag.column) {
+                locationParts.push(`列 ${diag.column}`);
+            }
+            const location = locationParts.join(' · ') || '位置未知';
+            const key = `${location}|${diag.message || diag.raw}|${diag.severity}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            items.push({
+                severity: diag.severity === 'warning' ? 'warning' : (diag.severity === 'error' ? 'error' : 'info'),
+                location,
+                message: rawMsg || '未知信息',
+                hint: translated || hint.title,
+                suggestion: hint.suggestion
+            });
+        });
+
+        const rawLines = [...(payload.errors || []), ...(payload.warnings || [])];
+        rawLines.forEach((line) => {
+            const diag = this.parseLineToDiagnostic(line);
+            const hint = this.buildHintFromMessage(diag.message);
+            const translated = this.translateMessage(diag.message);
+            const key = `${diag.location}|${diag.message}|${diag.severity}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            items.push({
+                severity: diag.severity,
+                location: diag.location || '编译输出',
+                message: diag.message,
+                hint: translated || hint.title,
+                suggestion: hint.suggestion
+            });
+        });
+
+        if (!items.length && (payload.stderr || payload.stdout)) {
+            const text = (payload.stderr || payload.stdout || '').trim();
+            if (text) {
+                const hint = this.buildHintFromMessage(text);
+                items.push({
+                    severity: 'error',
+                    location: '编译输出',
+                    message: this.translateMessage(text),
+                    hint: hint.title,
+                    suggestion: hint.suggestion
+                });
+            }
+        }
+
+        return items.slice(0, 50);
+    }
+
+    buildHintFromMessage(message = '') {
+        const lower = String(message).toLowerCase();
+
+        if (/expected\s+'?;/.test(message)) {
+            return {
+                title: '疑似缺少分号',
+                suggestion: '在提示行或上一行末尾补一个分号 ; ，或检查语句是否提前换行。'
+            };
+        }
+
+        if (/expected\s+['"`]?\)/i.test(message) || /expected\s+['"`]?\}/i.test(message) || /expected\s+['"`]?\]/i.test(message)) {
+            return {
+                title: '疑似缺少括号/花括号',
+                suggestion: '检查成对的 (), {}, [] 是否匹配，尤其是 if/for/while 或函数声明的位置。'
+            };
+        }
+
+        if (/no such file or directory/.test(lower)) {
+            return {
+                title: '包含的文件没找到',
+                suggestion: '确认 #include 的头文件路径是否正确，或源文件/编译器路径中是否包含空格导致识别失败。'
+            };
+        }
+
+        if (/was not declared in this scope/.test(lower)) {
+            return {
+                title: '标识符未声明',
+                suggestion: '检查变量/函数是否拼写错误、是否在使用前声明，或需要添加对应的头文件。'
+            };
+        }
+
+        if (/redefinition of/.test(lower) || /has a previous declaration/.test(lower)) {
+            return {
+                title: '重复定义',
+                suggestion: '同名的函数或变量被重复定义。检查是否在多个文件或多次包含头文件时缺少 include guard。'
+            };
+        }
+
+        if (/cannot open output file/.test(lower) && (/permission denied/.test(lower) || /access is denied/.test(lower))) {
+            return {
+                title: '链接器无法写入输出文件',
+                suggestion: '目标可执行文件可能正被运行或被占用。先关闭已打开的程序/终端窗口，再重新编译。'
+            };
+        }
+
+        if (/undefined reference to [`'"]?main/.test(lower)) {
+            return {
+                title: '缺少 main 函数',
+                suggestion: '确认是否正确定义了 int main() 函数，或文件是否保存为 C++ 源文件后再编译。'
+            };
+        }
+
+        if (/undefined reference/.test(lower)) {
+            return {
+                title: '链接到未定义的符号',
+                suggestion: '对应的函数/变量未实现或缺少链接的库。检查函数是否写错、源文件是否编译、或需补充链接参数。'
+            };
+        }
+
+        if (/expected (class|struct|union)/i.test(lower)) {
+            return {
+                title: '类型/声明不完整',
+                suggestion: '可能缺少头文件或写错模板语法，检查该行前后的类型声明和模板尖括号。'
+            };
+        }
+
+        if (/control reaches end of non-void function/i.test(lower)) {
+            return {
+                title: '非 void 函数缺少返回值',
+                suggestion: '确保每个分支都返回值，或将函数声明改为 void。'
+            };
+        }
+
+        if (/maybe uninitialized/i.test(lower)) {
+            return {
+                title: '变量可能未初始化',
+                suggestion: '在使用前给变量赋初值，或在所有分支中确保赋值。'
+            };
+        }
+
+        return {
+            title: '查看原始输出获取更多细节',
+            suggestion: '跳转到对应行查看上下文，必要时打开原始输出获取完整信息。'
+        };
+    }
+
+    translateMessage(message = '') {
+        const text = String(message);
+        if (/expected\s+['"`]?;/.test(text) || /expected\s+['"`]?;\s+or/.test(text)) {
+            return '可能缺少分号或冒号，检查报错位置前一行是否遗漏 ; 或语句被截断。';
+        }
+        const expectedBefore = text.match(/expected\s+(.+?)\s+before\s+(.+)/i);
+        if (expectedBefore) {
+            return `可能缺少 ${expectedBefore[1]}，编译器提示它应在 ${expectedBefore[2]} 之前出现。看看这一行前的语法是否写完整。`;
+        }
+        const notDeclared = text.match(/(.+?)\s+was not declared in this scope/i);
+        if (notDeclared) {
+            const name = notDeclared[1].replace(/[`'"\s]/g, '').trim();
+            const suggest = (text.match(/did you mean\s+['"`]?(\w+)/i) || [])[1];
+            if (name) {
+                const suffix = suggest ? `，可能想写 ${suggest}` : '';
+                return `未声明的标识符 ${name}${suffix}。检查拼写、是否包含对应头文件，或命名空间是否正确。`;
+            }
+            return '存在未声明的标识符。检查拼写、包含的头文件或作用域。';
+        }
+        return text;
+    }
+
+    parseLineToDiagnostic(line) {
+        const raw = typeof line === 'string' ? line : this._stringifyError(line);
+        if (!raw) {
+            return { severity: 'info', location: '', message: '' };
+        }
+
+        const m = String(raw).match(/^(.+?):(\d+):(?:(\d+):)?\s*(fatal error|error|warning|note):\s*(.+)$/i);
+        if (m) {
+            const [, file, lineNum, colNum, sevRaw, msg] = m;
+            const severity = /warning/i.test(sevRaw) ? 'warning' : (/error/i.test(sevRaw) || /fatal/i.test(sevRaw) ? 'error' : 'info');
+            const locationParts = [];
+            if (file) locationParts.push(this.extractFileName(file));
+            if (lineNum) locationParts.push(`行 ${parseInt(lineNum, 10)}`);
+            if (colNum) locationParts.push(`列 ${parseInt(colNum, 10)}`);
+            return {
+                severity,
+                location: locationParts.join(' · '),
+                message: msg?.trim() || raw,
+                file,
+                line: lineNum ? parseInt(lineNum, 10) : undefined,
+                column: colNum ? parseInt(colNum, 10) : undefined
+            };
+        }
+
+        const severity = /warning/i.test(raw) ? 'warning' : (/error|fatal/i.test(raw) ? 'error' : 'info');
+        return {
+            severity,
+            location: '',
+            message: raw
+        };
+    }
+
     handleCompileResult(result) {
         this.isCompiling = false;
         
@@ -774,6 +1134,21 @@ class CompilerManager {
                 detail: { result }
             }));
         }
+
+        const hasIssues = (result.errors && result.errors.length > 0) || (result.warnings && result.warnings.length > 0);
+        const analysisRendered = this.renderSmartAnalysis({
+            diagnostics: result.diagnostics,
+            errors: result.errors,
+            warnings: result.warnings,
+            stderr: result.stderr,
+            stdout: result.stdout
+        });
+
+        if (hasIssues && analysisRendered && this.analysisAvailable) {
+            this.switchOutputPane('analysis');
+        } else {
+            this.switchOutputPane('raw');
+        }
     }
 
     handleCompileError(error) {
@@ -781,6 +1156,11 @@ class CompilerManager {
         this.setStatus('编译错误');
         const msg = this._stringifyError(error);
         this.appendOutput(`编译错误: ${msg}\n`, 'error');
+
+        this.renderSmartAnalysis({ errors: [msg] });
+        if (this.analysisHasContent && this.analysisAvailable) {
+            this.switchOutputPane('analysis');
+        }
         
         window.dispatchEvent(new CustomEvent('compile-error', {
             detail: { error }
@@ -810,6 +1190,8 @@ class CompilerManager {
             if (!this.compileOutput) return;
             this.compileOutput.classList.add('show');
         }, 10);
+
+        this.updateAnalysisVisibility();
     }
 
     hideOutput() {
@@ -828,6 +1210,13 @@ class CompilerManager {
         if (outputText) {
             outputText.innerHTML = '';
         }
+        if (this.analysisList) {
+            this.analysisList.innerHTML = '';
+        }
+        this.setAnalysisEmptyState(true);
+        this.analysisAvailable = false;
+        this.updateAnalysisVisibility();
+        this.switchOutputPane('raw');
         this.cloudProgressLine = null;
         this.cloudQueueLastCount = null;
     }

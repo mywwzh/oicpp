@@ -73,6 +73,146 @@
     flex-direction: column;
 }
 
+.compile-output-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-color, #464647);
+    background-color: var(--card-bg, #2d2d30);
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.compile-output-tabs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.compile-tab-btn {
+    border: 1px solid var(--border-color, #464647);
+    background: transparent;
+    color: var(--text-color, #cccccc);
+    padding: 4px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s ease;
+}
+
+.compile-tab-btn:hover {
+    background-color: var(--hover-bg, #37373d);
+}
+
+.compile-tab-btn.active {
+    background-color: var(--accent-bg, #3a82f7);
+    border-color: var(--accent-bg, #3a82f7);
+    color: #ffffff;
+}
+
+.compile-output-hint {
+    color: var(--text-secondary, #858585);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.compile-output-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+
+.compile-pane {
+    flex: 1;
+    display: none;
+    height: 100%;
+}
+
+.compile-pane.active {
+    display: flex;
+    flex-direction: column;
+}
+
+.compile-pane-raw .compile-output-text {
+    height: 100%;
+}
+
+.compile-pane-analysis {
+    padding: 12px 16px;
+    overflow-y: auto;
+    background-color: var(--bg-color, #1e1e1e);
+}
+
+.analysis-empty {
+    font-size: 13px;
+    color: var(--text-secondary, #858585);
+    padding: 6px 0;
+}
+
+.analysis-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.analysis-card {
+    border: 1px solid var(--border-color, #464647);
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: var(--card-bg, #2d2d30);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.analysis-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.analysis-badge {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    color: #ffffff;
+    background: var(--text-secondary, #858585);
+}
+
+.analysis-badge.severity-warning {
+    background: #f5a524;
+}
+
+.analysis-badge.severity-error {
+    background: #f44747;
+}
+
+.analysis-location {
+    font-size: 12px;
+    color: var(--text-secondary, #858585);
+    margin-left: auto;
+}
+
+.analysis-message {
+    font-weight: 600;
+    color: var(--text-color, #d4d4d4);
+    margin-bottom: 4px;
+}
+
+.analysis-hint {
+    color: var(--text-color, #d4d4d4);
+    font-size: 13px;
+    margin-bottom: 4px;
+}
+
+.analysis-suggestion {
+    color: var(--text-secondary, #a0a0a0);
+    font-size: 12px;
+}
+
 .compile-output-text {
     flex: 1;
     padding: 12px 16px;
@@ -200,6 +340,41 @@ body[data-theme="light"] .compile-output-text,
 body[data-editor-theme="light"] .compile-output-text {
     background-color: #ffffff;
     color: #333333;
+}
+
+body.theme-light .compile-output-toolbar,
+body[data-theme="light"] .compile-output-toolbar,
+body[data-editor-theme="light"] .compile-output-toolbar {
+    background-color: #f7f7f7;
+    border-bottom-color: #e1e1e1;
+}
+
+body.theme-light .compile-tab-btn,
+body[data-theme="light"] .compile-tab-btn,
+body[data-editor-theme="light"] .compile-tab-btn {
+    color: #333333;
+    border-color: #d0d0d0;
+}
+
+body.theme-light .compile-tab-btn.active,
+body[data-theme="light"] .compile-tab-btn.active,
+body[data-editor-theme="light"] .compile-tab-btn.active {
+    background-color: #2f7cf6;
+    border-color: #2f7cf6;
+    color: #ffffff;
+}
+
+body.theme-light .compile-pane-analysis,
+body[data-theme="light"] .compile-pane-analysis,
+body[data-editor-theme="light"] .compile-pane-analysis {
+    background-color: #ffffff;
+}
+
+body.theme-light .analysis-card,
+body[data-theme="light"] .analysis-card,
+body[data-editor-theme="light"] .analysis-card {
+    background: #fdfdfd;
+    border-color: #e1e1e1;
 }
 
 body.theme-light .output-line.output-command,
