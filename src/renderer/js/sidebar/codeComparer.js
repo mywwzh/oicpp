@@ -1,18 +1,132 @@
 class CodeComparer {
     constructor() {
+        this.activeTaskKey = null;
         this.standardCodePath = '';
         this.testCodePath = '';
         this.generatorPath = '';
         this.useTestlib = false;
         this.spjPath = '';
-        this.isRunning = false;
-        this.shouldStop = false;
-        this.currentTest = 0;
-        this.totalTests = 0;
-        this.errorResult = null;
+        this.tasks = new Map();
         this.eventsbound = false;
 
         this.setupEventListeners();
+        this.setupActiveFileListener();
+    }
+
+    setupActiveFileListener() {
+        try {
+            window.addEventListener('oicpp:active-file-changed', (e) => {
+                const filePath = e?.detail?.filePath;
+                if (!filePath || typeof filePath !== 'string') return;
+                if (!this.isSupportedCodeFile(filePath)) return;
+                this.setActiveTaskKey(filePath, { syncTestCodePath: true });
+            });
+        } catch (error) {
+            logWarn('[对拍器] 注册活动文件监听失败:', error);
+        }
+    }
+
+    isSupportedCodeFile(filePath) {
+        const lower = String(filePath || '').toLowerCase();
+        return lower.endsWith('.cpp') || lower.endsWith('.cc') || lower.endsWith('.cxx') || lower.endsWith('.c');
+    }
+
+    getOrCreateTask(taskKey) {
+        if (!taskKey) return null;
+        let task = this.tasks.get(taskKey);
+        if (!task) {
+            task = {
+                key: taskKey,
+                config: {
+                    standardCodePath: '',
+                    testCodePath: taskKey,
+                    generatorPath: '',
+                    useTestlib: false,
+                    spjPath: '',
+                    compareCount: 100,
+                    timeLimit: 1000
+                },
+                state: {
+                    isRunning: false,
+                    shouldStop: false,
+                    currentTest: 0,
+                    totalTests: 0,
+                    statusText: '准备中',
+                    mode: 'idle', // idle | running | error | complete
+                    errorResult: null,
+                    warningMessage: null
+                },
+                compiledExecutables: null
+            };
+            this.tasks.set(taskKey, task);
+        }
+        return task;
+    }
+
+    getActiveTask() {
+        const key = this.activeTaskKey || this.testCodePath || null;
+        if (!key) return null;
+        return this.getOrCreateTask(key);
+    }
+
+    setActiveTaskKey(taskKey, options = {}) {
+        if (!taskKey || typeof taskKey !== 'string') return;
+
+        const task = this.getOrCreateTask(taskKey);
+        if (!task) return;
+
+        this.activeTaskKey = taskKey;
+
+        if (options.syncTestCodePath) {
+            task.config.testCodePath = taskKey;
+            this.testCodePath = taskKey;
+        }
+
+        this.applyTaskConfigToInstance(task);
+        this.renderTask(task);
+    }
+
+    applyTaskConfigToInstance(task) {
+        const cfg = task?.config;
+        if (!cfg) return;
+        this.standardCodePath = cfg.standardCodePath || '';
+        this.testCodePath = cfg.testCodePath || '';
+        this.generatorPath = cfg.generatorPath || '';
+        this.useTestlib = !!cfg.useTestlib;
+        this.spjPath = cfg.spjPath || '';
+    }
+
+    syncInstanceConfigToTask(task) {
+        if (!task?.config) return;
+        task.config.standardCodePath = this.standardCodePath || '';
+        task.config.testCodePath = this.testCodePath || task.key;
+        task.config.generatorPath = this.generatorPath || '';
+        task.config.useTestlib = !!this.useTestlib;
+        task.config.spjPath = this.spjPath || '';
+
+        const compareCountEl = document.getElementById('compare-count');
+        const timeLimitEl = document.getElementById('time-limit');
+        const compareCount = parseInt(compareCountEl?.value);
+        const timeLimit = parseInt(timeLimitEl?.value);
+        if (Number.isFinite(compareCount)) task.config.compareCount = Math.max(1, Math.min(compareCount, 100000));
+        if (Number.isFinite(timeLimit)) task.config.timeLimit = timeLimit;
+    }
+
+    mergeTaskConfigIfEmpty(targetTask, sourceConfig) {
+        if (!targetTask?.config || !sourceConfig) return;
+
+        const t = targetTask.config;
+        const s = sourceConfig;
+        if (!t.standardCodePath && s.standardCodePath) t.standardCodePath = s.standardCodePath;
+        if (!t.generatorPath && s.generatorPath) t.generatorPath = s.generatorPath;
+        if (!t.spjPath && s.spjPath) t.spjPath = s.spjPath;
+
+        if (!t.useTestlib && s.useTestlib) t.useTestlib = !!s.useTestlib;
+
+        if (!Number.isFinite(t.compareCount) && Number.isFinite(s.compareCount)) t.compareCount = s.compareCount;
+        if (!Number.isFinite(t.timeLimit) && Number.isFinite(s.timeLimit)) t.timeLimit = s.timeLimit;
+
+        t.testCodePath = targetTask.key;
     }
 
     activate() {
@@ -20,6 +134,17 @@ class CodeComparer {
         setTimeout(() => {
             this.checkCompilerAndUpdate();
         }, 100);
+
+        try {
+            const currentEditor = window.editorManager?.getCurrentEditor?.();
+            const filePath = currentEditor?.filePath || (currentEditor?.getFilePath && currentEditor.getFilePath());
+            if (filePath && this.isSupportedCodeFile(filePath)) {
+                this.setActiveTaskKey(filePath, { syncTestCodePath: true });
+            } else {
+                const task = this.getActiveTask();
+                if (task) this.renderTask(task);
+            }
+        } catch (_) { }
     }
 
     async checkCompilerAndUpdate() {
@@ -94,15 +219,37 @@ class CodeComparer {
 
         const useTestlibCheckbox = document.getElementById('compare-use-testlib');
         const spjBrowseBtn = document.getElementById('compare-spj-browse');
+        const compareCountInput = document.getElementById('compare-count');
+        const timeLimitInput = document.getElementById('time-limit');
 
         if (useTestlibCheckbox) {
             useTestlibCheckbox.addEventListener('change', (e) => {
                 this.useTestlib = e.target.checked;
+                const task = this.getActiveTask();
+                if (task) {
+                    task.config.useTestlib = !!this.useTestlib;
+                    this.renderTask(task);
+                }
             });
         }
 
         if (spjBrowseBtn) {
             spjBrowseBtn.addEventListener('click', () => this.browseSpjFile());
+        }
+
+        if (compareCountInput) {
+            compareCountInput.addEventListener('change', () => {
+                const task = this.getActiveTask();
+                if (!task) return;
+                this.syncInstanceConfigToTask(task);
+            });
+        }
+        if (timeLimitInput) {
+            timeLimitInput.addEventListener('change', () => {
+                const task = this.getActiveTask();
+                if (!task) return;
+                this.syncInstanceConfigToTask(task);
+            });
         }
     }
 
@@ -120,6 +267,11 @@ class CodeComparer {
             if (!result.canceled && result.filePaths.length > 0) {
                 this.standardCodePath = result.filePaths[0];
                 this.updateFilePath('std-code-path', this.standardCodePath);
+
+                const task = this.getActiveTask();
+                if (task) {
+                    task.config.standardCodePath = this.standardCodePath;
+                }
             }
         } catch (error) {
             logError('选择标准代码文件失败:', error);
@@ -128,6 +280,11 @@ class CodeComparer {
 
     async browseTestCode() {
         try {
+            const prevTask = this.getActiveTask();
+            if (prevTask) {
+                this.syncInstanceConfigToTask(prevTask);
+            }
+
             const result = await window.electronAPI.showOpenDialog({
                 title: '选择要对拍的代码文件',
                 filters: [
@@ -140,6 +297,24 @@ class CodeComparer {
             if (!result.canceled && result.filePaths.length > 0) {
                 this.testCodePath = result.filePaths[0];
                 this.updateFilePath('test-code-path', this.testCodePath);
+
+                const prevConfig = prevTask?.config ? { ...prevTask.config } : {
+                    standardCodePath: this.standardCodePath,
+                    generatorPath: this.generatorPath,
+                    useTestlib: this.useTestlib,
+                    spjPath: this.spjPath,
+                    compareCount: parseInt(document.getElementById('compare-count')?.value) || 100,
+                    timeLimit: parseInt(document.getElementById('time-limit')?.value) || 1000
+                };
+
+                this.setActiveTaskKey(this.testCodePath, { syncTestCodePath: true });
+                const newTask = this.getActiveTask();
+                this.mergeTaskConfigIfEmpty(newTask, prevConfig);
+
+                if (newTask) {
+                    this.applyTaskConfigToInstance(newTask);
+                    this.renderTask(newTask);
+                }
             }
         } catch (error) {
             logError('选择测试代码文件失败:', error);
@@ -160,6 +335,11 @@ class CodeComparer {
             if (!result.canceled && result.filePaths.length > 0) {
                 this.generatorPath = result.filePaths[0];
                 this.updateFilePath('generator-path', this.generatorPath);
+
+                const task = this.getActiveTask();
+                if (task) {
+                    task.config.generatorPath = this.generatorPath;
+                }
             }
         } catch (error) {
             logError('选择数据生成器文件失败:', error);
@@ -183,6 +363,11 @@ class CodeComparer {
                 if (spjPathInput) {
                     spjPathInput.value = this.spjPath;
                 }
+
+                const task = this.getActiveTask();
+                if (task) {
+                    task.config.spjPath = this.spjPath;
+                }
             }
         } catch (error) {
             logError('选择SPJ文件失败:', error);
@@ -192,77 +377,157 @@ class CodeComparer {
     updateFilePath(elementId, filePath) {
         const element = document.getElementById(elementId);
         if (element) {
-            element.textContent = filePath;
-            element.classList.add('selected');
+            const value = (filePath && String(filePath).trim()) ? String(filePath) : '未选择文件';
+            element.textContent = value;
+            if (value === '未选择文件') {
+                element.classList.remove('selected');
+            } else {
+                element.classList.add('selected');
+            }
+        }
+    }
+
+    renderTask(task) {
+        if (!task) return;
+
+        this.updateFilePath('std-code-path', task.config.standardCodePath || '');
+        this.updateFilePath('test-code-path', task.config.testCodePath || '');
+        this.updateFilePath('generator-path', task.config.generatorPath || '');
+
+        const compareCountInput = document.getElementById('compare-count');
+        if (compareCountInput && Number.isFinite(task.config.compareCount)) {
+            compareCountInput.value = String(task.config.compareCount);
+        }
+        const timeLimitInput = document.getElementById('time-limit');
+        if (timeLimitInput && Number.isFinite(task.config.timeLimit)) {
+            timeLimitInput.value = String(task.config.timeLimit);
+        }
+        const useTestlibCheckbox = document.getElementById('compare-use-testlib');
+        if (useTestlibCheckbox) {
+            useTestlibCheckbox.checked = !!task.config.useTestlib;
+        }
+        const spjPathInput = document.getElementById('compare-spj-path');
+        if (spjPathInput) {
+            spjPathInput.value = task.config.spjPath || '';
+        }
+
+        this.updateUIForTask(task);
+
+        if (task.state.mode === 'running') {
+            this.showStatus();
+            this.updateStatusText(task.state.statusText || '运行中');
+            this.updateProgress(task.state.currentTest, task.state.totalTests);
+        } else if (task.state.mode === 'error') {
+            this.showError(task.state.errorResult);
+        } else if (task.state.mode === 'complete') {
+            this.showComplete(task.state.totalTests, task.state.warningMessage);
+        } else {
+            this.hideStatus();
+            this.hideError();
+            this.hideComplete();
         }
     }
 
     async startComparison() {
         await this.autoSaveCurrentFile();
 
-        if (!this.standardCodePath || !this.testCodePath || !this.generatorPath) {
-            this.showCompileError('general', '请先选择所有必要的文件（标准代码、测试代码、数据生成器）');
+        if (!this.testCodePath) {
+            const task = this.getActiveTask();
+            this.showTaskCompileError(task, 'general', '请先选择要对拍的代码文件');
+            return;
+        }
+
+        const task = this.getOrCreateTask(this.testCodePath);
+        if (!task) return;
+
+        this.syncInstanceConfigToTask(task);
+
+        if (!task.config.standardCodePath || !task.config.testCodePath || !task.config.generatorPath) {
+            this.showTaskCompileError(task, 'general', '请先选择所有必要的文件（标准代码、测试代码、数据生成器）');
+            return;
+        }
+
+        if (task.state.isRunning) {
+            this.showTaskCompileError(task, 'general', '该文件的对拍器正在运行');
             return;
         }
 
         logInfo('对拍器文件检查:');
-        logInfo('标准代码:', this.standardCodePath);
-        logInfo('测试代码:', this.testCodePath);
-        logInfo('数据生成器:', this.generatorPath);
+        logInfo('标准代码:', task.config.standardCodePath);
+        logInfo('测试代码:', task.config.testCodePath);
+        logInfo('数据生成器:', task.config.generatorPath);
 
         try {
             const settings = await window.electronAPI.getAllSettings();
             if (!settings || !settings.compilerPath) {
-                this.showCompileError('general', '请先设置编译器路径');
+                this.showTaskCompileError(task, 'general', '请先设置编译器路径');
                 return;
             }
         } catch (error) {
             logError('获取编译器设置失败:', error);
-            this.showCompileError('general', '无法获取编译器设置');
+            this.showTaskCompileError(task, 'general', '无法获取编译器设置');
             return;
         }
 
-        let compareCount = parseInt(document.getElementById('compare-count').value) || 100;
+        let compareCount = parseInt(document.getElementById('compare-count').value) || task.config.compareCount || 100;
         compareCount = Math.max(1, Math.min(compareCount, 100000));
         const timeLimit = parseInt(document.getElementById('time-limit').value);
-        const effectiveTimeLimit = Number.isFinite(timeLimit) ? timeLimit : 1000;
+        const effectiveTimeLimit = Number.isFinite(timeLimit) ? timeLimit : (task.config.timeLimit || 1000);
 
-        this.totalTests = compareCount;
-        this.currentTest = 0;
-        this.isRunning = true;
-        this.shouldStop = false;
-        this.errorResult = null;
+        task.config.compareCount = compareCount;
+        task.config.timeLimit = Number.isFinite(timeLimit) ? timeLimit : task.config.timeLimit;
 
-        this.updateUIForRunning(true);
+        task.state.totalTests = compareCount;
+        task.state.currentTest = 0;
+        task.state.isRunning = true;
+        task.state.shouldStop = false;
+        task.state.errorResult = null;
+        task.state.warningMessage = null;
+        task.state.statusText = '准备中';
+        task.state.mode = 'running';
+
+        this.setActiveTaskKey(task.key, { syncTestCodePath: true });
+        this.updateUIForTask(task);
         this.showStatus();
+        this.updateStatusText(task.state.statusText);
+        this.updateProgress(0, task.state.totalTests);
 
+        this.runTask(task, effectiveTimeLimit).catch((error) => {
+            logError('对拍过程出错:', error);
+            this.showTaskCompileError(task, 'general', '对拍过程出错: ' + (error?.message || String(error)));
+        });
+    }
+
+    async runTask(task, effectiveTimeLimit) {
         try {
-            logInfo(`开始对拍！计划执行 ${this.totalTests} 组测试，时间限制 ${timeLimit}ms`);
+            logInfo(`开始对拍！计划执行 ${task.state.totalTests} 组测试，时间限制 ${task.config.timeLimit}ms`);
 
-            const compiledPrograms = await this.compilePrograms();
-
+            const compiledPrograms = await this.compilePrograms(task);
             if (!compiledPrograms) {
-                this.stopComparison();
                 return;
             }
 
             logInfo('所有程序编译成功，开始执行对拍');
-
-            await this.runComparison(compiledPrograms, effectiveTimeLimit);
-
-        } catch (error) {
-            logError('对拍过程出错:', error);
-            this.showCompileError('general', '对拍过程出错: ' + error.message);
+            await this.runComparison(task, compiledPrograms, effectiveTimeLimit);
+        } finally {
+            task.state.isRunning = false;
+            if (task.state.mode === 'running') {
+                task.state.mode = 'idle';
+            }
+            await this.cleanupCompiledExecutables(task);
+            if (this.activeTaskKey === task.key) {
+                this.updateUIForTask(task);
+            }
         }
     }
 
-    async compilePrograms() {
+    async compilePrograms(task) {
         try {
             const settings = await window.electronAPI.getAllSettings();
             const compilerPath = settings.compilerPath;
             let compilerArgs = settings.compilerArgs || '-std=c++14 -O2';
 
-            if (this.useTestlib) {
+            if (task.config.useTestlib) {
                 const compilerDir = await window.electronAPI.pathDirname(compilerPath);
                 const testlibIncludePath = await window.electronAPI.pathJoin(compilerDir, '..', 'include');
                 compilerArgs += ` -I"${testlibIncludePath}"`;
@@ -280,52 +545,52 @@ class CodeComparer {
             const testExe = await window.electronAPI.pathJoin(tempDir, `test_${timestamp}${exeSuffix}`);
             const generatorExe = await window.electronAPI.pathJoin(tempDir, `generator_${timestamp}${exeSuffix}`);
 
-            this.updateStatus('编译标准程序...');
+            this.updateTaskStatus(task, '编译标准程序...');
             const stdResult = await window.electronAPI.compileFile({
-                inputFile: this.standardCodePath,
+                inputFile: task.config.standardCodePath,
                 outputFile: stdExe,
                 compilerPath: compilerPath,
                 compilerArgs: compilerArgs,
-                workingDirectory: await window.electronAPI.pathDirname(this.standardCodePath)
+                workingDirectory: await window.electronAPI.pathDirname(task.config.standardCodePath)
             });
 
             if (!stdResult.success) {
-                this.showCompileError('standard', stdResult.stderr || stdResult.stdout || '编译失败');
+                this.showTaskCompileError(task, 'standard', stdResult.stderr || stdResult.stdout || '编译失败');
                 return null;
             }
 
-            this.updateStatus('编译测试程序...');
+            this.updateTaskStatus(task, '编译测试程序...');
             const testResult = await window.electronAPI.compileFile({
-                inputFile: this.testCodePath,
+                inputFile: task.config.testCodePath,
                 outputFile: testExe,
                 compilerPath: compilerPath,
                 compilerArgs: compilerArgs,
-                workingDirectory: await window.electronAPI.pathDirname(this.testCodePath)
+                workingDirectory: await window.electronAPI.pathDirname(task.config.testCodePath)
             });
 
             if (!testResult.success) {
-                this.showCompileError('test', testResult.stderr || testResult.stdout || '编译失败');
+                this.showTaskCompileError(task, 'test', testResult.stderr || testResult.stdout || '编译失败');
                 return null;
             }
 
-            this.updateStatus('编译数据生成器...');
+            this.updateTaskStatus(task, '编译数据生成器...');
             const generatorResult = await window.electronAPI.compileFile({
-                inputFile: this.generatorPath,
+                inputFile: task.config.generatorPath,
                 outputFile: generatorExe,
                 compilerPath: compilerPath,
                 compilerArgs: compilerArgs,
-                workingDirectory: await window.electronAPI.pathDirname(this.generatorPath)
+                workingDirectory: await window.electronAPI.pathDirname(task.config.generatorPath)
             });
 
             if (!generatorResult.success) {
-                this.showCompileError('generator', generatorResult.stderr || generatorResult.stdout || '编译失败');
+                this.showTaskCompileError(task, 'generator', generatorResult.stderr || generatorResult.stdout || '编译失败');
                 return null;
             }
 
             let spjExe = null;
 
-            if (this.useTestlib && this.spjPath) {
-                this.updateStatus('编译Special Judge程序...');
+            if (task.config.useTestlib && task.config.spjPath) {
+                this.updateTaskStatus(task, '编译Special Judge程序...');
                 spjExe = await window.electronAPI.pathJoin(tempDir, `spj_${timestamp}${exeSuffix}`);
 
                 let spjCompilerArgs = compilerArgs;
@@ -344,20 +609,20 @@ class CodeComparer {
 
 
                 const spjResult = await window.electronAPI.compileFile({
-                    inputFile: this.spjPath,
+                    inputFile: task.config.spjPath,
                     outputFile: spjExe,
                     compilerPath: compilerPath,
                     compilerArgs: spjCompilerArgs,
-                    workingDirectory: await window.electronAPI.pathDirname(this.spjPath)
+                    workingDirectory: await window.electronAPI.pathDirname(task.config.spjPath)
                 });
 
                 if (!spjResult.success) {
-                    this.showCompileError('spj', spjResult.stderr || spjResult.stdout || '编译失败');
+                    this.showTaskCompileError(task, 'spj', spjResult.stderr || spjResult.stdout || '编译失败');
                     return null;
                 }
             }
 
-            this.compiledExecutables = {
+            task.compiledExecutables = {
                 stdExe,
                 testExe,
                 generatorExe,
@@ -373,19 +638,19 @@ class CodeComparer {
 
         } catch (error) {
             logError('编译程序失败:', error);
-            this.showCompileError('general', '编译程序失败: ' + error.message);
+            this.showTaskCompileError(task, 'general', '编译程序失败: ' + error.message);
             return null;
         }
     }
 
-    async runComparison(programs, timeLimit) {
+    async runComparison(task, programs, timeLimit) {
         const { stdExe, testExe, generatorExe, spjExe } = programs;
         let failedGenerations = 0;
 
-        for (let i = 1; i <= this.totalTests && !this.shouldStop; i++) {
-            this.currentTest = i;
-            this.updateStatus(`第 ${i} 组测试`);
-            this.updateProgress();
+        for (let i = 1; i <= task.state.totalTests && !task.state.shouldStop; i++) {
+            task.state.currentTest = i;
+            this.updateTaskStatus(task, `第 ${i} 组测试`);
+            this.updateTaskProgress(task);
 
             try {
                 const generation = await this.generateTestData(generatorExe, 0);
@@ -397,7 +662,7 @@ class CodeComparer {
                         logError(`第 ${i} 组：数据生成失败 (${generatorType})`, generatorMessage);
                     } catch (_) { }
 
-                    this.errorResult = {
+                    task.state.errorResult = {
                         testNumber: i,
                         input: generatedOutput ? this.limitOutputLines(generatedOutput, 50) : '[生成器未产生有效输入]',
                         stdOutput: generatorMessage,
@@ -405,8 +670,8 @@ class CodeComparer {
                         errorType: 'generator_program_error',
                         generatorErrorType: generatorType
                     };
-                    this.showError();
-                    this.stopComparison();
+                    task.state.mode = 'error';
+                    this.renderIfActive(task);
                     return;
                 }
 
@@ -434,15 +699,15 @@ class CodeComparer {
                             logWarn('[对拍器][RE][STD]', { test: i, exitCode: stdOutput.exitCode, durationMs: stdOutput.time });
                         }
                     } catch (_) { }
-                    this.errorResult = {
+                    task.state.errorResult = {
                         testNumber: i,
                         input: inputData,
                         stdOutput: errorMsg,
                         testOutput: '程序未运行',
                         errorType: 'standard_program_error'
                     };
-                    this.showError();
-                    this.stopComparison();
+                    task.state.mode = 'error';
+                    this.renderIfActive(task);
                     return;
                 }
 
@@ -468,22 +733,22 @@ class CodeComparer {
                             logWarn('[对拍器][RE][TEST]', { test: i, exitCode: testOutput.exitCode, durationMs: testOutput.time });
                         }
                     } catch (_) { }
-                    this.errorResult = {
+                    task.state.errorResult = {
                         testNumber: i,
                         input: inputData,
                         stdOutput: stdOutput.output,
                         testOutput: errorMsg,
                         errorType: 'test_program_error'
                     };
-                    this.showError();
-                    this.stopComparison();
+                    task.state.mode = 'error';
+                    this.renderIfActive(task);
                     return;
                 }
 
-                if (this.useTestlib && spjExe) {
+                if (task.config.useTestlib && spjExe) {
                     const spjResult = await this.judgeWithSpj(spjExe, inputData, testOutput.output, stdOutput.output, timeLimit);
                     if (spjResult !== 'AC') {
-                        this.errorResult = {
+                        task.state.errorResult = {
                             testNumber: i,
                             input: inputData,
                             stdOutput: stdOutput.output,
@@ -491,8 +756,8 @@ class CodeComparer {
                             errorType: 'spj_error',
                             errorMessage: `SPJ 结果: ${spjResult}`
                         };
-                        this.showError();
-                        this.stopComparison();
+                        task.state.mode = 'error';
+                        this.renderIfActive(task);
                         return;
                     }
                 } else {
@@ -507,15 +772,15 @@ class CodeComparer {
                                 firstDiff: diff || null
                             });
                         } catch (_) { }
-                        this.errorResult = {
+                        task.state.errorResult = {
                             testNumber: i,
                             input: inputData,
                             stdOutput: stdOutput.output,
                             testOutput: testOutput.output,
                             usedSpj: false
                         };
-                        this.showError();
-                        this.stopComparison();
+                        task.state.mode = 'error';
+                        this.renderIfActive(task);
                         return;
                     }
                 }
@@ -526,20 +791,29 @@ class CodeComparer {
             }
         }
 
-        if (!this.shouldStop) {
-            const successfulTests = this.totalTests - failedGenerations;
+        if (!task.state.shouldStop) {
+            const successfulTests = task.state.totalTests - failedGenerations;
             if (failedGenerations === 0) {
                 logInfo(`对拍完成！共执行 ${successfulTests} 组测试，未发现差异`);
-                this.showComplete();
+                task.state.mode = 'complete';
+                task.state.warningMessage = null;
+                this.renderIfActive(task);
             } else {
                 logInfo(`对拍完成，但有 ${failedGenerations} 组数据生成失败。共成功执行 ${successfulTests} 组测试，未在成功组中发现差异`);
-                this.showComplete(`有 ${failedGenerations} 组数据生成失败，请检查数据生成器`);
+                task.state.mode = 'complete';
+                task.state.warningMessage = `有 ${failedGenerations} 组数据生成失败，请检查数据生成器`;
+                this.renderIfActive(task);
             }
         } else {
-            logInfo(`对拍被手动停止，已执行 ${this.currentTest} 组测试，其中有 ${failedGenerations} 组生成失败`);
+            logInfo(`对拍被手动停止，已执行 ${task.state.currentTest} 组测试，其中有 ${failedGenerations} 组生成失败`);
         }
+    }
 
-        this.stopComparison();
+    renderIfActive(task) {
+        if (!task) return;
+        if (this.activeTaskKey === task.key) {
+            this.renderTask(task);
+        }
     }
 
     async generateTestData(generatorExe, timeLimit) {
@@ -684,54 +958,73 @@ class CodeComparer {
     }
 
     stopComparison() {
-        this.shouldStop = true;
-        this.isRunning = false;
-        this.updateUIForRunning(false);
-
-        this.cleanupCompiledExecutables();
+        const task = this.getActiveTask();
+        if (!task) return;
+        task.state.shouldStop = true;
+        task.state.isRunning = false;
+        if (task.state.mode === 'running') {
+            task.state.mode = 'idle';
+        }
+        this.updateUIForTask(task);
     }
 
     resetComparison() {
-        this.stopComparison();
-        this.currentTest = 0;
-        this.totalTests = 0;
-        this.errorResult = null;
-        this.hideStatus();
-        this.hideError();
-        this.hideComplete();
-
-        this.cleanupCompiledExecutables();
+        const task = this.getActiveTask();
+        if (!task) return;
+        task.state.shouldStop = true;
+        task.state.isRunning = false;
+        task.state.currentTest = 0;
+        task.state.totalTests = 0;
+        task.state.statusText = '准备中';
+        task.state.errorResult = null;
+        task.state.warningMessage = null;
+        task.state.mode = 'idle';
+        this.renderTask(task);
     }
 
-    updateUIForRunning(running) {
+    updateUIForTask(task) {
         const startBtn = document.getElementById('compare-start-btn');
         const stopBtn = document.getElementById('compare-stop-btn');
         const resetBtn = document.getElementById('compare-reset-btn');
+
+        const running = !!task?.state?.isRunning && task?.state?.mode === 'running';
 
         if (startBtn) startBtn.disabled = running;
         if (stopBtn) stopBtn.disabled = !running;
         if (resetBtn) resetBtn.disabled = running;
     }
 
-    updateStatus(text) {
+    updateStatusText(text) {
         const statusText = document.getElementById('status-text');
-        if (statusText) {
-            statusText.textContent = text;
+        if (statusText) statusText.textContent = text;
+    }
+
+    updateTaskStatus(task, text) {
+        if (!task) return;
+        task.state.statusText = text;
+        if (this.activeTaskKey === task.key) {
+            this.updateStatusText(text);
         }
     }
 
-    updateProgress() {
+    updateProgress(currentTest, totalTests) {
         const currentTestEl = document.getElementById('current-test');
         const progressFill = document.getElementById('progress-fill');
 
         if (currentTestEl) {
-            currentTestEl.textContent = `第 ${this.currentTest} 组`;
+            currentTestEl.textContent = `第 ${currentTest} 组`;
         }
 
-        if (progressFill && this.totalTests > 0) {
-            const percentage = (this.currentTest / this.totalTests) * 100;
+        if (progressFill && totalTests > 0) {
+            const percentage = (currentTest / totalTests) * 100;
             progressFill.style.width = `${percentage}%`;
         }
+    }
+
+    updateTaskProgress(task) {
+        if (!task) return;
+        if (this.activeTaskKey !== task.key) return;
+        this.updateProgress(task.state.currentTest, task.state.totalTests);
     }
 
     showStatus() {
@@ -750,7 +1043,7 @@ class CodeComparer {
         }
     }
 
-    showError() {
+    showError(errorResult) {
         const errorSection = document.getElementById('compare-result');
         const errorTitle = document.getElementById('error-title');
         const errorTestNum = document.getElementById('error-test-num');
@@ -760,13 +1053,13 @@ class CodeComparer {
         const stdOutputDiffLabel = document.getElementById('std-output-diff-label');
         const testOutputDiffLabel = document.getElementById('test-output-diff-label');
 
-        if (this.errorResult && errorSection) {
+        if (errorResult && errorSection) {
             errorSection.style.display = 'block';
 
             if (errorTitle) {
-                const errType = this.errorResult.errorType;
+                const errType = errorResult.errorType;
                 if (errType === 'generator_program_error') {
-                    const generatorType = this.errorResult.generatorErrorType || '';
+                    const generatorType = errorResult.generatorErrorType || '';
                     let detailLabel = '运行错误';
                     if (generatorType === 'ole') {
                         detailLabel = '输出超过限制 (OLE)';
@@ -785,45 +1078,45 @@ class CodeComparer {
                         'generator': '数据生成器编译失败',
                         'general': '编译失败'
                     };
-                    errorTitle.textContent = compileTypeMap[this.errorResult.compileType] || '编译失败';
+                    errorTitle.textContent = compileTypeMap[errorResult.compileType] || '编译失败';
                 } else {
                     errorTitle.textContent = '发现差异';
                 }
             }
 
             if (errorTestNum) {
-                errorTestNum.textContent = `第 ${this.errorResult.testNumber} 组`;
+                errorTestNum.textContent = `第 ${errorResult.testNumber} 组`;
             }
 
             if (inputDiff) {
-                inputDiff.textContent = this.errorResult.input;
+                inputDiff.textContent = errorResult.input;
             }
 
             if (stdOutputDiff) {
-                const errType = this.errorResult.errorType;
+                const errType = errorResult.errorType;
                 if (errType === 'compile_error') {
-                    stdOutputDiff.textContent = this.errorResult.errorMessage;
+                    stdOutputDiff.textContent = errorResult.errorMessage;
                     if (stdOutputDiffLabel) {
                         stdOutputDiffLabel.textContent = '标准程序输出';
                     }
                 } else if (errType === 'generator_program_error') {
-                    stdOutputDiff.textContent = this.limitOutputLines(this.errorResult.stdOutput || '', 100);
+                    stdOutputDiff.textContent = this.limitOutputLines(errorResult.stdOutput || '', 100);
                     if (stdOutputDiffLabel) {
                         stdOutputDiffLabel.textContent = '数据生成器输出/错误';
                     }
                 } else if (errType === 'standard_program_error' || errType === 'test_program_error') {
-                    stdOutputDiff.textContent = this.limitOutputLines(this.errorResult.stdOutput || '', 100);
+                    stdOutputDiff.textContent = this.limitOutputLines(errorResult.stdOutput || '', 100);
                     if (stdOutputDiffLabel) {
                         stdOutputDiffLabel.textContent = '标准程序输出';
                     }
                 } else {
-                    if (this.errorResult.usedSpj) {
+                    if (errorResult.usedSpj) {
                         if (stdOutputDiffLabel) {
                             stdOutputDiffLabel.textContent = '标准程序输出';
                         }
-                        stdOutputDiff.textContent = this.limitOutputLines(this.errorResult.stdOutput, 100);
+                        stdOutputDiff.textContent = this.limitOutputLines(errorResult.stdOutput, 100);
                     } else {
-                        const diffPosition = this.getDifferenceInfo(this.errorResult.stdOutput, this.errorResult.testOutput);
+                        const diffPosition = this.getDifferenceInfo(errorResult.stdOutput, errorResult.testOutput);
                         if (stdOutputDiffLabel) {
                             if (diffPosition) {
                                 stdOutputDiffLabel.innerHTML = `标准程序输出 <span class="diff-info">(第 ${diffPosition.line} 行第 ${diffPosition.char} 字符有差异)</span>`;
@@ -831,36 +1124,36 @@ class CodeComparer {
                                 stdOutputDiffLabel.textContent = '标准程序输出';
                             }
                         }
-                        stdOutputDiff.innerHTML = this.formatCompareOutput(this.errorResult.stdOutput, this.errorResult.testOutput, 'standard');
+                        stdOutputDiff.innerHTML = this.formatCompareOutput(errorResult.stdOutput, errorResult.testOutput, 'standard');
                     }
                 }
             }
 
             if (testOutputDiff) {
-                const errType = this.errorResult.errorType;
+                const errType = errorResult.errorType;
                 if (errType === 'compile_error') {
                     testOutputDiff.textContent = '';
                     if (testOutputDiffLabel) {
                         testOutputDiffLabel.textContent = '测试程序输出';
                     }
                 } else if (errType === 'generator_program_error') {
-                    testOutputDiff.textContent = this.limitOutputLines(this.errorResult.testOutput || '', 100);
+                    testOutputDiff.textContent = this.limitOutputLines(errorResult.testOutput || '', 100);
                     if (testOutputDiffLabel) {
                         testOutputDiffLabel.textContent = '标准/测试程序输出';
                     }
                 } else if (errType === 'standard_program_error' || errType === 'test_program_error') {
-                    testOutputDiff.textContent = this.limitOutputLines(this.errorResult.testOutput || '', 100);
+                    testOutputDiff.textContent = this.limitOutputLines(errorResult.testOutput || '', 100);
                     if (testOutputDiffLabel) {
                         testOutputDiffLabel.textContent = '测试程序输出';
                     }
                 } else {
-                    if (this.errorResult.usedSpj) {
+                    if (errorResult.usedSpj) {
                         if (testOutputDiffLabel) {
                             testOutputDiffLabel.textContent = '测试程序输出';
                         }
-                        testOutputDiff.textContent = this.limitOutputLines(this.errorResult.testOutput, 100);
+                        testOutputDiff.textContent = this.limitOutputLines(errorResult.testOutput, 100);
                     } else {
-                        const diffPosition = this.getDifferenceInfo(this.errorResult.testOutput, this.errorResult.stdOutput);
+                        const diffPosition = this.getDifferenceInfo(errorResult.testOutput, errorResult.stdOutput);
                         if (testOutputDiffLabel) {
                             if (diffPosition) {
                                 testOutputDiffLabel.innerHTML = `测试程序输出 <span class="diff-info">(第 ${diffPosition.line} 行第 ${diffPosition.char} 字符有差异)</span>`;
@@ -868,7 +1161,7 @@ class CodeComparer {
                                 testOutputDiffLabel.textContent = '测试程序输出';
                             }
                         }
-                        testOutputDiff.innerHTML = this.formatCompareOutput(this.errorResult.testOutput, this.errorResult.stdOutput, 'test');
+                        testOutputDiff.innerHTML = this.formatCompareOutput(errorResult.testOutput, errorResult.stdOutput, 'test');
                     }
                 }
             }
@@ -885,7 +1178,7 @@ class CodeComparer {
         }
     }
 
-    showComplete(warningMessage = null) {
+    showComplete(totalTests, warningMessage = null) {
         const completeSection = document.getElementById('compare-complete');
         const completedTests = document.getElementById('completed-tests');
         const completeInfo = completeSection?.querySelector('.complete-info span');
@@ -895,13 +1188,13 @@ class CodeComparer {
         }
 
         if (completedTests) {
-            completedTests.textContent = this.totalTests;
+            completedTests.textContent = totalTests;
         }
 
         if (warningMessage && completeInfo) {
-            completeInfo.innerHTML = `已完成 <span id="completed-tests">${this.totalTests}</span> 组测试，未发现差异<br><span style="color: #ffc107; font-size: 11px; margin-top: 4px; display: inline-block;">${warningMessage}</span>`;
+            completeInfo.innerHTML = `已完成 <span id="completed-tests">${totalTests}</span> 组测试，未发现差异<br><span style="color: #ffc107; font-size: 11px; margin-top: 4px; display: inline-block;">${warningMessage}</span>`;
         } else if (completeInfo) {
-            completeInfo.innerHTML = `已完成 <span id="completed-tests">${this.totalTests}</span> 组测试，未发现差异`;
+            completeInfo.innerHTML = `已完成 <span id="completed-tests">${totalTests}</span> 组测试，未发现差异`;
         }
 
         this.hideStatus();
@@ -915,8 +1208,23 @@ class CodeComparer {
         }
     }
 
-    showCompileError(errorType, errorMessage) {
-        this.errorResult = {
+    showTaskCompileError(task, errorType, errorMessage) {
+        if (!task) {
+            this.showError({
+                errorType: 'compile_error',
+                compileType: errorType,
+                errorMessage: errorMessage,
+                testNumber: 0,
+                input: '',
+                stdOutput: '',
+                testOutput: ''
+            });
+            this.hideStatus();
+            this.hideComplete();
+            return;
+        }
+
+        task.state.errorResult = {
             errorType: 'compile_error',
             compileType: errorType,
             errorMessage: errorMessage,
@@ -925,24 +1233,27 @@ class CodeComparer {
             stdOutput: '',
             testOutput: ''
         };
+        task.state.mode = 'error';
+        task.state.isRunning = false;
+        task.state.shouldStop = true;
 
-        this.showError();
-        this.stopComparison();
+        if (this.activeTaskKey === task.key) {
+            this.renderTask(task);
+        }
 
         try {
             logError('[CompareCompileError]', {
                 type: errorType,
                 message: String(errorMessage || ''),
                 context: {
-                    standardCode: this.standardCodePath,
-                    testCode: this.testCodePath,
-                    generator: this.generatorPath,
-                    useTestlib: this.useTestlib,
-                    spjPath: this.spjPath || null
+                    standardCode: task.config.standardCodePath,
+                    testCode: task.config.testCodePath,
+                    generator: task.config.generatorPath,
+                    useTestlib: task.config.useTestlib,
+                    spjPath: task.config.spjPath
                 }
             });
         } catch (_) { }
-
         try {
             const text = String(errorMessage || '');
             const lines = text.split(/\r?\n/).filter(l => l.trim());
@@ -1126,8 +1437,10 @@ class CodeComparer {
     }
 
     async exportResults() {
-        if (!this.errorResult) {
-            this.showCompileError('general', '没有可导出的错误结果');
+        const task = this.getActiveTask();
+        const errorResult = task?.state?.errorResult;
+        if (!errorResult) {
+            this.showTaskCompileError(task, 'general', '没有可导出的错误结果');
             return;
         }
 
@@ -1147,9 +1460,9 @@ class CodeComparer {
                 const stdOutputFile = await window.electronAPI.pathJoin(exportDir, 'std_or_force_output.out');
                 const testOutputFile = await window.electronAPI.pathJoin(exportDir, 'code_output.out');
 
-                await window.electronAPI.createFile(inputFile, this.errorResult.input);
-                await window.electronAPI.createFile(stdOutputFile, this.errorResult.stdOutput);
-                await window.electronAPI.createFile(testOutputFile, this.errorResult.testOutput);
+                await window.electronAPI.createFile(inputFile, errorResult.input);
+                await window.electronAPI.createFile(stdOutputFile, errorResult.stdOutput);
+                await window.electronAPI.createFile(testOutputFile, errorResult.testOutput);
 
                 this.showSuccessMessage(`测试数据已导出到: ${exportDir}`);
             }
@@ -1159,12 +1472,12 @@ class CodeComparer {
         }
     }
 
-    async cleanupCompiledExecutables() {
-        if (!this.compiledExecutables) {
+    async cleanupCompiledExecutables(task) {
+        if (!task?.compiledExecutables) {
             return;
         }
 
-        const { stdExe, testExe, generatorExe, spjExe } = this.compiledExecutables;
+        const { stdExe, testExe, generatorExe, spjExe } = task.compiledExecutables;
         const executables = [stdExe, testExe, generatorExe, spjExe].filter(Boolean);
 
         for (const exe of executables) {
@@ -1176,7 +1489,7 @@ class CodeComparer {
             }
         }
 
-        this.compiledExecutables = null;
+        task.compiledExecutables = null;
     }
 
     async autoSaveCurrentFile() {
