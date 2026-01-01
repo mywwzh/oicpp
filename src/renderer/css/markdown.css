@@ -141,6 +141,20 @@ body.has-custom-bg .markdown-preview-container {
 }
 
 
+.markdown-body .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    padding: 0.25em 0.5em;
+    -webkit-overflow-scrolling: touch;
+}
+
+.markdown-body .katex-display > .katex {
+    display: inline-block;
+    min-width: max-content;
+}
+
+
 .dark-theme .markdown-body,
 [data-theme="dark"] .markdown-body {
     color: #c9d1d9;
