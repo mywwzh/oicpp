@@ -1,7 +1,8 @@
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const os = require('os');
 const EventEmitter = require('events');
+const fs = require('fs');
 const { tokenizeGDBLocals, parseGDBWatchValue } = require('./gdb-utils');
 
 class GDBDebugger extends EventEmitter {
@@ -28,6 +29,8 @@ class GDBDebugger extends EventEmitter {
         this._linuxTTYOptions = {};
         this._ttyShellPid = null;
         this._expectingRunning = false;
+
+        this._shortPathCache = new Map();
     }
 
     _send(cmd) {
@@ -208,7 +211,7 @@ class GDBDebugger extends EventEmitter {
             const bkpt = res.bkpt;
             const b = {
                 number: bkpt.number,
-                file: this._normalizePath(bkpt.fullname || bkpt.file || file),
+                file: this._normalizePath(bkpt.fullname || bkpt.file || file, file),
                 line: parseInt(bkpt.line, 10)
             };
             this._breakpoints.push(b);
@@ -584,16 +587,75 @@ class GDBDebugger extends EventEmitter {
     }
 
     _escapePath(p) {
-        if (os.platform() === 'win32') return p.replace(/\\/g, '/');
-        return p;
+        const target = this._toDebuggerPath(p);
+        if (os.platform() === 'win32') return target.replace(/\\/g, '/');
+        return target;
     }
 
-    _normalizePath(p) {
-        if (!p) return p;
+    _normalizePath(p, originalPath) {
+        const candidate = p || originalPath;
+        if (!candidate) return candidate;
+
         if (os.platform() === 'win32') {
-            return path.normalize(p);
+            const restored = this._restoreLongPath(candidate) || this._restoreLongPath(originalPath);
+            if (restored) return restored;
+            return path.normalize(candidate);
         }
-        return p;
+        return candidate;
+    }
+
+    _restoreLongPath(p) {
+        if (!p) return null;
+        try {
+            const real = fs.realpathSync.native ? fs.realpathSync.native(p) : fs.realpathSync(p);
+            if (real) return real;
+        } catch (_) { }
+        return null;
+    }
+
+    _toDebuggerPath(p) {
+        if (!p || typeof p !== 'string') return p;
+        if (os.platform() !== 'win32') return p;
+
+        const normalized = path.normalize(p);
+        if (!this._hasNonAscii(normalized)) return normalized;
+
+        try {
+            const shortPath = this._getShortPath(normalized);
+            if (shortPath && shortPath !== normalized) {
+                try { global.logInfo?.(`[GDB] 使用短路径以规避编码问题: ${shortPath}`); } catch (_) { }
+                return shortPath;
+            }
+        } catch (e) {
+            try { global.logWarn?.('[GDB] 获取短路径失败', e); } catch (_) { }
+        }
+
+        return normalized;
+    }
+
+    _hasNonAscii(p) {
+        return /[^\x00-\x7F]/.test(p);
+    }
+
+    _getShortPath(p) {
+        if (this._shortPathCache.has(p)) return this._shortPathCache.get(p);
+
+        let shortPath = p;
+        try {
+            const cmdExe = process.env.ComSpec || 'cmd.exe';
+            const escaped = p.replace(/"/g, '""');
+            const command = `for %I in ("${escaped}") do @echo %~sI`;
+            const result = spawnSync(cmdExe, ['/c', command], { encoding: 'utf8', windowsHide: true });
+            const output = result && result.stdout ? String(result.stdout).trim() : '';
+            if (output) {
+                shortPath = output;
+            }
+        } catch (e) {
+            shortPath = p;
+        }
+
+        this._shortPathCache.set(p, shortPath);
+        return shortPath;
     }
 
     async _waitReady() {
