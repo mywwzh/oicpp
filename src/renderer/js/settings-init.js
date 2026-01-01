@@ -149,6 +149,18 @@
                         background-color: transparent !important;
                         background: transparent !important;
                     }
+
+                    body.has-custom-bg .debug-sidebar,
+                    body.has-custom-bg .debug-header,
+                    body.has-custom-bg .debug-toolbar,
+                    body.has-custom-bg .debug-section,
+                    body.has-custom-bg .debug-section h4,
+                    body.has-custom-bg .debug-mini-wrap,
+                    body.has-custom-bg .variables-panel,
+                    body.has-custom-bg .variable-item:hover {
+                        background-color: transparent !important;
+                        background: transparent !important;
+                    }
                     
                     body.has-custom-bg .markdown-preview-container,
                     body.has-custom-bg .markdown-body {
