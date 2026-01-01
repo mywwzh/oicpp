@@ -315,8 +315,14 @@
     justify-content: center;
     background: var(--hover-bg, #2a2d2e);
     border: 1px solid var(--border-color, #3c3c3c);
-    font-size: 26px;
+    color: var(--primary-color, #007acc);
     flex: 0 0 auto;
+}
+
+.newyear-badge .ui-icon {
+    width: 28px;
+    height: 28px;
+    display: block;
 }
 
 .newyear-title {
