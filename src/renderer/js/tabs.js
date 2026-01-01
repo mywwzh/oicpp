@@ -1188,6 +1188,19 @@ class TabManager {
             group.activeTabKey = uniqueKey;
         }
 
+        // 通知其它模块（例如对拍器）当前激活文件已变化。
+        // 注意：uniqueKey在多数情况下就是文件路径；部分视图（如pdf）也会走这里。
+        try {
+            const filePath = tabData.filePath || tabData.uniqueKey || uniqueKey || '';
+            window.dispatchEvent(new CustomEvent('oicpp:active-file-changed', {
+                detail: {
+                    filePath,
+                    viewType: tabData.viewType || 'code',
+                    uniqueKey
+                }
+            }));
+        } catch (_) { }
+
         if (tabData.viewType === 'pdf') {
             this.hideGroupViewContainers(tabData.groupId);
             if (!tabData.viewerContainer || !tabData.viewerContainer.parentElement) {
