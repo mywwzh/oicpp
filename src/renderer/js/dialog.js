@@ -200,6 +200,60 @@ class DialogManager {
         });
     }
 
+    showSpringFestivalGreeting(now = new Date()) {
+        return new Promise((resolve) => {
+            this.resetDialogState();
+
+            const overlay = document.getElementById('dialog-overlay');
+            const container = document.getElementById('dialog-container');
+            if (!overlay || !container) {
+                resolve(false);
+                return;
+            }
+
+            const displayYear = (now instanceof Date) ? now.getFullYear() : new Date().getFullYear();
+            const safeYear = this.escapeHtml(String(displayYear));
+
+            overlay.dataset.closeOnBackdrop = '1';
+            container.classList.add('newyear-container');
+
+            container.innerHTML = `
+                <div class="dialog-header newyear-header">
+                    <h3>春节快乐</h3>
+                    <button class="dialog-close" onclick="dialogManager.hideDialog()" aria-label="关闭">&times;</button>
+                </div>
+                <div class="newyear-body">
+                    <div class="newyear-hero">
+                        <div class="newyear-badge" aria-hidden="true" data-ui-icon="sparkle"></div>
+                        <div>
+                            <p class="newyear-title">${safeYear}，恭喜发财</p>
+                            <div class="newyear-subtitle">愿你：思路清晰，调试顺利，提交一次就 AC。</div>
+                        </div>
+                    </div>
+                    <div class="newyear-wishes">
+                        <p>新春快乐，写题愉快。</p>
+                        <p class="muted">提示：点击空白处或按 Esc 也可关闭。</p>
+                    </div>
+                </div>
+                <div class="newyear-footer">
+                    <button class="dialog-btn dialog-btn-primary" onclick="dialogManager.confirmDialog()">开工！</button>
+                </div>
+            `;
+
+            if (window.uiIcons && typeof window.uiIcons.hydrate === 'function') {
+                window.uiIcons.hydrate(container);
+            }
+
+            overlay.style.display = 'flex';
+            this.attachEscapeToClose();
+
+            this.currentDialog = {
+                resolve: resolve,
+                reject: () => {}
+            };
+        });
+    }
+
     confirmDialog() {
         if (!this.currentDialog) return;
 
