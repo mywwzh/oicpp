@@ -18,6 +18,9 @@ class EditorSettings {
             keybindings: this.getDefaultKeybindings()
         };
 
+        this._initialLoadedSettings = null;
+        this._saved = false;
+
         this.keybindingSchema = this.getKeybindingSchema();
     }
 
@@ -81,6 +84,13 @@ class EditorSettings {
 
         await this.loadSettings();
 
+        // 记录进入页面时的设置快照，用于取消/关闭时回滚实时预览
+        try {
+            this._initialLoadedSettings = JSON.parse(JSON.stringify(this.settings));
+        } catch (_) {
+            this._initialLoadedSettings = { ...this.settings };
+        }
+
         this.renderKeybindingsUI();
 
         await this.loadSystemFonts();
@@ -129,9 +139,12 @@ class EditorSettings {
         } else {
             logError('找不到保存按钮元素 #save-settings');
         }
+        window.addEventListener('beforeunload', () => {
+            this.revertPreviewToLoadedSettings();
+        });
 
         document.getElementById('cancel-settings').addEventListener('click', () => {
-            this.closeWindow();
+            this.cancelAndClose();
         });
 
         const resetBtn = document.getElementById('reset-settings');
@@ -165,6 +178,13 @@ class EditorSettings {
                 this.notifyMainWindowPreview();
             });
             autoSaveIntervalInput.addEventListener('input', () => {
+                this.notifyMainWindowPreview();
+            });
+        }
+
+        const autoCompletionCheckbox = document.getElementById('editor-auto-completion');
+        if (autoCompletionCheckbox) {
+            autoCompletionCheckbox.addEventListener('change', () => {
                 this.notifyMainWindowPreview();
             });
         }
@@ -361,6 +381,24 @@ class EditorSettings {
             logWarn('实时预览通知失败:', error);
         }
     }
+
+    revertPreviewToLoadedSettings() {
+        try {
+            if (this._saved) return;
+            if (!this._initialLoadedSettings) return;
+            if (window.electronAPI && window.electronAPI.sendSettingsPreview) {
+                clearTimeout(this.previewTimeout);
+                window.electronAPI.sendSettingsPreview(this._initialLoadedSettings);
+            }
+        } catch (error) {
+            logWarn('回滚预览设置失败:', error);
+        }
+    }
+
+    cancelAndClose() {
+        this.revertPreviewToLoadedSettings();
+        this.closeWindow();
+    }
     async loadSettings() {
         try {
             let allSettings = null;
@@ -395,6 +433,7 @@ class EditorSettings {
                     fontLigaturesEnabled: allSettings.fontLigaturesEnabled !== false,
                     foldingEnabled: allSettings.foldingEnabled !== false,
                     stickyScrollEnabled: allSettings.stickyScrollEnabled !== false,
+                    enableAutoCompletion: allSettings.enableAutoCompletion !== false,
                     autoSave: allSettings.autoSave !== false,
                     autoSaveInterval: typeof allSettings.autoSaveInterval === 'number' ? allSettings.autoSaveInterval : 60000,
                     windowOpacity: typeof allSettings.windowOpacity === 'number' ? allSettings.windowOpacity : 1.0,
@@ -412,6 +451,7 @@ class EditorSettings {
                     tabSize: 4,
                     stickyScrollEnabled: true,
                     foldingEnabled: true,
+                    enableAutoCompletion: true,
                     autoSave: true,
                     autoSaveInterval: 60000,
                     windowOpacity: 1.0,
@@ -429,6 +469,7 @@ class EditorSettings {
                 tabSize: 4,
                 stickyScrollEnabled: true,
                 foldingEnabled: true,
+                enableAutoCompletion: true,
                 autoSave: true,
                 autoSaveInterval: 60000,
                 windowOpacity: 1.0,
@@ -544,6 +585,12 @@ class EditorSettings {
                 newSettings.tabSize = parsedTabSize;
             }
         }
+
+        const autoCompletionCheckbox = document.getElementById('editor-auto-completion');
+        if (autoCompletionCheckbox) {
+            newSettings.enableAutoCompletion = !!autoCompletionCheckbox.checked;
+        }
+
         const autoSaveCheckbox = document.getElementById('editor-auto-save-enabled');
         if (autoSaveCheckbox) {
             newSettings.autoSave = !!autoSaveCheckbox.checked;
@@ -628,6 +675,12 @@ class EditorSettings {
 
             if (result && result.success) {
                 logInfo('编辑器设置保存成功');
+                this._saved = true;
+                try {
+                    this._initialLoadedSettings = JSON.parse(JSON.stringify(newSettings));
+                } catch (_) {
+                    this._initialLoadedSettings = { ...newSettings };
+                }
 
                 const themeChanged = newSettings.theme && newSettings.theme !== this.settings.theme;
                 const bgImageChanged = newSettings.backgroundImage !== undefined && newSettings.backgroundImage !== this.settings.backgroundImage;
@@ -704,6 +757,7 @@ class EditorSettings {
         const stickyScrollCheckbox = document.getElementById('editor-sticky-scroll');
         const ligaturesCheckbox = document.getElementById('editor-font-ligatures');
         const tabSizeInput = document.getElementById('editor-tab-size');
+        const autoCompletionCheckbox = document.getElementById('editor-auto-completion');
         const autoSaveCheckbox = document.getElementById('editor-auto-save-enabled');
         const autoSaveIntervalInput = document.getElementById('editor-auto-save-interval');
         const opacityInput = document.getElementById('editor-opacity');
@@ -754,6 +808,11 @@ class EditorSettings {
             const tabSize = Number.isFinite(this.settings.tabSize) ? this.settings.tabSize : 4;
             tabSizeInput.value = tabSize;
         }
+
+        if (autoCompletionCheckbox) {
+            autoCompletionCheckbox.checked = this.settings.enableAutoCompletion !== false;
+        }
+
         const autoSaveEnabled = this.settings.autoSave !== false;
         if (autoSaveCheckbox) {
             autoSaveCheckbox.checked = autoSaveEnabled;

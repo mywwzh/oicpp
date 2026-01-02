@@ -3,6 +3,7 @@ class TitlebarManager {
         this.titlebar = null;
         this.currentTitle = 'OICPP IDE';
         this.isMaximized = false;
+        this._closeConfirmInProgress = false;
         this.init();
     }
 
@@ -72,14 +73,85 @@ class TitlebarManager {
 
             const closeBtn = document.getElementById('close-btn');
             if (closeBtn) {
-                closeBtn.addEventListener('click', () => {
+                closeBtn.addEventListener('click', async () => {
                     logInfo('点击关闭按钮');
-                    if (window.electronIPC) {
-                        window.electronIPC.send('window-close');
-                    }
+                    await this.requestClose();
                 });
             }
         }, 100);
+    }
+
+    _escapeHtml(text) {
+        try {
+            const div = document.createElement('div');
+            div.textContent = String(text ?? '');
+            return div.innerHTML;
+        } catch (_) {
+            return String(text ?? '');
+        }
+    }
+
+    async requestClose() {
+        return this._requestCloseInternal({ source: 'button' });
+    }
+
+    async _requestCloseInternal({ source } = { source: 'button' }) {
+        if (this._closeConfirmInProgress) return;
+        if (!window.electronIPC) return;
+
+        const unsavedFiles = (() => {
+            try {
+                if (window.tabManager && typeof window.tabManager.getUnsavedFiles === 'function') {
+                    return window.tabManager.getUnsavedFiles() || [];
+                }
+            } catch (_) { }
+            return [];
+        })();
+
+        if (!unsavedFiles || unsavedFiles.length === 0) {
+            if (source === 'system') {
+                window.electronIPC.send('app-close-confirmed');
+            } else {
+                window.electronIPC.send('window-close');
+            }
+            return;
+        }
+
+        if (!window.dialogManager || typeof window.dialogManager.showConfirmDialog !== 'function') {
+            logWarn('dialogManager 不可用，已阻止关闭以避免无提示自动保存');
+            if (source === 'system') {
+                try { window.electronIPC.send('app-close-cancelled'); } catch (_) { }
+            }
+            return;
+        }
+
+        this._closeConfirmInProgress = true;
+        try {
+            const maxShow = 8;
+            const shown = unsavedFiles.slice(0, maxShow);
+            const moreCount = Math.max(0, unsavedFiles.length - shown.length);
+
+            const listHtml = shown
+                .map(name => `- ${this._escapeHtml(name)}`)
+                .join('<br>');
+            const moreHtml = moreCount > 0 ? `<br>... 还有 ${moreCount} 个文件` : '';
+
+            const message = `检测到 ${unsavedFiles.length} 个未保存文件：<br>${listHtml}${moreHtml}<br><br>关闭将自动保存以上修改并退出。是否继续？`;
+            const result = await window.dialogManager.showConfirmDialog('确认退出', message);
+            if (result) {
+                if (source === 'system') {
+                    window.electronIPC.send('app-close-confirmed');
+                } else {
+                    window.electronIPC.send('window-close');
+                }
+            } else {
+                if (source === 'system') {
+                    window.electronIPC.send('app-close-cancelled');
+                }
+            }
+        } finally {
+            this._closeConfirmInProgress = false;
+        }
     }
 
     setupElectronEvents() {
@@ -94,6 +166,17 @@ class TitlebarManager {
                 logInfo('窗口已还原');
                 this.isMaximized = false;
                 this.updateMaximizeButton();
+            });
+
+            window.electronIPC.on('app-close-requested', async () => {
+                try {
+                    await this._requestCloseInternal({ source: 'system' });
+                } catch (e) {
+                    try {
+                        logWarn('处理 app-close-requested 失败，已取消关闭:', e);
+                        window.electronIPC.send('app-close-cancelled');
+                    } catch (_) { }
+                }
             });
         }
     }

@@ -17,7 +17,7 @@ const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
 const APP_VERSION = '1.1.4';
-const SAVE_ALL_TIMEOUT = 4000; // 4 seconds timeout for save-all before closing
+const SAVE_ALL_TIMEOUT = 4000;
 
 function getUserIconPath() {
     const userIconPath = path.join(os.homedir(), '.oicpp', 'oicpp.ico');
@@ -29,6 +29,55 @@ function getUserIconPath() {
 
 let mainWindow;
 let sampleTesterServer = null; // HTTP 服务实例
+
+let allowMainWindowClose = false;
+let allowMainWindowCloseTimer = null;
+let closeRequestInProgress = false;
+let closeRequestInProgressTimer = null;
+
+function armAllowMainWindowClose(timeoutMs = 15000) {
+    allowMainWindowClose = true;
+    if (allowMainWindowCloseTimer) {
+        try { clearTimeout(allowMainWindowCloseTimer); } catch (_) { }
+    }
+    allowMainWindowCloseTimer = setTimeout(() => {
+        allowMainWindowClose = false;
+        allowMainWindowCloseTimer = null;
+    }, timeoutMs);
+}
+
+function resetCloseGuards() {
+    allowMainWindowClose = false;
+    closeRequestInProgress = false;
+    if (allowMainWindowCloseTimer) {
+        try { clearTimeout(allowMainWindowCloseTimer); } catch (_) { }
+        allowMainWindowCloseTimer = null;
+    }
+    if (closeRequestInProgressTimer) {
+        try { clearTimeout(closeRequestInProgressTimer); } catch (_) { }
+        closeRequestInProgressTimer = null;
+    }
+}
+
+function requestRendererCloseConfirmation(context = '关闭窗口') {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (closeRequestInProgress) return;
+    closeRequestInProgress = true;
+    if (closeRequestInProgressTimer) {
+        try { clearTimeout(closeRequestInProgressTimer); } catch (_) { }
+    }
+    closeRequestInProgressTimer = setTimeout(() => {
+        closeRequestInProgress = false;
+        closeRequestInProgressTimer = null;
+    }, 10000);
+
+    try {
+        mainWindow.webContents.send('app-close-requested', { context });
+    } catch (e) {
+        try { logWarn(`[${context}] 无法通知渲染进程弹出关闭确认:`, e?.message || String(e)); } catch (_) { }
+        closeRequestInProgress = false;
+    }
+}
 
 logger.init();
 logger.logInfo('OICPP IDE 启动');
@@ -229,6 +278,7 @@ function getDefaultSettings() {
         fontLigaturesEnabled: true, // 是否启用编程字体连字（Fira Code 等）
         foldingEnabled: true,
         stickyScrollEnabled: true,
+        enableAutoCompletion: true,
         autoSave: true,
         autoSaveInterval: 60000,
         markdownMode: 'split',
@@ -582,8 +632,22 @@ function createWindow() {
         try { restoreSettingsBackupLinux(); ensureUserIconForLinux(); } catch (_) { }
     });
 
+    mainWindow.on('close', (e) => {
+        try {
+            if (allowMainWindowClose) {
+                return;
+            }
+            e.preventDefault();
+            requestRendererCloseConfirmation('关闭窗口');
+        } catch (err) {
+            try { logWarn('[关闭窗口] close 事件拦截失败，已阻止关闭:', err?.message || String(err)); } catch (_) { }
+            try { e.preventDefault(); } catch (_) { }
+        }
+    });
+
     mainWindow.on('closed', () => {
         mainWindow = null;
+        resetCloseGuards();
     });
 
     createMenuBar();
@@ -804,7 +868,28 @@ function setupWindowControls() {
     });
 
     ipcMain.on('window-close', () => {
+        // 标题栏关闭按钮已在渲染进程侧确认，这里直接进入保存并关闭，同时避免 close 事件二次拦截
+        armAllowMainWindowClose();
         requestSaveAllAndClose('关闭窗口');
+    });
+
+    // 系统级关闭确认回传（Alt+F4 等）
+    ipcMain.on('app-close-confirmed', () => {
+        closeRequestInProgress = false;
+        if (closeRequestInProgressTimer) {
+            try { clearTimeout(closeRequestInProgressTimer); } catch (_) { }
+            closeRequestInProgressTimer = null;
+        }
+        armAllowMainWindowClose();
+        requestSaveAllAndClose('关闭窗口');
+    });
+
+    ipcMain.on('app-close-cancelled', () => {
+        closeRequestInProgress = false;
+        if (closeRequestInProgressTimer) {
+            try { clearTimeout(closeRequestInProgressTimer); } catch (_) { }
+            closeRequestInProgressTimer = null;
+        }
     });
 
     ipcMain.handle('window-is-maximized', () => {
@@ -4156,7 +4241,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings'];
+            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings'];
 
             for (const key of validKeys) {
                 if (savedSettings[key] !== undefined) {
