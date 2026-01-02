@@ -333,27 +333,37 @@ class CompilerSettings {
     async loadAvailableCompilers() {
         const compilerList = document.getElementById('compiler-list');
         if (!compilerList) return;
-        
-        compilerList.innerHTML = '<div class="loading">正在获取编译器列表...</div>';
-        
+
+        compilerList.innerHTML = '';
+        const loading = document.createElement('div');
+        loading.className = 'loading';
+        loading.textContent = '正在获取编译器列表...';
+        compilerList.appendChild(loading);
+
         try {
-            const response = await fetch('https://oicpp.mywwzh.top/api/getAvailableCompilerList');
-            
-            if (!response.ok) {
-                throw new Error(`网络错误: ${response.status} ${response.statusText}`);
+            let compilers = null;
+            if (window.electronAPI && window.electronAPI.getAvailableCompilerList) {
+                const resp = await window.electronAPI.getAvailableCompilerList();
+                if (!resp || !resp.success) {
+                    throw new Error(resp?.error || '无法获取编译器列表');
+                }
+                compilers = resp.data;
+            } else {
+                throw new Error('获取编译器列表 API 不可用');
             }
-            
-            const compilers = await response.json();
             
             logInfo('[编译器设置] 服务器返回的编译器数据:', compilers);
             if (compilers && compilers.length > 0) {
                 logInfo('[编译器设置] 第一个编译器对象结构:', compilers[0]);
             }
-            
+
             compilerList.innerHTML = '';
-            
-            if (!compilers || compilers.length === 0) {
-                compilerList.innerHTML = '<div class="no-compilers">暂无可用编译器</div>';
+
+            if (!Array.isArray(compilers) || compilers.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'no-compilers';
+                empty.textContent = '暂无可用编译器';
+                compilerList.appendChild(empty);
                 return;
             }
             
@@ -364,7 +374,10 @@ class CompilerSettings {
             );
             
             if (platformCompilers.length === 0) {
-                compilerList.innerHTML = `<div class="no-compilers">暂无适用于 ${platform} 平台的编译器</div>`;
+                const empty = document.createElement('div');
+                empty.className = 'no-compilers';
+                empty.textContent = `暂无适用于 ${platform} 平台的编译器`;
+                compilerList.appendChild(empty);
                 return;
             }
             
@@ -376,23 +389,53 @@ class CompilerSettings {
                 
                 const compilerDiv = document.createElement('div');
                 compilerDiv.className = `compiler-item ${isDownloaded ? 'downloaded' : ''} ${isSelected ? 'selected' : ''}`;
-                
-                compilerDiv.innerHTML = `
-                    <div class="compiler-info">
-                        <h4>${compiler.name}</h4>
-                        <p>版本: ${compiler.version}</p>
-                        <span class="platform">平台: ${compiler.platform}</span>
-                    </div>
-                    <div class="compiler-actions">
-                        ${isSelected ? 
-                            '<span class="status selected-status">已选中</span>' :
-                            isDownloaded ? 
-                                `<button class="select-btn" data-version="${compiler.version}">选择</button>` :
-                                `<button class="download-btn" data-url="${compiler.download_url}" data-version="${compiler.version}" data-name="${compiler.name}">下载</button>`
-                        }
-                        ${isDownloaded ? '<span class="status downloaded-status">已下载</span>' : ''}
-                    </div>
-                `;
+
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'compiler-info';
+                const h4 = document.createElement('h4');
+                h4.textContent = compiler?.name ?? '';
+                const versionP = document.createElement('p');
+                versionP.textContent = `版本: ${compiler?.version ?? ''}`;
+                const platformSpan = document.createElement('span');
+                platformSpan.className = 'platform';
+                platformSpan.textContent = `平台: ${compiler?.platform ?? ''}`;
+                infoDiv.appendChild(h4);
+                infoDiv.appendChild(versionP);
+                infoDiv.appendChild(platformSpan);
+
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'compiler-actions';
+
+                if (isSelected) {
+                    const selected = document.createElement('span');
+                    selected.className = 'status selected-status';
+                    selected.textContent = '已选中';
+                    actionsDiv.appendChild(selected);
+                } else if (isDownloaded) {
+                    const selectBtn = document.createElement('button');
+                    selectBtn.className = 'select-btn';
+                    selectBtn.dataset.version = String(compiler?.version ?? '');
+                    selectBtn.textContent = '选择';
+                    actionsDiv.appendChild(selectBtn);
+                } else {
+                    const downloadBtn = document.createElement('button');
+                    downloadBtn.className = 'download-btn';
+                    downloadBtn.dataset.url = String(compiler?.download_url ?? '');
+                    downloadBtn.dataset.version = String(compiler?.version ?? '');
+                    downloadBtn.dataset.name = String(compiler?.name ?? '');
+                    downloadBtn.textContent = '下载';
+                    actionsDiv.appendChild(downloadBtn);
+                }
+
+                if (isDownloaded) {
+                    const downloaded = document.createElement('span');
+                    downloaded.className = 'status downloaded-status';
+                    downloaded.textContent = '已下载';
+                    actionsDiv.appendChild(downloaded);
+                }
+
+                compilerDiv.appendChild(infoDiv);
+                compilerDiv.appendChild(actionsDiv);
                 
                 this.addCompilerItemListeners(compilerDiv, compiler);
                 
@@ -401,13 +444,26 @@ class CompilerSettings {
             
         } catch (error) {
             logError('获取编译器列表失败:', error);
-            compilerList.innerHTML = `
-                <div class="error-message">
-                    <p>网络错误：无法获取编译器列表</p>
-                    <p class="error-detail">${error.message}</p>
-                    <button class="retry-btn" onclick="this.loadAvailableCompilers()">重试</button>
-                </div>
-            `;
+            compilerList.innerHTML = '';
+
+            const wrap = document.createElement('div');
+            wrap.className = 'error-message';
+            const title = document.createElement('p');
+            title.textContent = '网络错误：无法获取编译器列表';
+            const detail = document.createElement('p');
+            detail.className = 'error-detail';
+            detail.textContent = error?.message || String(error);
+            const retry = document.createElement('button');
+            retry.className = 'retry-btn';
+            retry.textContent = '重试';
+            retry.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.loadAvailableCompilers();
+            });
+            wrap.appendChild(title);
+            wrap.appendChild(detail);
+            wrap.appendChild(retry);
+            compilerList.appendChild(wrap);
         }
     }
 
@@ -774,6 +830,16 @@ class CompilerSettings {
 
     showConfirmDialog(title, message, confirmText = '确定', cancelText = '取消') {
         return new Promise((resolve) => {
+            const esc = (text) => {
+                const div = document.createElement('div');
+                div.textContent = String(text ?? '');
+                return div.innerHTML;
+            };
+            const safeTitle = esc(title);
+            const safeMessage = esc(message);
+            const safeConfirmText = esc(confirmText);
+            const safeCancelText = esc(cancelText);
+
             const overlay = document.createElement('div');
             overlay.className = 'dialog-overlay';
             overlay.style.cssText = `
@@ -802,10 +868,10 @@ class CompilerSettings {
             
             dialog.innerHTML = `
                 <div style="margin-bottom: 15px;">
-                    <h3 style="margin: 0; color: #333; font-size: 16px;">${title}</h3>
+                    <h3 style="margin: 0; color: #333; font-size: 16px;">${safeTitle}</h3>
                 </div>
                 <div style="margin-bottom: 20px; line-height: 1.5; white-space: pre-line;">
-                    ${message}
+                    ${safeMessage}
                 </div>
                 <div style="text-align: right;">
                     <button class="cancel-btn" style="
@@ -815,7 +881,7 @@ class CompilerSettings {
                         background: #f5f5f5;
                         border-radius: 4px;
                         cursor: pointer;
-                    ">${cancelText}</button>
+                    ">${safeCancelText}</button>
                     <button class="confirm-btn" style="
                         padding: 8px 16px;
                         border: none;
@@ -823,7 +889,7 @@ class CompilerSettings {
                         color: white;
                         border-radius: 4px;
                         cursor: pointer;
-                    ">${confirmText}</button>
+                    ">${safeConfirmText}</button>
                 </div>
             `;
             
@@ -904,12 +970,16 @@ class CompilerSettings {
                 logInfo(`设置编译器为已下载状态: ${version}`);
                 compilerItem.classList.add('downloaded');
                 compilerItem.classList.remove('selected');
-                actionsDiv.innerHTML = `
-                    <button class="select-btn" data-version="${version}">选择</button>
-                    <span class="status downloaded-status">已下载</span>
-                `;
-                const selectBtn = actionsDiv.querySelector('.select-btn');
-                if (selectBtn) {
+                {
+                    const selectBtn = document.createElement('button');
+                    selectBtn.className = 'select-btn';
+                    selectBtn.dataset.version = String(version);
+                    selectBtn.textContent = '选择';
+                    const downloaded = document.createElement('span');
+                    downloaded.className = 'status downloaded-status';
+                    downloaded.textContent = '已下载';
+                    actionsDiv.appendChild(selectBtn);
+                    actionsDiv.appendChild(downloaded);
                     logInfo(`重新绑定选择按钮事件: ${version}`);
                     selectBtn.addEventListener('click', (e) => {
                         e.preventDefault();
@@ -922,10 +992,16 @@ class CompilerSettings {
             case 'selected':
                 logInfo(`设置编译器为已选中状态: ${version}`);
                 compilerItem.classList.add('downloaded', 'selected');
-                actionsDiv.innerHTML = `
-                    <span class="status selected-status">已选中</span>
-                    <span class="status downloaded-status">已下载</span>
-                `;
+                {
+                    const selected = document.createElement('span');
+                    selected.className = 'status selected-status';
+                    selected.textContent = '已选中';
+                    const downloaded = document.createElement('span');
+                    downloaded.className = 'status downloaded-status';
+                    downloaded.textContent = '已下载';
+                    actionsDiv.appendChild(selected);
+                    actionsDiv.appendChild(downloaded);
+                }
                 break;
                 
             case 'not-downloaded':
@@ -976,28 +1052,37 @@ class CompilerSettings {
         const testlibPath = document.getElementById('testlib-path').value;
         const resultDiv = document.getElementById('testlib-test-result');
         
+        const showResult = (type, text) => {
+            if (!resultDiv) return;
+            resultDiv.innerHTML = '';
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = text;
+            resultDiv.appendChild(div);
+        };
+
         if (!testlibPath) {
-            resultDiv.innerHTML = '<div class="error">请先设置Testlib路径</div>';
+            showResult('error', '请先设置Testlib路径');
             return;
         }
         
-        resultDiv.innerHTML = '正在测试Testlib...';
+        if (resultDiv) resultDiv.textContent = '正在测试Testlib...';
         
         try {
             if (window.electronAPI && window.electronAPI.testTestlib) {
                 const result = await window.electronAPI.testTestlib(testlibPath);
                 
                 if (result.success) {
-                    resultDiv.innerHTML = '<div class="success">Testlib测试成功！</div>';
+                    showResult('success', 'Testlib测试成功！');
                 } else {
-                    resultDiv.innerHTML = `<div class="error">Testlib测试失败: ${result.error}</div>`;
+                    showResult('error', `Testlib测试失败: ${result.error || '未知错误'}`);
                 }
             } else {
-                resultDiv.innerHTML = '<div class="error">测试API不可用</div>';
+                showResult('error', '测试API不可用');
             }
         } catch (error) {
             logError('测试Testlib失败:', error);
-            resultDiv.innerHTML = `<div class="error">测试失败: ${error.message}</div>`;
+            showResult('error', `测试失败: ${error?.message || String(error)}`);
         }
     }
     
@@ -1019,22 +1104,32 @@ class CompilerSettings {
     async loadAvailableTestlibs() {
         const testlibList = document.getElementById('testlib-list');
         if (!testlibList) return;
-        
-        testlibList.innerHTML = '<div class="loading">正在获取Testlib列表...</div>';
-        
+
+        testlibList.innerHTML = '';
+        const loading = document.createElement('div');
+        loading.className = 'loading';
+        loading.textContent = '正在获取Testlib列表...';
+        testlibList.appendChild(loading);
+
         try {
-            const response = await fetch('https://oicpp.mywwzh.top/api/getAvailableTestlibList');
-            
-            if (!response.ok) {
-                throw new Error(`网络错误: ${response.status} ${response.statusText}`);
+            let testlibs = null;
+            if (window.electronAPI && window.electronAPI.getAvailableTestlibList) {
+                const resp = await window.electronAPI.getAvailableTestlibList();
+                if (!resp || !resp.success) {
+                    throw new Error(resp?.error || '无法获取 Testlib 列表');
+                }
+                testlibs = resp.data;
+            } else {
+                throw new Error('获取 Testlib 列表 API 不可用');
             }
-            
-            const testlibs = await response.json();
-            
+
             testlibList.innerHTML = '';
-            
-            if (!testlibs || testlibs.length === 0) {
-                testlibList.innerHTML = '<div class="no-compilers">暂无可用Testlib版本</div>';
+
+            if (!Array.isArray(testlibs) || testlibs.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'no-compilers';
+                empty.textContent = '暂无可用Testlib版本';
+                testlibList.appendChild(empty);
                 return;
             }
             
@@ -1047,27 +1142,62 @@ class CompilerSettings {
                 const testlibDiv = document.createElement('div');
                 testlibDiv.className = `compiler-item ${isDownloaded ? 'downloaded' : ''} ${isSelected ? 'selected' : ''}`;
                 
-                const downloadUrl = testlib.downloadUrl.startsWith('http') 
-                    ? testlib.downloadUrl 
-                    : `https://oicpp.mywwzh.top${testlib.downloadUrl}`;
-                
-                testlibDiv.innerHTML = `
-                    <div class="compiler-info">
-                        <h4>${testlib.name}</h4>
-                        <p>版本: ${testlib.version}</p>
-                        <p>${testlib.description}</p>
-                        <span class="platform">大小: ${testlib.file_size_mb}MB</span>
-                    </div>
-                    <div class="compiler-actions">
-                        ${isSelected ? 
-                            '<span class="status selected-status">已选中</span>' :
-                            isDownloaded ? 
-                                `<button class="select-btn" data-version="${testlib.version}">选择</button>` :
-                                `<button class="download-btn" data-url="${downloadUrl}" data-version="${testlib.version}" data-name="${testlib.name}">下载</button>`
-                        }
-                        ${isDownloaded ? '<span class="status downloaded-status">已下载</span>' : ''}
-                    </div>
-                `;
+                const downloadUrl = typeof testlib?.downloadUrl === 'string'
+                    ? (testlib.downloadUrl.startsWith('http') ? testlib.downloadUrl : `https://oicpp.mywwzh.top${testlib.downloadUrl}`)
+                    : '';
+
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'compiler-info';
+                const h4 = document.createElement('h4');
+                h4.textContent = testlib?.name ?? '';
+                const versionP = document.createElement('p');
+                versionP.textContent = `版本: ${testlib?.version ?? ''}`;
+                const descP = document.createElement('p');
+                descP.textContent = testlib?.description ?? '';
+                const sizeSpan = document.createElement('span');
+                sizeSpan.className = 'platform';
+                const sizeText = (testlib && (testlib.file_size_mb ?? testlib.fileSizeMb ?? testlib.sizeMb) !== undefined)
+                    ? String(testlib.file_size_mb ?? testlib.fileSizeMb ?? testlib.sizeMb)
+                    : '';
+                sizeSpan.textContent = sizeText ? `大小: ${sizeText}MB` : '大小: 未知';
+                infoDiv.appendChild(h4);
+                infoDiv.appendChild(versionP);
+                infoDiv.appendChild(descP);
+                infoDiv.appendChild(sizeSpan);
+
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'compiler-actions';
+
+                if (isSelected) {
+                    const selected = document.createElement('span');
+                    selected.className = 'status selected-status';
+                    selected.textContent = '已选中';
+                    actionsDiv.appendChild(selected);
+                } else if (isDownloaded) {
+                    const selectBtn = document.createElement('button');
+                    selectBtn.className = 'select-btn';
+                    selectBtn.dataset.version = String(testlib?.version ?? '');
+                    selectBtn.textContent = '选择';
+                    actionsDiv.appendChild(selectBtn);
+                } else {
+                    const downloadBtn = document.createElement('button');
+                    downloadBtn.className = 'download-btn';
+                    downloadBtn.dataset.url = downloadUrl;
+                    downloadBtn.dataset.version = String(testlib?.version ?? '');
+                    downloadBtn.dataset.name = String(testlib?.name ?? '');
+                    downloadBtn.textContent = '下载';
+                    actionsDiv.appendChild(downloadBtn);
+                }
+
+                if (isDownloaded) {
+                    const downloaded = document.createElement('span');
+                    downloaded.className = 'status downloaded-status';
+                    downloaded.textContent = '已下载';
+                    actionsDiv.appendChild(downloaded);
+                }
+
+                testlibDiv.appendChild(infoDiv);
+                testlibDiv.appendChild(actionsDiv);
                 
                 this.addTestlibItemListeners(testlibDiv, testlib);
                 testlibList.appendChild(testlibDiv);
@@ -1075,13 +1205,26 @@ class CompilerSettings {
             
         } catch (error) {
             logError('获取Testlib列表失败:', error);
-            testlibList.innerHTML = `
-                <div class="error-message">
-                    <p>网络错误：无法获取Testlib列表</p>
-                    <p class="error-detail">${error.message}</p>
-                    <button class="retry-btn" onclick="this.loadAvailableTestlibs()">重试</button>
-                </div>
-            `;
+            testlibList.innerHTML = '';
+
+            const wrap = document.createElement('div');
+            wrap.className = 'error-message';
+            const title = document.createElement('p');
+            title.textContent = '网络错误：无法获取Testlib列表';
+            const detail = document.createElement('p');
+            detail.className = 'error-detail';
+            detail.textContent = error?.message || String(error);
+            const retry = document.createElement('button');
+            retry.className = 'retry-btn';
+            retry.textContent = '重试';
+            retry.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.loadAvailableTestlibs();
+            });
+            wrap.appendChild(title);
+            wrap.appendChild(detail);
+            wrap.appendChild(retry);
+            testlibList.appendChild(wrap);
         }
     }
     
@@ -1173,21 +1316,33 @@ class CompilerSettings {
                             if (itemVersion === version) {
                                 item.classList.add('selected');
                                 const actionsDiv = item.querySelector('.compiler-actions');
-                                actionsDiv.innerHTML = `
-                                    <span class="status selected-status">已选中</span>
-                                    <span class="status downloaded-status">已下载</span>
-                                `;
+                                if (actionsDiv) {
+                                    actionsDiv.innerHTML = '';
+                                    const selected = document.createElement('span');
+                                    selected.className = 'status selected-status';
+                                    selected.textContent = '已选中';
+                                    const downloaded = document.createElement('span');
+                                    downloaded.className = 'status downloaded-status';
+                                    downloaded.textContent = '已下载';
+                                    actionsDiv.appendChild(selected);
+                                    actionsDiv.appendChild(downloaded);
+                                }
                             } else {
                                 item.classList.remove('selected');
                                 if (item.classList.contains('downloaded')) {
                                     const actionsDiv = item.querySelector('.compiler-actions');
-                                    actionsDiv.innerHTML = `
-                                        <button class="select-btn" data-version="${itemVersion}">选择</button>
-                                        <span class="status downloaded-status">已下载</span>
-                                    `;
-                                    const newSelectBtn = actionsDiv.querySelector('.select-btn');
-                                    if (newSelectBtn) {
-                                        newSelectBtn.addEventListener('click', (e) => {
+                                    if (actionsDiv) {
+                                        actionsDiv.innerHTML = '';
+                                        const selectBtn = document.createElement('button');
+                                        selectBtn.className = 'select-btn';
+                                        selectBtn.dataset.version = String(itemVersion || '');
+                                        selectBtn.textContent = '选择';
+                                        const downloaded = document.createElement('span');
+                                        downloaded.className = 'status downloaded-status';
+                                        downloaded.textContent = '已下载';
+                                        actionsDiv.appendChild(selectBtn);
+                                        actionsDiv.appendChild(downloaded);
+                                        selectBtn.addEventListener('click', (e) => {
                                             e.preventDefault();
                                             this.selectTestlib(itemVersion);
                                         });

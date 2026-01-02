@@ -393,24 +393,20 @@ class CompilerManager {
                 token: token || ''
             };
 
-            const response = await fetch(`https://oicpp.mywwzh.top/api/cloudCompilation`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload),
-                signal: this.cloudCompileAbortController.signal
-            });
-
             let data = null;
-            try {
-                data = await response.json();
-            } catch (error) {
-                logWarn('解析云编译响应失败:', error);
-            }
-
-            if (!data) {
-                throw new Error(`云编译服务响应异常 (HTTP ${response.status})`);
+            if (window.electronAPI && typeof window.electronAPI.cloudCompileSubmit === 'function') {
+                const resp = await window.electronAPI.cloudCompileSubmit(payload);
+                if (this.cloudCompileAbortController?.signal?.aborted || !this.isCloudCompiling) {
+                    const err = new Error('Aborted');
+                    err.name = 'AbortError';
+                    throw err;
+                }
+                if (!resp || !resp.success) {
+                    throw new Error(resp?.error || '云编译请求失败');
+                }
+                data = resp.data;
+            } else {
+                throw new Error('云编译 API 不可用');
             }
 
             if (data.code === 200 && data.task_id) {
@@ -448,7 +444,8 @@ class CompilerManager {
             this.showMessage(message, 'error');
             this.resetCloudCompileState();
         } catch (error) {
-            if (error?.name === 'AbortError') {
+            const aborted = error?.name === 'AbortError' || this.cloudCompileAbortController?.signal?.aborted;
+            if (aborted) {
                 this.appendOutput('云编译请求已取消。', 'warning');
             } else {
                 const message = error?.message || '云编译请求失败';
@@ -603,22 +600,15 @@ class CompilerManager {
         }
 
         try {
-            const response = await fetch(`https://oicpp.mywwzh.top/api/getCloudCompilationResult?task_id=${encodeURIComponent(taskId)}`, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json'
-                }
-            });
-
             let data = null;
-            try {
-                data = await response.json();
-            } catch (error) {
-                logWarn('解析云编译结果失败:', error);
-            }
-
-            if (!data) {
-                throw new Error(`云编译服务响应异常 (HTTP ${response.status})`);
+            if (window.electronAPI && typeof window.electronAPI.cloudCompileResult === 'function') {
+                const resp = await window.electronAPI.cloudCompileResult(taskId);
+                if (!resp || !resp.success) {
+                    throw new Error(resp?.error || '云编译状态查询失败');
+                }
+                data = resp.data;
+            } else {
+                throw new Error('云编译状态查询 API 不可用');
             }
 
             switch (data.code) {
@@ -1380,4 +1370,3 @@ if (typeof module !== 'undefined' && module.exports) {
 } else {
     window.CompilerManager = CompilerManager;
 }
-

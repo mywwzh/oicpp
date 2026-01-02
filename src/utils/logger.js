@@ -67,6 +67,17 @@ class Logger {
     }
 
     static stringifyArgs(args, { level = 'info', maxLen = 2000 } = {}) {
+        const redactString = (input) => {
+            if (typeof input !== 'string') return input;
+            try {
+                return input
+                    .replace(/(Authorization\s*[:=]\s*Bearer\s+)[A-Za-z0-9._-]+/gi, '$1[REDACTED]')
+                    .replace(/(\btoken\b\s*[:=]\s*)([A-Za-z0-9._-]+)/gi, '$1[REDACTED]')
+                    .replace(/(\bpassword\b\s*[:=]\s*)([^\\s\"']+)/gi, '$1[REDACTED]');
+            } catch (_) {
+                return input;
+            }
+        };
         const redactingReplacer = (key, value) => value;
         const serializeError = (err) => {
             try {

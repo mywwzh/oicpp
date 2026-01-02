@@ -137,7 +137,8 @@ try {
     const hljs = require('highlight.js');
 
     md = new MarkdownIt({
-        html: true,
+        // Disallow raw HTML in Markdown to reduce XSS risk.
+        html: false,
         linkify: true,
         typographer: true,
         highlight: function (str, lang) {
@@ -355,6 +356,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getUserIconPath: () => ipcRenderer.invoke('get-user-icon-path'),
     getBuildInfo: () => ipcRenderer.invoke('get-build-info'),
 
+    getAvailableCompilerList: () => ipcRenderer.invoke('get-available-compiler-list'),
+    getAvailableTestlibList: () => ipcRenderer.invoke('get-available-testlib-list'),
+
     getDownloadedCompilers: () => ipcRenderer.invoke('get-downloaded-compilers'),
     downloadCompiler: (config) => ipcRenderer.invoke('download-compiler', config),
     selectCompiler: (version) => ipcRenderer.invoke('select-compiler', version),
@@ -368,6 +372,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     compileFile: (options) => ipcRenderer.invoke('compile-file', options),
     runExecutable: (options) => ipcRenderer.invoke('run-executable', options),
     runProgram: (executablePath, input, timeLimit) => ipcRenderer.invoke('run-program', executablePath, input, timeLimit),
+
+    cloudCompileSubmit: (payload) => ipcRenderer.invoke('cloud-compile-submit', payload),
+    cloudCompileResult: (taskId) => ipcRenderer.invoke('cloud-compile-result', taskId),
 
     readDirectory: (dirPath) => ipcRenderer.invoke('read-directory', dirPath),
     renameFile: (oldPath, newPath) => ipcRenderer.invoke('rename-file', oldPath, newPath),

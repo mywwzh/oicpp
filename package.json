@@ -29,20 +29,20 @@
   "dependencies": {
     "@iktakahiro/markdown-it-katex": "^4.0.1",
     "7zip-bin": "^5.2.0",
-    "axios": "latest",
-    "extract-zip": "latest",
+    "extract-zip": "^2.0.1",
     "highlight.js": "^11.11.1",
     "iconv-lite": "^0.6.3",
     "katex": "^0.16.25",
     "markdown-it": "^14.1.0",
     "markdown-it-image-figures": "^2.1.1",
-    "markdown-it-katex": "^2.0.3",
     "markdown-it-task-lists": "^2.1.1",
     "monaco-editor": "^0.52.2",
     "node-stream-zip": "^1.15.0",
     "pdfjs-dist": "5.0.375",
-    "turndown": "^7.2.2",
-    "winreg": "latest"
+    "turndown": "^7.2.2"
+  },
+  "overrides": {
+    "katex": "^0.16.25"
   },
   "build": {
     "appId": "com.oicpp.ide",

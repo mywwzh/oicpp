@@ -16,8 +16,76 @@ const logger = require('./utils/logger');
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
-const APP_VERSION = '1.1.4';
+const APP_VERSION = (() => {
+    try {
+        if (app && typeof app.getVersion === 'function') {
+            const v = app.getVersion();
+            if (typeof v === 'string' && v.length > 0) return v;
+        }
+    } catch (_) { }
+    return '0.0.0';
+})();
 const SAVE_ALL_TIMEOUT = 4000; // 4 seconds timeout for save-all before closing
+
+function isSafeExternalUrl(url) {
+    if (!url || typeof url !== 'string') return false;
+    try {
+        const parsed = new URL(url);
+        const protocol = (parsed.protocol || '').toLowerCase();
+        return protocol === 'https:' || protocol === 'http:' || protocol === 'mailto:';
+    } catch (_) {
+        return false;
+    }
+}
+
+function getDefaultCSP() {
+    // NOTE: The app relies on 'unsafe-eval' (Monaco/require.js) and some inline scripts/styles.
+    // Keep CSP reasonably strict while preserving required functionality.
+    return [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: file:",
+        "font-src 'self' data: file:",
+        "worker-src 'self' blob: file:",
+        // Network requests should prefer main-process fetch, but keep official API allowed for compatibility.
+        "connect-src 'self' https://oicpp.mywwzh.top",
+        "frame-src 'self' file:",
+    ].join('; ');
+}
+
+const OFFICIAL_API_BASE = 'https://oicpp.mywwzh.top';
+
+async function fetchJson(url, options = {}, timeoutMs = 15000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+        try { controller.abort(); } catch (_) { }
+    }, timeoutMs);
+    try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+        let data = null;
+        try {
+            if (contentType.includes('application/json')) {
+                data = await res.json();
+            } else {
+                const text = await res.text();
+                try { data = JSON.parse(text); } catch (_) { data = { raw: text }; }
+            }
+        } catch (e) {
+            throw new Error(`Invalid JSON response (HTTP ${res.status})`);
+        }
+        if (!res.ok) {
+            const msg = data?.msg || data?.message || data?.error || res.statusText || `HTTP ${res.status}`;
+            throw new Error(typeof msg === 'string' ? msg : `HTTP ${res.status}`);
+        }
+        return data;
+    } finally {
+        clearTimeout(timer);
+    }
+}
 
 function getUserIconPath() {
     const userIconPath = path.join(os.homedir(), '.oicpp', 'oicpp.ico');
@@ -454,7 +522,7 @@ ipcMain.handle('get-build-info', () => {
     } catch (error) {
         logger.logwarn('读取构建信息失败:', error);
     }
-    return { version: '1.1.4 (v23)', buildTime: '未知', author: 'mywwzh' };
+    return { version: APP_VERSION, buildTime: '未知', author: 'mywwzh' };
 });
 
 function requestSaveAllAndClose(context = '关闭窗口') {
@@ -496,8 +564,8 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false, // 出于安全原因，建议禁用
             contextIsolation: true,
-            sandbox: false,
-            webSecurity: false,
+            sandbox: true,
+            webSecurity: true,
             devTools: process.argv.includes('--dev')
         },
         icon: getUserIconPath(),
@@ -511,7 +579,7 @@ function createWindow() {
         callback({
             responseHeaders: {
                 ...details.responseHeaders,
-                'Content-Security-Policy': ["script-src 'self' 'unsafe-inline' 'unsafe-eval'; worker-src 'self' blob:;"],
+                'Content-Security-Policy': [getDefaultCSP()],
                 'Permissions-Policy': ['fullscreen=*']
             }
         });
@@ -595,9 +663,7 @@ function createWindow() {
 
     ipcMain.handle('open-external', async (_event, url) => {
         try {
-            if (!url || typeof url !== 'string') {
-                throw new Error('Invalid URL');
-            }
+            if (!isSafeExternalUrl(url)) throw new Error('Invalid URL');
             await shell.openExternal(url);
             return { ok: true };
         } catch (err) {
@@ -1894,9 +1960,12 @@ function setupIPC() {
             if (!result.canceled && result.filePaths.length > 0) {
                 const filePath = result.filePaths[0];
                 const importedSettings = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                const settingsPayload = (importedSettings && typeof importedSettings === 'object' && importedSettings.settings && typeof importedSettings.settings === 'object')
+                    ? importedSettings.settings
+                    : importedSettings;
 
                 const defaultSettings = getDefaultSettings();
-                settings = mergeSettings(defaultSettings, importedSettings);
+                settings = mergeSettings(defaultSettings, settingsPayload);
 
                 saveSettings();
 
@@ -2348,6 +2417,62 @@ function setupIPC() {
         return os.homedir();
     });
 
+    ipcMain.handle('get-available-compiler-list', async () => {
+        try {
+            const url = `${OFFICIAL_API_BASE}/api/getAvailableCompilerList`;
+            const data = await fetchJson(url, { method: 'GET' }, 15000);
+            return { success: true, data };
+        } catch (error) {
+            logWarn('[API] 获取编译器列表失败:', error?.message || error);
+            return { success: false, error: error?.message || String(error) };
+        }
+    });
+
+    ipcMain.handle('get-available-testlib-list', async () => {
+        try {
+            const url = `${OFFICIAL_API_BASE}/api/getAvailableTestlibList`;
+            const data = await fetchJson(url, { method: 'GET' }, 15000);
+            return { success: true, data };
+        } catch (error) {
+            logWarn('[API] 获取 Testlib 列表失败:', error?.message || error);
+            return { success: false, error: error?.message || String(error) };
+        }
+    });
+
+    ipcMain.handle('cloud-compile-submit', async (_event, payload) => {
+        try {
+            const cpp = typeof payload?.cpp === 'string' ? payload.cpp : '';
+            const token = typeof payload?.token === 'string' ? payload.token : '';
+            const byteLen = Buffer.byteLength(cpp, 'utf8');
+            if (!cpp.trim()) return { success: false, error: '代码为空' };
+            if (byteLen > 20 * 1024) return { success: false, error: '代码长度超出 20KB 限制' };
+
+            const url = `${OFFICIAL_API_BASE}/api/cloudCompilation`;
+            const data = await fetchJson(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cpp, token })
+            }, 20000);
+            return { success: true, data };
+        } catch (error) {
+            logWarn('[API] 云编译提交失败:', error?.message || error);
+            return { success: false, error: error?.message || String(error) };
+        }
+    });
+
+    ipcMain.handle('cloud-compile-result', async (_event, taskId) => {
+        try {
+            const id = String(taskId || '').trim();
+            if (!id) return { success: false, error: 'task_id 不能为空' };
+            const url = `${OFFICIAL_API_BASE}/api/getCloudCompilationResult?task_id=${encodeURIComponent(id)}`;
+            const data = await fetchJson(url, { method: 'GET', headers: { 'Accept': 'application/json' } }, 15000);
+            return { success: true, data };
+        } catch (error) {
+            logWarn('[API] 云编译结果查询失败:', error?.message || error);
+            return { success: false, error: error?.message || String(error) };
+        }
+    });
+
     ipcMain.handle('get-downloaded-compilers', async () => {
         logInfo('[获取已下载编译器] 开始获取已下载编译器列表');
         try {
@@ -2501,7 +2626,9 @@ function setupIPC() {
                     modal: false,
                     webPreferences: {
                         nodeIntegration: false,
-                        contextIsolation: true
+                        contextIsolation: true,
+                        sandbox: true,
+                        webSecurity: true
                     }
                 });
 
@@ -2887,7 +3014,9 @@ function setupIPC() {
                     modal: false,
                     webPreferences: {
                         nodeIntegration: false,
-                        contextIsolation: true
+                        contextIsolation: true,
+                        sandbox: true,
+                        webSecurity: true
                     }
                 });
 
@@ -3608,8 +3737,8 @@ function openCompilerSettings() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false,
-            webSecurity: false
+            sandbox: true,
+            webSecurity: true
         },
         title: '编译器设置',
         icon: getUserIconPath()
@@ -3642,8 +3771,8 @@ function openEditorSettings() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false,
-            webSecurity: false
+            sandbox: true,
+            webSecurity: true
         },
         title: '编辑器设置',
         icon: getUserIconPath()
@@ -3682,8 +3811,8 @@ function openCodeTemplates() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false,
-            webSecurity: false
+            sandbox: true,
+            webSecurity: true
         },
         title: '代码模板设置',
         icon: getUserIconPath()
@@ -3973,7 +4102,6 @@ function runInstaller(installerPath) {
     try {
         logInfo('准备运行安装程序:', installerPath);
         if (!fs.existsSync(installerPath)) throw new Error('安装程序文件不存在');
-        const { shell } = require('electron');
 
         if (process.platform === 'linux') {
             try {
@@ -3988,13 +4116,11 @@ function runInstaller(installerPath) {
             } catch (e) { logWarn('[更新] 备份设置失败(可忽略):', e.message); }
         }
 
-        const isLinux = process.platform === 'linux';
         const isWindows = process.platform === 'win32';
-        const openPromise = isLinux ? shell.openPath(installerPath) : shell.openExternal(installerPath);
+        const openPromise = shell.openPath(installerPath);
 
         openPromise.then((result) => {
-            const success = isLinux ? (result === '') : (result === true);
-            if (success) {
+            if (result === '') {
                 logInfo('安装程序已启动');
                 dialog.showMessageBox(mainWindow, {
                     type: 'info',
@@ -4005,7 +4131,7 @@ function runInstaller(installerPath) {
                 });
                 setTimeout(() => { app.quit(); }, 2000);
             } else {
-                throw new Error('无法启动安装程序');
+                throw new Error(result || '无法启动安装程序');
             }
         }).catch(error => { throw error; });
     } catch (error) {
@@ -4126,28 +4252,6 @@ function getSettingsPath() {
     return path.join(settingsDir, 'settings.json');
 }
 
-function mergeSettings(defaultSettings, userSettings) {
-    const result = JSON.parse(JSON.stringify(defaultSettings));
-
-    function merge(target, source) {
-        for (const key in source) {
-            if (source.hasOwnProperty(key)) {
-                if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
-                    if (!target[key] || typeof target[key] !== 'object') {
-                        target[key] = {};
-                    }
-                    merge(target[key], source[key]);
-                } else {
-                    target[key] = source[key];
-                }
-            }
-        }
-    }
-
-    merge(result, userSettings);
-    return result;
-}
-
 function loadSettings() {
     try {
         const settingsPath = getSettingsPath();
@@ -4197,8 +4301,12 @@ function mergeSettings(defaultSettings, userSettings) {
     const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings'];
 
     for (const key of validKeys) {
-        if (userSettings[key] !== undefined) {
-            result[key] = userSettings[key];
+        if (userSettings && userSettings[key] !== undefined) {
+            if (key === 'keybindings' && userSettings[key] && typeof userSettings[key] === 'object' && !Array.isArray(userSettings[key])) {
+                result[key] = { ...(defaultSettings[key] || {}), ...userSettings[key] };
+            } else {
+                result[key] = userSettings[key];
+            }
         } else {
             result[key] = defaultSettings[key];
         }
@@ -4313,7 +4421,7 @@ function resetSettings(settingsType = null) {
 function exportSettings(filePath) {
     try {
         const exportData = {
-            version: '1.1.4 (v23)',
+            version: APP_VERSION,
             timestamp: new Date().toISOString(),
             settings: settings
         };
@@ -5067,15 +5175,35 @@ app.on('before-quit', () => {
 });
 
 app.on('web-contents-created', (event, contents) => {
+    try {
+        contents.setWindowOpenHandler(({ url }) => {
+            try {
+                if (isSafeExternalUrl(url)) {
+                    shell.openExternal(url);
+                }
+            } catch (_) { }
+            return { action: 'deny' };
+        });
+    } catch (_) { }
+
+    // Backward compatibility for older Electron versions.
     contents.on('new-window', (event, navigationUrl) => {
         event.preventDefault();
-        shell.openExternal(navigationUrl);
+        try {
+            if (isSafeExternalUrl(navigationUrl)) {
+                shell.openExternal(navigationUrl);
+            }
+        } catch (_) { }
     });
 
     contents.on('will-navigate', (event, navigationUrl) => {
-        const parsedUrl = new URL(navigationUrl);
-
-        if (parsedUrl.origin !== 'file://') {
+        try {
+            const parsedUrl = new URL(navigationUrl);
+            const protocol = (parsedUrl.protocol || '').toLowerCase();
+            if (protocol !== 'file:') {
+                event.preventDefault();
+            }
+        } catch (_) {
             event.preventDefault();
         }
     });

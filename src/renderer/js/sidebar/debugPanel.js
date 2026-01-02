@@ -714,14 +714,44 @@ class DebugPanel {
         const c = this.root.querySelector('#call-stack');
         if (!c) return;
         c.innerHTML = '';
-        if (!Array.isArray(stack) || stack.length === 0) { c.innerHTML = '<div class="no-debug-message">无</div>'; return; }
+        if (!Array.isArray(stack) || stack.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'no-debug-message';
+            empty.textContent = '无';
+            c.appendChild(empty);
+            return;
+        }
         for (let i = 0; i < stack.length; i++) {
             const f = stack[i];
             const el = document.createElement('div');
             el.className = 'callstack-item';
-            el.innerHTML = `
-        <div class="frame-info"><span class="frame-index">#${i}</span><span class="frame-function">${f.function || '未知函数'}</span></div>
-        <div class="frame-location"><span class="frame-file">${f.file || '未知文件'}</span>${f.line ? `<span class="frame-line">:${f.line}</span>` : ''}</div>`;
+
+            const info = document.createElement('div');
+            info.className = 'frame-info';
+            const idx = document.createElement('span');
+            idx.className = 'frame-index';
+            idx.textContent = `#${i}`;
+            const fn = document.createElement('span');
+            fn.className = 'frame-function';
+            fn.textContent = f?.function || '未知函数';
+            info.appendChild(idx);
+            info.appendChild(fn);
+
+            const loc = document.createElement('div');
+            loc.className = 'frame-location';
+            const file = document.createElement('span');
+            file.className = 'frame-file';
+            file.textContent = f?.file || '未知文件';
+            loc.appendChild(file);
+            if (f?.line) {
+                const line = document.createElement('span');
+                line.className = 'frame-line';
+                line.textContent = `:${f.line}`;
+                loc.appendChild(line);
+            }
+
+            el.appendChild(info);
+            el.appendChild(loc);
             c.appendChild(el);
         }
     }

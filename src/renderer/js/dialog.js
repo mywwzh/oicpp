@@ -66,13 +66,17 @@ class DialogManager {
             const overlay = document.getElementById('dialog-overlay');
             const container = document.getElementById('dialog-container');
 
+            const safeTitle = this.escapeHtml(String(title ?? ''));
+            const safePlaceholder = this.escapeHtml(String(placeholder ?? ''));
+            const safeDefaultValue = this.escapeHtml(String(defaultValue ?? ''));
+
             container.innerHTML = `
                 <div class="dialog-header">
-                    <h3>${title}</h3>
+                    <h3>${safeTitle}</h3>
                     <button class="dialog-close" onclick="dialogManager.hideDialog()">&times;</button>
                 </div>
                 <div class="dialog-body">
-                    <input type="text" id="dialog-input" placeholder="${placeholder}" value="${defaultValue}" spellcheck="false" autocapitalize="none" autocomplete="off" autocorrect="off" />
+                    <input type="text" id="dialog-input" placeholder="${safePlaceholder}" value="${safeDefaultValue}" spellcheck="false" autocapitalize="none" autocomplete="off" autocorrect="off" />
                 </div>
                 <div class="dialog-footer">
                     <button class="dialog-btn dialog-btn-cancel" onclick="dialogManager.hideDialog()">取消</button>
@@ -122,13 +126,16 @@ class DialogManager {
             const overlay = document.getElementById('dialog-overlay');
             const container = document.getElementById('dialog-container');
 
+            const safeTitle = this.escapeHtml(String(title ?? ''));
+            const safeMessage = this.escapeHtml(String(message ?? ''));
+
             container.innerHTML = `
                 <div class="dialog-header">
-                    <h3>${title}</h3>
+                    <h3>${safeTitle}</h3>
                     <button class="dialog-close" onclick="dialogManager.hideDialog()">&times;</button>
                 </div>
                 <div class="dialog-body">
-                    <p>${message}</p>
+                    <p>${safeMessage}</p>
                 </div>
                 <div class="dialog-footer">
                     <button class="dialog-btn dialog-btn-cancel" onclick="dialogManager.cancelDialog()">取消</button>

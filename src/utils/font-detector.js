@@ -74,16 +74,33 @@ class FontDetector {
     showFontNotAvailableMessage(fontName) {
         const message = document.createElement('div');
         message.className = 'font-warning-message';
-        message.innerHTML = `
-            <div class="font-warning-content">
-                <div class="font-warning-icon" data-ui-icon="warning"></div>
-                <div class="font-warning-text">
-                    <strong>字体不可用</strong><br>
-                    系统中未找到字体 "${fontName}"，已自动切换到 "${this.defaultFont}"
-                </div>
-                <button class="font-warning-close" onclick="this.parentElement.parentElement.remove()">×</button>
-            </div>
-        `;
+        const content = document.createElement('div');
+        content.className = 'font-warning-content';
+
+        const icon = document.createElement('div');
+        icon.className = 'font-warning-icon';
+        icon.setAttribute('data-ui-icon', 'warning');
+
+        const text = document.createElement('div');
+        text.className = 'font-warning-text';
+        const strong = document.createElement('strong');
+        strong.textContent = '字体不可用';
+        text.appendChild(strong);
+        text.appendChild(document.createElement('br'));
+        text.appendChild(document.createTextNode(`系统中未找到字体 "${fontName}"，已自动切换到 "${this.defaultFont}"`));
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'font-warning-close';
+        closeBtn.type = 'button';
+        closeBtn.textContent = '×';
+        closeBtn.addEventListener('click', () => {
+            try { message.remove(); } catch (_) { }
+        });
+
+        content.appendChild(icon);
+        content.appendChild(text);
+        content.appendChild(closeBtn);
+        message.appendChild(content);
         
         message.style.cssText = `
             position: fixed;

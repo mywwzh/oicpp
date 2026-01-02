@@ -147,7 +147,12 @@
                     }
                     list.forEach(d => {
                         const item = E('div', 'folder-picker-item folder');
-                        item.innerHTML = '<span class="folder-picker-icon" data-ui-icon="folder" aria-hidden="true"></span><span>' + d.name + '</span>';
+                        const icon = E('span', 'folder-picker-icon');
+                        icon.setAttribute('data-ui-icon', 'folder');
+                        icon.setAttribute('aria-hidden', 'true');
+                        const label = E('span', null, d.name);
+                        item.appendChild(icon);
+                        item.appendChild(label);
                         item.onclick = (ev) => {
                             selectItem(item, d);
                         };
