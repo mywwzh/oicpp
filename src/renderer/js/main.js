@@ -2619,7 +2619,7 @@ ${data.message || '程序已加载，等待开始执行'}
 
 
     async showAbout() {
-        let buildInfo = { version: '1.1.4 (v23)', buildTime: '未知', author: 'mywwzh' };
+        let buildInfo = { version: '1.2.0 (v24)', buildTime: '未知', author: 'mywwzh' };
         try {
             const buildInfoData = window.electronAPI ? await window.electronAPI.getBuildInfo() : null;
             if (buildInfoData) {
