@@ -1267,6 +1267,13 @@ class TabManager {
             if (this.monacoEditorManager) {
                 this.monacoEditorManager.groupActiveTab.set(tabData.groupId, null);
             }
+        } else if (tabData.viewType === 'diff' && this.monacoEditorManager) {
+            this.hideGroupViewContainers(tabData.groupId);
+            await this.monacoEditorManager.showDiffEditor(tabData.tabId, {
+                groupId: tabData.groupId,
+                ...(tabData.diffMeta || {}),
+                label: tabData.fileName
+            });
         } else if (this.monacoEditorManager) {
             this.hideGroupViewContainers(tabData.groupId);
             const expectedTabId = this.monacoEditorManager.generateTabId(tabData.fileName, tabData.filePath || tabData.uniqueKey || null);
@@ -3614,6 +3621,135 @@ class TabManager {
                 setTimeout(() => {
                     this.openMarkdownPreviewInNewGroup(tabData);
                 }, 100);
+            }
+        } finally {
+            this._openingKeys.delete(uniqueKey);
+        }
+    }
+
+    async openDiff(files) {
+        const candidates = Array.isArray(files) ? files.filter(f => f && f.type === 'file' && f.path) : [];
+        if (candidates.length !== 2) {
+            logWarn('openDiff 需要正好两个有效文件');
+            return;
+        }
+
+        if (!this.monacoEditorManager) {
+            logError('打开对比失败: 未初始化编辑器管理器');
+            return;
+        }
+
+        const [original, modified] = candidates;
+        const normalizePath = (p) => (typeof p === 'string' ? p.replace(/\\/g, '/') : '');
+        const originalPath = normalizePath(original.path);
+        const modifiedPath = normalizePath(modified.path);
+        const uniqueKey = `diff:${originalPath}::${modifiedPath}`;
+
+        if (this.tabs.has(uniqueKey)) {
+            await this.activateTabByUniqueKey(uniqueKey);
+            this.refreshTabLabels();
+            return;
+        }
+        if (this._openingKeys.has(uniqueKey)) {
+            return;
+        }
+        this._openingKeys.add(uniqueKey);
+
+        try {
+            const label = `${original.name || '原文件'} vs ${modified.name || '新文件'}`;
+            let targetGroupId = this.activeGroupId || this.groupOrder[0] || 'group-1';
+            let targetGroup = this.groups.get(targetGroupId);
+            if (!targetGroup) {
+                targetGroup = this.createGroup({ afterGroupId: this.activeGroupId });
+                targetGroupId = targetGroup?.id || targetGroupId;
+            }
+
+            const readContent = async (file) => {
+                if (window.electronAPI?.readFileContent && file?.path) {
+                    try {
+                        return await window.electronAPI.readFileContent(file.path);
+                    } catch (error) {
+                        logWarn('读取文件内容失败:', error);
+                    }
+                }
+                return '';
+            };
+
+            const [originalContent, modifiedContent] = await Promise.all([
+                readContent(original),
+                readContent(modified)
+            ]);
+
+            const tabId = this.monacoEditorManager.generateTabId(label, uniqueKey);
+            const tabElement = this.createTabElement(label, tabId);
+            tabElement.dataset.viewType = 'diff';
+            tabElement.dataset.groupId = targetGroupId;
+            tabElement.classList.add('tab-type-diff');
+            this.addTabDragListeners(tabElement);
+
+            const tabData = {
+                element: tabElement,
+                fileName: label,
+                modified: false,
+                content: modifiedContent,
+                active: true,
+                filePath: modified.path,
+                tabId,
+                uniqueKey,
+                groupId: targetGroupId,
+                viewType: 'diff',
+                diffMeta: {
+                    originalPath,
+                    modifiedPath,
+                    originalName: original.name,
+                    modifiedName: modified.name,
+                    originalContent,
+                    modifiedContent
+                }
+            };
+
+            this.tabs.set(uniqueKey, tabData);
+
+            if (targetGroup) {
+                targetGroup.tabs.set(uniqueKey, tabData);
+                if (targetGroup.tabBar) {
+                    this.bindTabBarEvents(targetGroup.tabBar);
+                    targetGroup.tabBar.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                    targetGroup.tabBar.appendChild(tabElement);
+                }
+                targetGroup.activeTabKey = uniqueKey;
+            }
+
+            this.activeTab = label;
+            this.activeTabKey = uniqueKey;
+            this.activeGroupId = targetGroupId;
+            tabElement.classList.add('active');
+
+            this.setTabElementUniqueKey(tabElement, uniqueKey);
+
+            this.syncGroupTabs(targetGroupId);
+
+            await this.monacoEditorManager.createDiffEditor(tabId, {
+                groupId: targetGroupId,
+                originalPath,
+                modifiedPath,
+                originalContent,
+                modifiedContent,
+                label
+            });
+
+            await this.activateTabByUniqueKey(uniqueKey);
+            this.refreshTabLabels();
+        } catch (error) {
+            logError('打开文件对比失败:', error);
+            try {
+                if (window.dialogManager?.showError) {
+                    window.dialogManager.showError(error?.message || '打开文件对比失败');
+                } else {
+                    alert(error?.message || '打开文件对比失败');
+                }
+            } catch (e) {
+                logWarn('显示错误提示失败:', e);
             }
         } finally {
             this._openingKeys.delete(uniqueKey);
