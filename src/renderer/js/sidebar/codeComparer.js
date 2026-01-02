@@ -6,6 +6,7 @@ class CodeComparer {
         this.generatorPath = '';
         this.useTestlib = false;
         this.spjPath = '';
+        this.maxParallelThreads = 1;
         this.tasks = new Map();
         this.eventsbound = false;
 
@@ -43,6 +44,7 @@ class CodeComparer {
                     generatorPath: '',
                     useTestlib: false,
                     spjPath: '',
+                    threadCount: 1,
                     compareCount: 100,
                     timeLimit: 1000
                 },
@@ -106,10 +108,17 @@ class CodeComparer {
 
         const compareCountEl = document.getElementById('compare-count');
         const timeLimitEl = document.getElementById('time-limit');
+        const threadCountEl = document.getElementById('compare-threads');
         const compareCount = parseInt(compareCountEl?.value);
         const timeLimit = parseInt(timeLimitEl?.value);
+        const threadCount = parseInt(threadCountEl?.value);
         if (Number.isFinite(compareCount)) task.config.compareCount = Math.max(1, Math.min(compareCount, 100000));
         if (Number.isFinite(timeLimit)) task.config.timeLimit = timeLimit;
+        if (Number.isFinite(threadCount)) {
+            const capped = Math.max(1, Math.min(threadCount, this.maxParallelThreads || threadCount));
+            task.config.threadCount = capped;
+            if (threadCountEl && capped !== threadCount) threadCountEl.value = String(capped);
+        }
     }
 
     mergeTaskConfigIfEmpty(targetTask, sourceConfig) {
@@ -125,6 +134,7 @@ class CodeComparer {
 
         if (!Number.isFinite(t.compareCount) && Number.isFinite(s.compareCount)) t.compareCount = s.compareCount;
         if (!Number.isFinite(t.timeLimit) && Number.isFinite(s.timeLimit)) t.timeLimit = s.timeLimit;
+        if (!Number.isFinite(t.threadCount) && Number.isFinite(s.threadCount)) t.threadCount = s.threadCount;
 
         t.testCodePath = targetTask.key;
     }
@@ -185,6 +195,8 @@ class CodeComparer {
         }
         this.eventsbound = true;
 
+        this.ensureThreadLimitUI();
+
         const stdCodeBrowse = document.getElementById('std-code-browse');
         const testCodeBrowse = document.getElementById('test-code-browse');
         const generatorBrowse = document.getElementById('generator-browse');
@@ -220,6 +232,7 @@ class CodeComparer {
         const useTestlibCheckbox = document.getElementById('compare-use-testlib');
         const spjBrowseBtn = document.getElementById('compare-spj-browse');
         const compareCountInput = document.getElementById('compare-count');
+        const threadCountInput = document.getElementById('compare-threads');
         const timeLimitInput = document.getElementById('time-limit');
 
         if (useTestlibCheckbox) {
@@ -239,6 +252,13 @@ class CodeComparer {
 
         if (compareCountInput) {
             compareCountInput.addEventListener('change', () => {
+                const task = this.getActiveTask();
+                if (!task) return;
+                this.syncInstanceConfigToTask(task);
+            });
+        }
+        if (threadCountInput) {
+            threadCountInput.addEventListener('change', () => {
                 const task = this.getActiveTask();
                 if (!task) return;
                 this.syncInstanceConfigToTask(task);
@@ -398,6 +418,10 @@ class CodeComparer {
         if (compareCountInput && Number.isFinite(task.config.compareCount)) {
             compareCountInput.value = String(task.config.compareCount);
         }
+        const threadCountInput = document.getElementById('compare-threads');
+        if (threadCountInput && Number.isFinite(task.config.threadCount)) {
+            threadCountInput.value = String(task.config.threadCount);
+        }
         const timeLimitInput = document.getElementById('time-limit');
         if (timeLimitInput && Number.isFinite(task.config.timeLimit)) {
             timeLimitInput.value = String(task.config.timeLimit);
@@ -473,9 +497,14 @@ class CodeComparer {
         compareCount = Math.max(1, Math.min(compareCount, 100000));
         const timeLimit = parseInt(document.getElementById('time-limit').value);
         const effectiveTimeLimit = Number.isFinite(timeLimit) ? timeLimit : (task.config.timeLimit || 1000);
+        const { cpuThreads, maxParallel } = await this.getMaxParallelThreads();
+        this.maxParallelThreads = maxParallel;
+        const requestedThreadsRaw = parseInt(document.getElementById('compare-threads')?.value);
+        const requestedThreads = Number.isFinite(requestedThreadsRaw) ? Math.max(1, requestedThreadsRaw) : 1;
 
         task.config.compareCount = compareCount;
         task.config.timeLimit = Number.isFinite(timeLimit) ? timeLimit : task.config.timeLimit;
+        task.config.threadCount = requestedThreads;
 
         task.state.totalTests = compareCount;
         task.state.currentTest = 0;
@@ -492,13 +521,16 @@ class CodeComparer {
         this.updateStatusText(task.state.statusText);
         this.updateProgress(0, task.state.totalTests);
 
-        this.runTask(task, effectiveTimeLimit).catch((error) => {
+        const workerCount = Math.max(1, Math.min(requestedThreads, maxParallel, task.state.totalTests));
+        logInfo('[对拍器] 并行配置', { cpuThreads, maxParallel, requestedThreads, workerCount, totalTests: task.state.totalTests });
+
+        this.runTask(task, effectiveTimeLimit, workerCount, maxParallel).catch((error) => {
             logError('对拍过程出错:', error);
             this.showTaskCompileError(task, 'general', '对拍过程出错: ' + (error?.message || String(error)));
         });
     }
 
-    async runTask(task, effectiveTimeLimit) {
+    async runTask(task, effectiveTimeLimit, workerCount, maxParallel) {
         try {
             logInfo(`开始对拍！计划执行 ${task.state.totalTests} 组测试，时间限制 ${task.config.timeLimit}ms`);
 
@@ -508,7 +540,7 @@ class CodeComparer {
             }
 
             logInfo('所有程序编译成功，开始执行对拍');
-            await this.runComparison(task, compiledPrograms, effectiveTimeLimit);
+            await this.runComparison(task, compiledPrograms, effectiveTimeLimit, workerCount, maxParallel);
         } finally {
             task.state.isRunning = false;
             if (task.state.mode === 'running') {
@@ -643,169 +675,205 @@ class CodeComparer {
         }
     }
 
-    async runComparison(task, programs, timeLimit) {
+    async runComparison(task, programs, timeLimit, workerCountFromConfig = 1, maxParallelFromStart = 1) {
         const { stdExe, testExe, generatorExe, spjExe } = programs;
         let failedGenerations = 0;
 
-        for (let i = 1; i <= task.state.totalTests && !task.state.shouldStop; i++) {
-            task.state.currentTest = i;
-            this.updateTaskStatus(task, `第 ${i} 组测试`);
-            this.updateTaskProgress(task);
+        const maxParallel = Math.max(1, maxParallelFromStart || 1);
+        const workerCount = Math.max(1, Math.min(workerCountFromConfig || 1, maxParallel, task.state.totalTests));
+        const totalTests = task.state.totalTests;
 
-            try {
-                const generation = await this.generateTestData(generatorExe, 0);
-                if (!generation || generation.success !== true) {
-                    const generatorMessage = generation?.message || '数据生成器运行失败';
-                    const generatedOutput = generation?.result?.output || '';
-                    const generatorType = generation?.type || 'unknown';
-                    try {
-                        logError(`第 ${i} 组：数据生成失败 (${generatorType})`, generatorMessage);
-                    } catch (_) { }
+        let nextIndex = 1;
+        let completed = 0;
+        let errorOccurred = false;
 
-                    task.state.errorResult = {
-                        testNumber: i,
-                        input: generatedOutput ? this.limitOutputLines(generatedOutput, 50) : '[生成器未产生有效输入]',
-                        stdOutput: generatorMessage,
-                        testOutput: '标准/测试程序未运行',
-                        errorType: 'generator_program_error',
-                        generatorErrorType: generatorType
-                    };
-                    task.state.mode = 'error';
-                    this.renderIfActive(task);
-                    return;
+        const worker = async () => {
+            while (true) {
+                if (task.state.shouldStop || errorOccurred) return;
+
+                const i = nextIndex++;
+                if (i > totalTests) return;
+
+                if (this.activeTaskKey === task.key) {
+                    this.updateTaskStatus(task, `第 ${i} 组测试`);
+                    this.updateProgress(completed, totalTests);
                 }
 
-                const inputData = generation.input;
+                try {
+                    const generation = await this.generateTestData(generatorExe, 0);
+                    if (!generation || generation.success !== true) {
+                        const generatorMessage = generation?.message || '数据生成器运行失败';
+                        const generatedOutput = generation?.result?.output || '';
+                        const generatorType = generation?.type || 'unknown';
+                        try {
+                            logError(`第 ${i} 组：数据生成失败 (${generatorType})`, generatorMessage);
+                        } catch (_) { }
 
-                const stdOutput = await this.runProgram(stdExe, inputData, 0);
-                if (stdOutput.outputLimitExceeded || stdOutput.timeout || stdOutput.error || stdOutput.exitCode !== 0) {
-                    const limitMbStd = Math.max(1, Math.floor((stdOutput.outputLimitBytes || 0) / (1024 * 1024)));
-                    const errorMsg = stdOutput.outputLimitExceeded ? `标准程序输出超过限制 (${limitMbStd} MB)` :
-                        stdOutput.timeout ? '标准程序超时 (TLE)' :
-                            stdOutput.error ? `标准程序运行错误 (RE): ${stdOutput.error}` :
-                                `标准程序异常退出，退出码: ${stdOutput.exitCode}`;
-                    try {
-                        if (stdOutput.outputLimitExceeded) {
-                            logWarn('[对拍器][OLE][STD]', {
-                                test: i,
-                                durationMs: stdOutput.time,
-                                limitBytes: stdOutput.outputLimitBytes,
-                                capturedBytes: stdOutput.capturedOutputBytes,
-                                observedBytes: stdOutput.observedOutputBytes
-                            });
-                        } else if (stdOutput.timeout) {
-                            logWarn('[对拍器][TLE][STD]', { test: i, durationMs: stdOutput.time, limitMs: 0 });
-                        } else {
-                            logWarn('[对拍器][RE][STD]', { test: i, exitCode: stdOutput.exitCode, durationMs: stdOutput.time });
-                        }
-                    } catch (_) { }
-                    task.state.errorResult = {
-                        testNumber: i,
-                        input: inputData,
-                        stdOutput: errorMsg,
-                        testOutput: '程序未运行',
-                        errorType: 'standard_program_error'
-                    };
-                    task.state.mode = 'error';
-                    this.renderIfActive(task);
-                    return;
-                }
-
-                const testOutput = await this.runProgram(testExe, inputData, timeLimit);
-                if (testOutput.outputLimitExceeded || testOutput.timeout || testOutput.error || testOutput.exitCode !== 0) {
-                    const limitMbTest = Math.max(1, Math.floor((testOutput.outputLimitBytes || 0) / (1024 * 1024)));
-                    const errorMsg = testOutput.outputLimitExceeded ? `测试程序输出超过限制 (${limitMbTest} MB)` :
-                        testOutput.timeout ? '测试程序超时 (TLE)' :
-                            testOutput.error ? `测试程序运行错误 (RE):  ${testOutput.error}` :
-                                `测试程序异常退出，退出码: ${testOutput.exitCode}`;
-                    try {
-                        if (testOutput.outputLimitExceeded) {
-                            logWarn('[对拍器][OLE][TEST]', {
-                                test: i,
-                                durationMs: testOutput.time,
-                                limitBytes: testOutput.outputLimitBytes,
-                                capturedBytes: testOutput.capturedOutputBytes,
-                                observedBytes: testOutput.observedOutputBytes
-                            });
-                        } else if (testOutput.timeout) {
-                            logWarn('[对拍器][TLE][TEST]', { test: i, durationMs: testOutput.time, limitMs: timeLimit });
-                        } else {
-                            logWarn('[对拍器][RE][TEST]', { test: i, exitCode: testOutput.exitCode, durationMs: testOutput.time });
-                        }
-                    } catch (_) { }
-                    task.state.errorResult = {
-                        testNumber: i,
-                        input: inputData,
-                        stdOutput: stdOutput.output,
-                        testOutput: errorMsg,
-                        errorType: 'test_program_error'
-                    };
-                    task.state.mode = 'error';
-                    this.renderIfActive(task);
-                    return;
-                }
-
-                if (task.config.useTestlib && spjExe) {
-                    const spjResult = await this.judgeWithSpj(spjExe, inputData, testOutput.output, stdOutput.output, timeLimit);
-                    if (spjResult !== 'AC') {
                         task.state.errorResult = {
                             testNumber: i,
-                            input: inputData,
-                            stdOutput: stdOutput.output,
-                            testOutput: testOutput.output,
-                            errorType: 'spj_error',
-                            errorMessage: `SPJ 结果: ${spjResult}`
+                            input: generatedOutput ? this.limitOutputLines(generatedOutput, 50) : '[生成器未产生有效输入]',
+                            stdOutput: generatorMessage,
+                            testOutput: '标准/测试程序未运行',
+                            errorType: 'generator_program_error',
+                            generatorErrorType: generatorType
                         };
                         task.state.mode = 'error';
+                        errorOccurred = true;
                         this.renderIfActive(task);
                         return;
                     }
-                } else {
-                    const outputsMatch = this.compareOutputs(stdOutput.output, testOutput.output);
-                    if (!outputsMatch) {
+
+                    const inputData = generation.input;
+
+                    const stdOutput = await this.runProgram(stdExe, inputData, 0);
+                    if (stdOutput.outputLimitExceeded || stdOutput.timeout || stdOutput.error || stdOutput.exitCode !== 0) {
+                        const limitMbStd = Math.max(1, Math.floor((stdOutput.outputLimitBytes || 0) / (1024 * 1024)));
+                        const errorMsg = stdOutput.outputLimitExceeded ? `标准程序输出超过限制 (${limitMbStd} MB)` :
+                            stdOutput.timeout ? '标准程序超时 (TLE)' :
+                                stdOutput.error ? `标准程序运行错误 (RE): ${stdOutput.error}` :
+                                    `标准程序异常退出，退出码: ${stdOutput.exitCode}`;
                         try {
-                            const diff = this.getDifferenceInfo((testOutput.output || '').trimEnd(), (stdOutput.output || '').trimEnd());
-                            logWarn('[对拍器][WA]', {
-                                test: i,
-                                actualLen: (testOutput.output || '').length,
-                                expectedLen: (stdOutput.output || '').length,
-                                firstDiff: diff || null
-                            });
+                            if (stdOutput.outputLimitExceeded) {
+                                logWarn('[对拍器][OLE][STD]', {
+                                    test: i,
+                                    durationMs: stdOutput.time,
+                                    limitBytes: stdOutput.outputLimitBytes,
+                                    capturedBytes: stdOutput.capturedOutputBytes,
+                                    observedBytes: stdOutput.observedOutputBytes
+                                });
+                            } else if (stdOutput.timeout) {
+                                logWarn('[对拍器][TLE][STD]', { test: i, durationMs: stdOutput.time, limitMs: 0 });
+                            } else {
+                                logWarn('[对拍器][RE][STD]', { test: i, exitCode: stdOutput.exitCode, durationMs: stdOutput.time });
+                            }
+                        } catch (_) { }
+                        task.state.errorResult = {
+                            testNumber: i,
+                            input: inputData,
+                            stdOutput: errorMsg,
+                            testOutput: '程序未运行',
+                            errorType: 'standard_program_error'
+                        };
+                        task.state.mode = 'error';
+                        errorOccurred = true;
+                        this.renderIfActive(task);
+                        return;
+                    }
+
+                    const testOutput = await this.runProgram(testExe, inputData, timeLimit);
+                    if (testOutput.outputLimitExceeded || testOutput.timeout || testOutput.error || testOutput.exitCode !== 0) {
+                        const limitMbTest = Math.max(1, Math.floor((testOutput.outputLimitBytes || 0) / (1024 * 1024)));
+                        const errorMsg = testOutput.outputLimitExceeded ? `测试程序输出超过限制 (${limitMbTest} MB)` :
+                            testOutput.timeout ? '测试程序超时 (TLE)' :
+                                testOutput.error ? `测试程序运行错误 (RE):  ${testOutput.error}` :
+                                    `测试程序异常退出，退出码: ${testOutput.exitCode}`;
+                        try {
+                            if (testOutput.outputLimitExceeded) {
+                                logWarn('[对拍器][OLE][TEST]', {
+                                    test: i,
+                                    durationMs: testOutput.time,
+                                    limitBytes: testOutput.outputLimitBytes,
+                                    capturedBytes: testOutput.capturedOutputBytes,
+                                    observedBytes: testOutput.observedOutputBytes
+                                });
+                            } else if (testOutput.timeout) {
+                                logWarn('[对拍器][TLE][TEST]', { test: i, durationMs: testOutput.time, limitMs: timeLimit });
+                            } else {
+                                logWarn('[对拍器][RE][TEST]', { test: i, exitCode: testOutput.exitCode, durationMs: testOutput.time });
+                            }
                         } catch (_) { }
                         task.state.errorResult = {
                             testNumber: i,
                             input: inputData,
                             stdOutput: stdOutput.output,
-                            testOutput: testOutput.output,
-                            usedSpj: false
+                            testOutput: errorMsg,
+                            errorType: 'test_program_error'
                         };
                         task.state.mode = 'error';
+                        errorOccurred = true;
                         this.renderIfActive(task);
                         return;
                     }
-                }
 
-            } catch (error) {
-                logError(`第 ${i} 组测试出错:`, error);
-                continue;
+                    if (task.config.useTestlib && spjExe) {
+                        const spjResult = await this.judgeWithSpj(spjExe, inputData, testOutput.output, stdOutput.output, timeLimit);
+                        if (spjResult !== 'AC') {
+                            task.state.errorResult = {
+                                testNumber: i,
+                                input: inputData,
+                                stdOutput: stdOutput.output,
+                                testOutput: testOutput.output,
+                                errorType: 'spj_error',
+                                errorMessage: `SPJ 结果: ${spjResult}`
+                            };
+                            task.state.mode = 'error';
+                            errorOccurred = true;
+                            this.renderIfActive(task);
+                            return;
+                        }
+                    } else {
+                        const outputsMatch = this.compareOutputs(stdOutput.output, testOutput.output);
+                        if (!outputsMatch) {
+                            try {
+                                const diff = this.getDifferenceInfo((testOutput.output || '').trimEnd(), (stdOutput.output || '').trimEnd());
+                                logWarn('[对拍器][WA]', {
+                                    test: i,
+                                    actualLen: (testOutput.output || '').length,
+                                    expectedLen: (stdOutput.output || '').length,
+                                    firstDiff: diff || null
+                                });
+                            } catch (_) { }
+                            task.state.errorResult = {
+                                testNumber: i,
+                                input: inputData,
+                                stdOutput: stdOutput.output,
+                                testOutput: testOutput.output,
+                                usedSpj: false
+                            };
+                            task.state.mode = 'error';
+                            errorOccurred = true;
+                            this.renderIfActive(task);
+                            return;
+                        }
+                    }
+
+                    completed++;
+                    task.state.currentTest = completed;
+                    this.updateTaskProgress(task);
+
+                } catch (error) {
+                    logError(`第 ${i} 组测试出错:`, error);
+                    continue;
+                }
             }
+        };
+
+        const workers = Array.from({ length: workerCount }, worker);
+        await Promise.all(workers);
+
+        task.state.currentTest = completed;
+        this.updateTaskProgress(task);
+
+        if (task.state.shouldStop) {
+            logInfo(`对拍被手动停止，已执行 ${completed} 组测试，其中有 ${failedGenerations} 组生成失败`);
+            return;
         }
 
-        if (!task.state.shouldStop) {
-            const successfulTests = task.state.totalTests - failedGenerations;
-            if (failedGenerations === 0) {
-                logInfo(`对拍完成！共执行 ${successfulTests} 组测试，未发现差异`);
-                task.state.mode = 'complete';
-                task.state.warningMessage = null;
-                this.renderIfActive(task);
-            } else {
-                logInfo(`对拍完成，但有 ${failedGenerations} 组数据生成失败。共成功执行 ${successfulTests} 组测试，未在成功组中发现差异`);
-                task.state.mode = 'complete';
-                task.state.warningMessage = `有 ${failedGenerations} 组数据生成失败，请检查数据生成器`;
-                this.renderIfActive(task);
-            }
+        if (errorOccurred) {
+            return;
+        }
+
+        const successfulTests = task.state.totalTests - failedGenerations;
+        if (failedGenerations === 0) {
+            logInfo(`对拍完成！共执行 ${successfulTests} 组测试，未发现差异`);
+            task.state.mode = 'complete';
+            task.state.warningMessage = null;
+            this.renderIfActive(task);
         } else {
-            logInfo(`对拍被手动停止，已执行 ${task.state.currentTest} 组测试，其中有 ${failedGenerations} 组生成失败`);
+            logInfo(`对拍完成，但有 ${failedGenerations} 组数据生成失败。共成功执行 ${successfulTests} 组测试，未在成功组中发现差异`);
+            task.state.mode = 'complete';
+            task.state.warningMessage = `有 ${failedGenerations} 组数据生成失败，请检查数据生成器`;
+            this.renderIfActive(task);
         }
     }
 
@@ -954,6 +1022,42 @@ class CodeComparer {
             }
         } catch (error) {
             return 'SPJ Error';
+        }
+    }
+
+    async getMaxParallelThreads() {
+        const fallbackThreads = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 2;
+        let cpuThreads = fallbackThreads;
+        try {
+            const remoteCount = await window.electronAPI?.getCpuThreads?.();
+            if (Number.isFinite(remoteCount) && remoteCount > 0) {
+                cpuThreads = remoteCount;
+            }
+        } catch (_) { }
+        const maxParallel = Math.max(1, Math.floor(cpuThreads / 2));
+        return { cpuThreads, maxParallel };
+    }
+
+    async ensureThreadLimitUI() {
+        try {
+            const { cpuThreads, maxParallel } = await this.getMaxParallelThreads();
+            this.maxParallelThreads = maxParallel;
+            const input = document.getElementById('compare-threads');
+            const hint = document.getElementById('compare-threads-hint');
+            if (input) {
+                input.max = String(maxParallel);
+                const current = parseInt(input.value);
+                if (Number.isFinite(current)) {
+                    const capped = Math.max(1, Math.min(current, maxParallel));
+                    if (capped !== current) input.value = String(capped);
+                }
+            }
+            if (hint) {
+                hint.textContent = `上限 = CPU 线程数/2`;
+            }
+            logInfo('[对拍器] 线程上限已更新', { cpuThreads, maxParallel });
+        } catch (error) {
+            logWarn('[对拍器] 获取线程上限失败', error);
         }
     }
 
