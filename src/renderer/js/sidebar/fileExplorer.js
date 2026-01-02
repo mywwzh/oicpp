@@ -862,6 +862,10 @@ class FileExplorer {
 
         if (file.type === 'file') {
             items.push({ label: '打开', action: () => this.openFile(file) });
+            const compareTargets = this.getActionSelection(file).filter(f => f?.type === 'file');
+            if (compareTargets.length === 2) {
+                items.push({ label: '对比文件差异', action: () => this.compareFiles(compareTargets) });
+            }
             items.push({ label: '重命名', action: () => this.renameFile(file) });
             items.push({ label: '复制', action: () => this.copyFile(this.getActionSelection(file)) });
             items.push({ label: '剪切', action: () => this.cutFile(this.getActionSelection(file)) });
@@ -1439,6 +1443,26 @@ class FileExplorer {
                 logError('读取文件失败:', error);
                 this.showError(`无法读取文件: ${error?.message || error}`);
             }
+        }
+    }
+
+    async compareFiles(fileList) {
+        const files = Array.isArray(fileList) ? fileList.filter(f => f && f.type === 'file' && f.path) : [];
+        if (files.length !== 2) {
+            logWarn('compareFiles 需要正好两个文件');
+            return;
+        }
+
+        if (!window.tabManager || typeof window.tabManager.openDiff !== 'function') {
+            this.showError('当前环境不支持文件对比');
+            return;
+        }
+
+        try {
+            await window.tabManager.openDiff(files);
+        } catch (error) {
+            logError('打开文件对比失败:', error);
+            this.showError(`无法对比文件: ${error?.message || error}`);
         }
     }
 
