@@ -190,15 +190,15 @@
 }
 
 .tree-item.selected .tree-item-content {
-    background: var(--list-selection-bg, var(--accent-color, #0e639c));
-    color: var(--list-selection-fg, #ffffff);
-    border-left: 2px solid var(--sidebar-selection-border, var(--accent-color-light, #007acc));
-    box-shadow: inset 0 0 0 1px var(--sidebar-selection-outline, rgba(255, 255, 255, 0.05));
+    background: var(--list-selection-bg, rgba(14, 99, 156, 0.32));
+    color: var(--list-selection-fg, #e8f0ff);
+    border-left: 2px solid var(--sidebar-selection-border, rgba(14, 99, 156, 0.5));
+    box-shadow: inset 0 0 0 1px var(--sidebar-selection-outline, rgba(255, 255, 255, 0.03));
 }
 
 .tree-item.selected .tree-item-content:hover {
-    background: var(--list-selection-bg, #1177bb);
-    color: var(--list-selection-fg, #ffffff);
+    background: var(--list-selection-bg-hover, rgba(14, 99, 156, 0.45));
+    color: var(--list-selection-fg, #e8f0ff);
 }
 
 .tree-item.selected .tree-item-label {
