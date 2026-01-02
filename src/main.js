@@ -16,7 +16,7 @@ const logger = require('./utils/logger');
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
-const APP_VERSION = '1.1.4';
+const APP_VERSION = '1.2.0';
 const SAVE_ALL_TIMEOUT = 4000;
 
 function getUserIconPath() {
@@ -504,7 +504,7 @@ ipcMain.handle('get-build-info', () => {
     } catch (error) {
         logger.logwarn('读取构建信息失败:', error);
     }
-    return { version: '1.1.4 (v23)', buildTime: '未知', author: 'mywwzh' };
+    return { version: '1.2.0 (v24)', buildTime: '未知', author: 'mywwzh' };
 });
 
 function requestSaveAllAndClose(context = '关闭窗口') {
@@ -4398,7 +4398,7 @@ function resetSettings(settingsType = null) {
 function exportSettings(filePath) {
     try {
         const exportData = {
-            version: '1.1.4 (v23)',
+            version: '1.2.0 (v24)',
             timestamp: new Date().toISOString(),
             settings: settings
         };
