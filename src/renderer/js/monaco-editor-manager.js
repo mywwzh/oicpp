@@ -735,6 +735,7 @@ class MonacoEditorManager {
             let stickyScrollEnabled = true; // 上方显示当前作用域（函数/类）
             let fontLigaturesEnabled = true; // 字体连字
             let tabSize = 4;
+            let autoCompletionEnabled = true;
             try {
                 if (window.electronAPI && window.electronAPI.getAllSettings) {
                     const allSettings = await window.electronAPI.getAllSettings();
@@ -758,6 +759,7 @@ class MonacoEditorManager {
                         foldingEnabled = allSettings.foldingEnabled !== false;
                         stickyScrollEnabled = allSettings.stickyScrollEnabled !== false;
                         fontLigaturesEnabled = allSettings.fontLigaturesEnabled !== false;
+                        autoCompletionEnabled = allSettings.enableAutoCompletion !== false;
                         const parsedTabSize = parseInt(allSettings.tabSize, 10);
                         if (!Number.isNaN(parsedTabSize) && parsedTabSize > 0) {
                             tabSize = parsedTabSize;
@@ -828,6 +830,12 @@ class MonacoEditorManager {
                 emptySelectionClipboard: false,
                 readOnly: false,
                 domReadOnly: false,
+                quickSuggestions: autoCompletionEnabled ? true : false,
+                suggestOnTriggerCharacters: autoCompletionEnabled ? true : false,
+                wordBasedSuggestions: autoCompletionEnabled ? 'matchingDocuments' : 'off',
+                tabCompletion: autoCompletionEnabled ? 'on' : 'off',
+                acceptSuggestionOnEnter: autoCompletionEnabled ? 'on' : 'off',
+                parameterHints: { enabled: !!autoCompletionEnabled },
                 suggest: {
                     showKeywords: true,
                     showSnippets: true,
@@ -867,7 +875,9 @@ class MonacoEditorManager {
                 }
             } catch (_) {}
             
-            this.registerEnhancedCompletionProvider(editor);
+            if (autoCompletionEnabled) {
+                this.registerEnhancedCompletionProvider(editor);
+            }
 
             try {
                 const markdownPreviewKey = this.toMonacoKeybinding('markdownPreview') || (monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyV);
@@ -1713,6 +1723,22 @@ class MonacoEditorManager {
             if (settings.fontLigaturesEnabled !== undefined) {
                 updateOptions.fontLigatures = !!settings.fontLigaturesEnabled;
             }
+
+            if (settings.enableAutoCompletion !== undefined) {
+                const enabled = settings.enableAutoCompletion !== false;
+                updateOptions.quickSuggestions = enabled ? true : false;
+                updateOptions.suggestOnTriggerCharacters = enabled ? true : false;
+                updateOptions.wordBasedSuggestions = enabled ? 'matchingDocuments' : 'off';
+                updateOptions.tabCompletion = enabled ? 'on' : 'off';
+                updateOptions.acceptSuggestionOnEnter = enabled ? 'on' : 'off';
+                updateOptions.parameterHints = { enabled };
+
+                if (!enabled) {
+                    this.disableEnhancedCompletionProviders();
+                } else {
+                    this.registerEnhancedCompletionProvider(this.currentEditor);
+                }
+            }
             
             this.currentEditor.updateOptions(updateOptions);
             setTimeout(() => {
@@ -1918,6 +1944,16 @@ class MonacoEditorManager {
                     updateOptions.fontLigatures = !!settings.fontLigaturesEnabled;
                 }
 
+                if (settings.enableAutoCompletion !== undefined) {
+                    const enabled = settings.enableAutoCompletion !== false;
+                    updateOptions.quickSuggestions = enabled ? true : false;
+                    updateOptions.suggestOnTriggerCharacters = enabled ? true : false;
+                    updateOptions.wordBasedSuggestions = enabled ? 'matchingDocuments' : 'off';
+                    updateOptions.tabCompletion = enabled ? 'on' : 'off';
+                    updateOptions.acceptSuggestionOnEnter = enabled ? 'on' : 'off';
+                    updateOptions.parameterHints = { enabled };
+                }
+
                 
                 try {
                     editor.updateOptions(updateOptions); 
@@ -1941,6 +1977,19 @@ class MonacoEditorManager {
                 }
             }
         });
+
+        if (settings && settings.enableAutoCompletion !== undefined) {
+            const enabled = settings.enableAutoCompletion !== false;
+            if (!enabled) {
+                this.disableEnhancedCompletionProviders();
+            } else {
+                try {
+                    if (this.currentEditor) {
+                        this.registerEnhancedCompletionProvider(this.currentEditor);
+                    }
+                } catch (_) {}
+            }
+        }
         
         if (settings.theme !== undefined && typeof monaco !== 'undefined' && monaco.editor) {
             let newTheme = 'oicpp-dark';
@@ -1949,6 +1998,17 @@ class MonacoEditorManager {
             else newTheme = `oicpp-${settings.theme}`;
             
             try { monaco.editor.setTheme(newTheme); } catch (e) { logWarn('切换主题失败:', e); }
+        }
+    }
+
+    disableEnhancedCompletionProviders() {
+        try {
+            if (!this.completionProviders) return;
+            for (const [lang, disp] of this.completionProviders.entries()) {
+                try { disp?.dispose?.(); } catch (_) { }
+                this.completionProviders.delete(lang);
+            }
+        } catch (_) {
         }
     }
 
