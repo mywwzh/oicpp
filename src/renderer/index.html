@@ -312,6 +312,11 @@
                                     <input type="number" class="config-input" id="compare-count" value="100" min="1" max="100000">
                                 </div>
                                 <div class="config-item">
+                                    <label class="config-label" for="compare-threads">并行线程：</label>
+                                    <input type="number" class="config-input" id="compare-threads" value="1" min="1">
+                                    <span class="config-unit" id="compare-threads-hint">上限=CPU/2</span>
+                                </div>
+                                <div class="config-item">
                                     <label class="config-label" for="time-limit">时间限制：</label>
                                     <input type="number" class="config-input" id="time-limit" value="1000" min="0">
                                     <span class="config-unit">ms</span>

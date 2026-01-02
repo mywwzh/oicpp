@@ -939,21 +939,37 @@ class SampleTester {
                 }
             });
 
-            for (const sample of this.samples) {
-                try {
-                    const result = await this.executeSampleWithCompiledProgram(sample, executablePath, spjExecutablePath);
-                    sample.result = result;
-                    this.updateSampleResult(sample.id, result, sample);
-                } catch (error) {
-                    logError(`运行样例 ${sample.id} 失败:`, error);
-                    sample.result = {
-                        status: 'RE',
-                        output: error.message,
-                        time: 0
-                    };
-                    this.updateSampleResult(sample.id, sample.result, sample);
+            const logicalCores = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 2;
+            const maxParallel = Math.max(1, Math.floor(logicalCores / 2));
+            const workerCount = Math.min(maxParallel, this.samples.length);
+
+            logInfo('[样例测试器] 并行运行样例', { logicalCores, workerCount, sampleCount: this.samples.length });
+
+            let currentIndex = 0;
+            const worker = async () => {
+                while (true) {
+                    const index = currentIndex++;
+                    if (index >= this.samples.length) return;
+
+                    const sample = this.samples[index];
+                    try {
+                        const result = await this.executeSampleWithCompiledProgram(sample, executablePath, spjExecutablePath);
+                        sample.result = result;
+                        this.updateSampleResult(sample.id, result, sample);
+                    } catch (error) {
+                        logError(`运行样例 ${sample.id} 失败:`, error);
+                        sample.result = {
+                            status: 'RE',
+                            output: error.message,
+                            time: 0
+                        };
+                        this.updateSampleResult(sample.id, sample.result, sample);
+                    }
                 }
-            }
+            };
+
+            const workers = Array.from({ length: workerCount }, worker);
+            await Promise.all(workers);
 
             this.saveSamples();
 
