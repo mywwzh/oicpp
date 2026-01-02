@@ -3,6 +3,7 @@ class FileExplorer {
         this.currentPath = '';
         this.files = [];
         this.selectedFile = null;
+        this.selectedFiles = new Map();
         this.hasWorkspace = false;
         this.clipboard = null;
         this.expandedFolders = new Set();
@@ -90,7 +91,8 @@ class FileExplorer {
 
     refocusSelectedFile() {
         try {
-            if (this.selectedFile?.path) {
+            const anchor = this.getPrimarySelection();
+            if (anchor?.path) {
                 const escapePath = (value) => {
                     try {
                         if (window.CSS?.escape) {
@@ -99,8 +101,8 @@ class FileExplorer {
                     } catch (_) { }
                     return String(value).replace(/["\\]/g, (match) => `\\${match}`);
                 };
-                const selector = `.tree-item[data-path="${escapePath(this.selectedFile.path)}"]`;
-                const item = document.querySelector(selector) || Array.from(document.querySelectorAll('.tree-item')).find(node => node.dataset?.path === this.selectedFile.path) || null;
+                const selector = `.tree-item[data-path="${escapePath(anchor.path)}"]`;
+                const item = document.querySelector(selector) || Array.from(document.querySelectorAll('.tree-item')).find(node => node.dataset?.path === anchor.path) || null;
                 if (item) {
                     item.setAttribute('tabindex', '0');
                     item.focus();
@@ -199,7 +201,7 @@ class FileExplorer {
                 }
             }
 
-            if (!this.selectedFile) {
+            if (!this.getPrimarySelection()) {
                 const firstItem = document.querySelector('.file-tree .tree-item');
                 if (firstItem) {
                     const p = firstItem.getAttribute('data-path');
@@ -216,8 +218,13 @@ class FileExplorer {
                 case 'Delete':
                     e.preventDefault();
                     try {
-                        if (!this.selectedFile) { logInfo('[文件管理器快捷键] Delete 被按下但没有选中文件'); return; }
-                        await this.deleteFile(this.selectedFile);
+                        const deleteTargets = this.getActionSelection(this.getPrimarySelection());
+                        if (!deleteTargets.length) { logInfo('[文件管理器快捷键] Delete 被按下但没有选中文件'); return; }
+                        if (deleteTargets.length === 1) {
+                            await this.deleteFile(deleteTargets[0]);
+                        } else {
+                            await this.deleteFiles(deleteTargets);
+                        }
                     } catch (error) {
                         logError('删除文件快捷键执行失败:', error);
                     }
@@ -225,10 +232,11 @@ class FileExplorer {
 
                 case 'F2':
                     e.preventDefault();
-                    logInfo('执行重命名文件:', this.selectedFile.name, '路径:', this.selectedFile.path);
+                    logInfo('执行重命名文件:', this.getPrimarySelection()?.name, '路径:', this.getPrimarySelection()?.path);
                     try {
-                        if (!this.selectedFile) { logInfo('[文件管理器快捷键] F2 被按下但没有选中文件'); return; }
-                        this.renameFile(this.selectedFile);
+                        const renameTarget = this.getPrimarySelection();
+                        if (!renameTarget) { logInfo('[文件管理器快捷键] F2 被按下但没有选中文件'); return; }
+                        this.renameFile(renameTarget);
                         logInfo('重命名文件方法调用成功');
                     } catch (error) {
                         logError('重命名文件时发生错误:', error);
@@ -239,9 +247,10 @@ class FileExplorer {
                     if (e.ctrlKey) {
                         e.preventDefault();
                         try {
-                            if (!this.selectedFile) { logInfo('[文件管理器快捷键] Ctrl+C 被按下但没有选中文件'); return; }
-                            this.copyFile(this.selectedFile);
-                            logInfo('复制文件方法调用成功');
+                            const copyTargets = this.getActionSelection(this.getPrimarySelection());
+                            if (!copyTargets.length) { logInfo('[文件管理器快捷键] Ctrl+C 被按下但没有选中文件'); return; }
+                            this.copyFile(copyTargets);
+                            logInfo('复制文件方法调用成功，数量:', copyTargets.length);
                         } catch (error) {
                             logError('复制文件时发生错误:', error);
                         }
@@ -253,8 +262,9 @@ class FileExplorer {
                     if (e.ctrlKey) {
                         e.preventDefault();
                         try {
-                            if (!this.selectedFile) { logInfo('[文件管理器快捷键] Ctrl+X 被按下但没有选中文件'); return; }
-                            this.cutFile(this.selectedFile);
+                            const cutTargets = this.getActionSelection(this.getPrimarySelection());
+                            if (!cutTargets.length) { logInfo('[文件管理器快捷键] Ctrl+X 被按下但没有选中文件'); return; }
+                            this.cutFile(cutTargets);
                         } catch (error) {
                             logError('剪切文件时发生错误:', error);
                         }
@@ -266,9 +276,7 @@ class FileExplorer {
                     if (e.ctrlKey && this.clipboard) {
                         e.preventDefault();
                         logInfo('执行粘贴文件，剪贴板内容:', this.clipboard);
-                        const targetFolder = this.selectedFile && this.selectedFile.type === 'folder'
-                            ? this.selectedFile
-                            : { path: this.currentPath, type: 'folder' };
+                        const targetFolder = this.getPasteTargetFolder();
                         logInfo('粘贴目标文件夹:', targetFolder);
                         try {
                             this.pasteFile(targetFolder);
@@ -372,6 +380,7 @@ class FileExplorer {
         this.currentPath = path;
         this.workspacePath = path;
         this.hasWorkspace = !!path;
+        this.clearSelection();
         logInfo('设置工作区:', path, '状态:', this.hasWorkspace);
         this.loadFiles();
 
@@ -386,6 +395,7 @@ class FileExplorer {
         this.hasWorkspace = false;
         this.files = [];
         this.selectedFile = null;
+        this.selectedFiles.clear();
         this.expandedFolders.clear();
         this.showEmptyState();
 
@@ -412,8 +422,13 @@ class FileExplorer {
 
         this.setupFileTreeEvents(fileTree);
 
+        this.applySelectionStyles();
+
         try {
-            this._restoreExpandedFolders();
+            const restorePromise = this._restoreExpandedFolders();
+            if (restorePromise && typeof restorePromise.then === 'function') {
+                restorePromise.then(() => this.applySelectionStyles()).catch((e) => logWarn('恢复展开状态失败', e));
+            }
         } catch (e) { logWarn('恢复展开状态调度失败', e); }
     }
 
@@ -475,6 +490,49 @@ class FileExplorer {
             if (el) return el;
             return Array.from(root.querySelectorAll('.tree-item')).find(n => n.dataset.path === path) || null;
         } catch (_) { return null; }
+    }
+
+    getSelectedFilesArray() {
+        return Array.from(this.selectedFiles.values());
+    }
+
+    getPrimarySelection() {
+        const selected = this.getSelectedFilesArray();
+        if (selected.length) return selected[selected.length - 1];
+        return null;
+    }
+
+    isFileSelected(path) {
+        return !!(path && this.selectedFiles.has(path));
+    }
+
+    getActionSelection(targetFile) {
+        const selected = this.getSelectedFilesArray();
+        if (selected.length > 1 && targetFile && this.isFileSelected(targetFile.path)) {
+            return selected;
+        }
+        if (!targetFile && selected.length > 0) {
+            return selected;
+        }
+        if (targetFile) {
+            return [targetFile];
+        }
+        if (selected.length === 1) {
+            return selected;
+        }
+        return [];
+    }
+
+    applySelectionStyles() {
+        try {
+            const selectedPaths = new Set(this.selectedFiles.keys());
+            document.querySelectorAll('.tree-item').forEach(item => {
+                const isSelected = selectedPaths.has(item.dataset?.path);
+                item.classList.toggle('selected', isSelected);
+            });
+        } catch (error) {
+            logWarn('应用多选样式失败', error);
+        }
     }
 
     async refreshFolder(path) {
@@ -596,7 +654,13 @@ class FileExplorer {
 
         content.addEventListener('click', (e) => {
             e.stopPropagation();
-            this.selectFile(file);
+            const useToggle = e.ctrlKey || e.metaKey;
+            this.selectFile(file, { toggle: useToggle });
+
+            if (useToggle) {
+                return; // Ctrl/Meta 点击只负责多选，不触发打开或展开
+            }
+
             if (file.type === 'folder') {
                 this.toggleFolder(item, file);
             } else if (file.type === 'file') {
@@ -613,6 +677,10 @@ class FileExplorer {
 
         content.addEventListener('dblclick', (e) => {
             e.stopPropagation();
+            if (e.ctrlKey || e.metaKey) {
+                return;
+            }
+            this.selectFile(file);
             if (file.type === 'file') {
                 this.openFile(file);
                 setTimeout(() => {
@@ -629,7 +697,10 @@ class FileExplorer {
 
         content.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            this.selectFile(file);
+            const alreadySelected = this.isFileSelected(file.path);
+            if (!alreadySelected) {
+                this.selectFile(file);
+            }
             this.showContextMenu(e, file);
         });
 
@@ -792,17 +863,17 @@ class FileExplorer {
         if (file.type === 'file') {
             items.push({ label: '打开', action: () => this.openFile(file) });
             items.push({ label: '重命名', action: () => this.renameFile(file) });
-            items.push({ label: '复制', action: () => this.copyFile(file) });
-            items.push({ label: '剪切', action: () => this.cutFile(file) });
-            items.push({ label: '删除', action: () => this.deleteFile(file) });
+            items.push({ label: '复制', action: () => this.copyFile(this.getActionSelection(file)) });
+            items.push({ label: '剪切', action: () => this.cutFile(this.getActionSelection(file)) });
+            items.push({ label: '删除', action: () => this.deleteFiles(this.getActionSelection(file)) });
             items.push({ label: '在资源管理器中显示', action: () => this.openInSystemExplorer(file) });
         } else {
             items.push({ label: '新建文件', action: () => this.createNewFileInFolder(file) });
             items.push({ label: '新建文件夹', action: () => this.createNewFolderInFolder(file) });
             items.push({ label: '重命名', action: () => this.renameFile(file) });
-            items.push({ label: '复制', action: () => this.copyFile(file) });
-            items.push({ label: '剪切', action: () => this.cutFile(file) });
-            items.push({ label: '删除', action: () => this.deleteFile(file) });
+            items.push({ label: '复制', action: () => this.copyFile(this.getActionSelection(file)) });
+            items.push({ label: '剪切', action: () => this.cutFile(this.getActionSelection(file)) });
+            items.push({ label: '删除', action: () => this.deleteFiles(this.getActionSelection(file)) });
             items.push({ label: '在资源管理器中打开', action: () => this.openInSystemExplorer(file) });
         }
 
@@ -908,9 +979,17 @@ class FileExplorer {
         return items;
     }
 
-    copyFile(file) {
-        this.clipboard = { files: [file], operation: 'copy' };
-        logInfo('复制文件:', file.name);
+    copyFile(fileOrFiles) {
+        const files = Array.isArray(fileOrFiles)
+            ? fileOrFiles.filter(f => f?.path)
+            : (fileOrFiles ? [fileOrFiles] : []);
+        if (!files.length) {
+            logWarn('copyFile 调用时未提供有效文件');
+            return;
+        }
+
+        this.clipboard = { files, operation: 'copy' };
+        logInfo('复制文件:', files.map(f => f.name));
     }
 
     openInSystemExplorer(target) {
@@ -962,12 +1041,33 @@ class FileExplorer {
         }
     }
 
-    cutFile(file) {
-        this.clipboard = { files: [file], operation: 'cut' };
-        logInfo('剪切文件:', file.name);
+    cutFile(fileOrFiles) {
+        const files = Array.isArray(fileOrFiles)
+            ? fileOrFiles.filter(f => f?.path)
+            : (fileOrFiles ? [fileOrFiles] : []);
+        if (!files.length) {
+            logWarn('cutFile 调用时未提供有效文件');
+            return;
+        }
+
+        this.clipboard = { files, operation: 'cut' };
+        logInfo('剪切文件:', files.map(f => f.name));
     }
 
 
+
+    getPasteTargetFolder() {
+        const selected = this.getSelectedFilesArray();
+        for (let i = selected.length - 1; i >= 0; i--) {
+            if (selected[i]?.type === 'folder') {
+                return selected[i];
+            }
+        }
+        if (this.currentPath) {
+            return { path: this.currentPath, type: 'folder' };
+        }
+        return null;
+    }
 
     pasteFile(targetFolder) {
         if (!this.clipboard) {
@@ -980,11 +1080,7 @@ class FileExplorer {
         }
 
         if (!targetFolder) {
-            if (this.selectedFile && this.selectedFile.type === 'folder') {
-                targetFolder = this.selectedFile;
-            } else {
-                targetFolder = { path: this.currentPath, type: 'folder' };
-            }
+            targetFolder = this.getPasteTargetFolder();
             logInfo('未提供 targetFolder，自动推断为:', targetFolder);
         }
 
@@ -1080,19 +1176,22 @@ class FileExplorer {
     }
 
     handleDragStart(event, file) {
+        const filesToDrag = this.getActionSelection(file);
         const dragData = {
-            files: [file],
+            files: filesToDrag.length ? filesToDrag : [file],
             action: 'move'
         };
         event.dataTransfer.setData('text/plain', JSON.stringify(dragData));
         event.dataTransfer.effectAllowed = 'move';
 
-        const dragItem = document.querySelector(`[data-path="${file.path}"]`);
-        if (dragItem) {
-            dragItem.classList.add('dragging');
-        }
+        dragData.files.forEach((f) => {
+            const dragItem = this._queryItemByPath(f.path, document) || document.querySelector(`[data-path="${f.path}"]`);
+            if (dragItem) {
+                dragItem.classList.add('dragging');
+            }
+        });
 
-        logInfo('开始拖拽:', file.name);
+        logInfo('开始拖拽:', dragData.files.map(f => f.name));
     }
 
     setupDragAndDrop(fileTree) {
@@ -1269,29 +1368,36 @@ class FileExplorer {
         }
     }
 
-    selectFile(file) {
-        this.clearSelection();
+    selectFile(file, options = {}) {
+        const { toggle = false, append = false, focus = true } = options;
+        if (!file || !file.path) return;
 
-        const item = document.querySelector(`[data-path="${file.path}"]`);
-        if (item) {
-            item.classList.add('selected');
-
-            item.setAttribute('tabindex', '0');
-            item.focus();
-
-            if (document.activeElement !== item) {
-                const fileTree = document.querySelector('#file-tree');
-                if (fileTree) {
-                    fileTree.setAttribute('tabindex', '0');
-                    fileTree.focus();
-                }
-            }
-
-            logInfo('文件选择后的焦点元素:', document.activeElement?.tagName, document.activeElement?.className);
+        if (!toggle && !append) {
+            this.clearSelection();
         }
 
-        this.selectedFile = file;
-        logInfo('选择文件:', file.name);
+        const item = this._queryItemByPath(file.path, document) || document.querySelector(`[data-path="${file.path}"]`);
+        const alreadySelected = this.selectedFiles.has(file.path);
+
+        if (toggle && alreadySelected) {
+            this.selectedFiles.delete(file.path);
+            if (item) item.classList.remove('selected');
+        } else {
+            this.selectedFiles.set(file.path, file);
+            if (item) item.classList.add('selected');
+        }
+
+        this.selectedFile = this.getPrimarySelection();
+
+        if (focus) {
+            const target = item || document.querySelector('#file-tree');
+            if (target) {
+                target.setAttribute('tabindex', '0');
+                target.focus();
+            }
+        }
+
+        logInfo('选择文件:', file.name, '当前已选数量:', this.selectedFiles.size);
     }
 
 
@@ -1299,6 +1405,7 @@ class FileExplorer {
     clearSelection() {
         const selected = document.querySelectorAll('.tree-item.selected');
         selected.forEach(item => item.classList.remove('selected'));
+        this.selectedFiles.clear();
         this.selectedFile = null;
     }
 
@@ -1653,57 +1760,110 @@ class FileExplorer {
         }
     }
 
-    async deleteFile(file) {
-        if (!file) {
-            logWarn('deleteFile 调用时未提供有效文件');
+    async deleteFiles(files) {
+        const validFiles = Array.isArray(files) ? files.filter(f => f?.path) : [];
+        const uniqueFiles = [];
+        const seen = new Set();
+        for (const f of validFiles) {
+            if (!seen.has(f.path)) {
+                seen.add(f.path);
+                uniqueFiles.push(f);
+            }
+        }
+
+        if (uniqueFiles.length === 0) {
+            logWarn('deleteFiles 调用时文件列表为空');
             return;
         }
 
-        logInfo('删除文件:', file.name);
+        if (uniqueFiles.length === 1) {
+            return this.deleteFile(uniqueFiles[0]);
+        }
 
-        const confirmed = await this.confirmOperation('删除文件', `确定要删除 "${file.name}" 吗？`);
+        const preview = uniqueFiles.slice(0, 3).map(f => `"${f.name}"`).join('、');
+        const moreHint = uniqueFiles.length > 3 ? ' 等' : '';
+        const message = `确定要删除这 ${uniqueFiles.length} 个项目吗？${preview}${moreHint}`;
+        const confirmed = await this.confirmOperation('删除文件', message);
         if (!confirmed) {
             this.refocusSelectedFile();
             return;
         }
 
+        for (const file of uniqueFiles) {
+            try {
+                await this.deleteFile(file, { skipConfirm: true, skipRefresh: true, suppressFocus: true });
+            } catch (error) {
+                logError('批量删除文件时出错:', error);
+            }
+        }
+
+        this.refresh();
+        setTimeout(() => this.refocusSelectedFile(), 50);
+    }
+
+    async deleteFile(file, options = {}) {
+        if (!file) {
+            logWarn('deleteFile 调用时未提供有效文件');
+            return;
+        }
+
+        const { skipConfirm = false, skipRefresh = false, suppressFocus = false } = options;
+
+        logInfo('删除文件:', file.name);
+
+        if (!skipConfirm) {
+            const confirmed = await this.confirmOperation('删除文件', `确定要删除 "${file.name}" 吗？`);
+            if (!confirmed) {
+                if (!suppressFocus) this.refocusSelectedFile();
+                return;
+            }
+        }
+
         logInfo('用户确认删除文件:', file.name);
 
         if (window.electronIPC) {
-            window.electronIPC.send('delete-file', file.path);
+            return await new Promise((resolve) => {
+                window.electronIPC.send('delete-file', file.path);
 
-            const handleFileDeleted = (event, deletedPath, error) => {
-                if (deletedPath === file.path) {
-                    if (error) {
-                        logError('删除文件失败:', error);
-                        this.showError(`删除失败: ${error}`);
-                        setTimeout(() => this.refocusSelectedFile(), 0);
-                    } else {
-                        if (this.selectedFile && this.selectedFile.path === file.path) {
-                            this.selectedFile = null;
-                        }
+                const handleFileDeleted = (event, deletedPath, error) => {
+                    if (deletedPath === file.path) {
+                        if (error) {
+                            logError('删除文件失败:', error);
+                            this.showError(`删除失败: ${error}`);
+                            if (!suppressFocus) setTimeout(() => this.refocusSelectedFile(), 0);
+                        } else {
+                            this.selectedFiles.delete(file.path);
+                            if (this.selectedFile && this.selectedFile.path === file.path) {
+                                this.selectedFile = this.getPrimarySelection();
+                            }
 
-                        if (window.tabManager) {
-                            const normalizedPath = typeof file.path === 'string' ? file.path.replace(/\\/g, '/') : '';
-                            if (normalizedPath && typeof window.tabManager.closeTabByUniqueKey === 'function') {
-                                window.tabManager.closeTabByUniqueKey(normalizedPath, { skipAutoSave: true });
-                            } else if (typeof window.tabManager.closeTabByFileName === 'function') {
-                                window.tabManager.closeTabByFileName(file.name, { skipAutoSave: true });
+                            if (window.tabManager) {
+                                const normalizedPath = typeof file.path === 'string' ? file.path.replace(/\\/g, '/') : '';
+                                if (normalizedPath && typeof window.tabManager.closeTabByUniqueKey === 'function') {
+                                    window.tabManager.closeTabByUniqueKey(normalizedPath, { skipAutoSave: true });
+                                } else if (typeof window.tabManager.closeTabByFileName === 'function') {
+                                    window.tabManager.closeTabByFileName(file.name, { skipAutoSave: true });
+                                }
+                            }
+
+                            if (!skipRefresh) {
+                                this.refresh();
+                            }
+                            if (!suppressFocus) {
+                                setTimeout(() => this.refocusSelectedFile(), 50);
                             }
                         }
-
-                        this.refresh();
-                        setTimeout(() => this.refocusSelectedFile(), 50);
+                        window.electronIPC.ipcRenderer.removeListener('file-deleted', handleFileDeleted);
+                        resolve();
                     }
-                    window.electronIPC.ipcRenderer.removeListener('file-deleted', handleFileDeleted);
-                }
-            };
+                };
 
-            window.electronIPC.on('file-deleted', handleFileDeleted);
-        } else {
-            this.showError('文件删除功能需要在完整应用环境中运行');
-            this.refocusSelectedFile();
+                window.electronIPC.on('file-deleted', handleFileDeleted);
+            });
         }
+
+        this.showError('文件删除功能需要在完整应用环境中运行');
+        if (!suppressFocus) this.refocusSelectedFile();
     }
 }
 
