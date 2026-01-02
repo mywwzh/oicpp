@@ -2140,6 +2140,39 @@ class TabManager {
             return;
         }
 
+        if (!options.force && !options.skipCloseConfirm && tabData.viewType !== 'pdf' && tabData.modified) {
+            const escapeHtml = (text) => {
+                try {
+                    const div = document.createElement('div');
+                    div.textContent = String(text ?? '');
+                    return div.innerHTML;
+                } catch (_) {
+                    return String(text ?? '');
+                }
+            };
+
+            const safeName = escapeHtml(tabData.fileName || fileName || '当前文件');
+            const message = `标签页 “${safeName}” 有未保存修改。<br><br>关闭将自动保存这些修改并关闭标签页，是否继续？`;
+
+            const proceed = () => this.closeTab(fileName, { ...options, skipCloseConfirm: true });
+
+            try {
+                if (window.dialogManager?.showConfirmDialog) {
+                    window.dialogManager.showConfirmDialog('确认关闭标签页', message)
+                        .then((result) => {
+                            if (result) proceed();
+                        })
+                        .catch((e) => logWarn('关闭标签页确认弹窗失败:', e));
+                } else {
+                    const result = window.confirm(`文件 “${tabData.fileName || fileName}” 有未保存修改。\n关闭将自动保存这些修改并关闭标签页，是否继续？`);
+                    if (result) proceed();
+                }
+            } catch (e) {
+                logWarn('关闭标签页确认异常:', e);
+            }
+            return;
+        }
+
         Promise.resolve(this.unregisterFileWatchForTab(tabData)).catch((error) => {
             try { logWarn('TabManager: 移除文件监听失败:', error); } catch (_) { }
         });
@@ -3963,7 +3996,7 @@ class TabManager {
 
         const tabsToClose = [...this.tabs.keys()];
         tabsToClose.forEach(fileName => {
-            this.closeTab(fileName);
+            this.closeTab(fileName, { skipCloseConfirm: true });
         });
     }
 
@@ -3980,7 +4013,7 @@ class TabManager {
         }
 
         tabsToClose.forEach(fileName => {
-            this.closeTab(fileName);
+            this.closeTab(fileName, { skipCloseConfirm: true });
         });
     }
 
