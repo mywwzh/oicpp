@@ -23,6 +23,7 @@ class MonacoEditorManager {
         this.tabIdToGroupId = new Map();
         this.groupActiveTab = new Map();
         this.tabIdToContainer = new Map();
+        this.diffEditors = new Map();
         this.markerOwner = 'oicpp-compiler';
         this.breakpoints = new Map();
         this._execHighlights = new Map();
@@ -1527,15 +1528,16 @@ class MonacoEditorManager {
             targetContainer.style.display = 'block';
             const editor = this.editors.get(tabId);
             if (editor) {
-                this.currentEditor = editor;
+                const isDiff = !!editor.__isDiffEditor;
+                this.currentEditor = (isDiff && editor.getModifiedEditor) ? editor.getModifiedEditor() : editor;
 
-                const filePath = this.tabIdToFilePath.get(tabId);
+                const filePath = this.tabIdToFilePath.get(tabId) || (isDiff ? (editor.__diffMeta?.modifiedPath || editor.__diffMeta?.originalPath) : null);
                 if (filePath) {
                     this.currentFilePath = filePath;
                     this.currentFileName = this.getFileNameFromPath(filePath);
                 } else {
                     this.currentFilePath = null;
-                    this.currentFileName = editor.fileName || 'untitled';
+                    this.currentFileName = isDiff ? (editor.__diffMeta?.label || editor.fileName || 'diff') : (editor.fileName || 'untitled');
                 }
 
                 editor.layout();
@@ -1669,11 +1671,162 @@ class MonacoEditorManager {
         }
         this.tabIdToGroupId.delete(tabId);
         this.tabIdToContainer.delete(tabId);
+
+        const diffEntry = this.diffEditors.get(tabId);
+        if (diffEntry) {
+            try { diffEntry.originalModel?.dispose?.(); } catch (_) { }
+            try { diffEntry.modifiedModel?.dispose?.(); } catch (_) { }
+            this.diffEditors.delete(tabId);
+        }
         
-        if (this.currentEditor === editor) {
+        const modifiedEditor = editor?.getModifiedEditor ? editor.getModifiedEditor() : null;
+        if (this.currentEditor === editor || this.currentEditor === modifiedEditor) {
             this.currentEditor = null;
             this.currentFilePath = null;
             this.currentFileName = null;
+        }
+    }
+
+    async createDiffEditor(tabId, options = {}) {
+        try {
+            const existing = this.editors.get(tabId);
+            if (existing && existing.__isDiffEditor) {
+                return this.showDiffEditor(tabId, options);
+            }
+
+            const groupId = options.groupId || options.targetGroupId || 'group-1';
+            const editorArea = this.getGroupContainer(groupId);
+            if (!editorArea) {
+                logError('未找到编辑器区域，无法创建 Diff 视图');
+                return null;
+            }
+
+            editorArea.querySelectorAll('.monaco-editor-container').forEach(c => (c.style.display = 'none'));
+
+            const container = document.createElement('div');
+            container.className = 'monaco-editor-container diff-editor-container';
+            container.dataset.tabId = tabId;
+            container.dataset.groupId = groupId;
+            container.style.width = '100%';
+            container.style.height = '100%';
+            editorArea.appendChild(container);
+
+            if (typeof monaco === 'undefined') {
+                await this.waitForMonaco();
+            }
+
+            const originalPath = options.originalPath || '';
+            const modifiedPath = options.modifiedPath || '';
+            const originalFileName = this.getFileNameFromPath(originalPath) || options.label || 'original';
+            const modifiedFileName = this.getFileNameFromPath(modifiedPath) || options.label || 'modified';
+            const originalLanguage = this.getLanguageFromFileName(originalFileName);
+            const modifiedLanguage = this.getLanguageFromFileName(modifiedFileName);
+
+            const originalUri = originalPath
+                ? monaco.Uri.file(originalPath)
+                : monaco.Uri.parse(`inmemory://diff/${tabId}/original`);
+            const modifiedUri = modifiedPath
+                ? monaco.Uri.file(modifiedPath)
+                : monaco.Uri.parse(`inmemory://diff/${tabId}/modified`);
+
+            const originalModel = monaco.editor.createModel(options.originalContent || '', originalLanguage, originalUri);
+            const modifiedModel = monaco.editor.createModel(options.modifiedContent || '', modifiedLanguage, modifiedUri);
+
+            const diffEditor = monaco.editor.createDiffEditor(container, {
+                renderSideBySide: true,
+                automaticLayout: true,
+                readOnly: false,
+                originalEditable: false,
+                enableSplitViewResizing: true,
+                renderIndicators: true,
+                diffCodeLens: true,
+                useInlineViewWhenSpaceIsLimited: false,
+                renderMarginRevertIcon: false
+            });
+
+            diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+
+            diffEditor.__isDiffEditor = true;
+            diffEditor.__diffMeta = {
+                originalPath,
+                modifiedPath,
+                label: options.label || modifiedFileName || originalFileName
+            };
+            diffEditor.filePath = modifiedPath || originalPath || null;
+            diffEditor.fileName = options.label || `${originalFileName} vs ${modifiedFileName}`;
+
+            diffEditor.getValue = () => {
+                try {
+                    const model = diffEditor.getModel?.();
+                    return model?.modified?.getValue?.() || '';
+                } catch (_) { return ''; }
+            };
+
+            diffEditor.setValue = (val) => {
+                try {
+                    const model = diffEditor.getModel?.();
+                    if (model?.modified?.setValue) {
+                        model.modified.setValue(val);
+                    }
+                } catch (_) { }
+            };
+
+            this.editors.set(tabId, diffEditor);
+            this.diffEditors.set(tabId, { originalModel, modifiedModel });
+            this.tabIdToContainer.set(tabId, container);
+            this.tabIdToGroupId.set(tabId, groupId);
+            this.tabIdToFilePath.set(tabId, diffEditor.filePath || null);
+            this.groupActiveTab.set(groupId, tabId);
+
+            this.currentEditor = diffEditor.getModifiedEditor ? diffEditor.getModifiedEditor() : diffEditor;
+            this.currentFilePath = diffEditor.filePath || null;
+            this.currentFileName = diffEditor.fileName || 'diff';
+
+            return diffEditor;
+        } catch (error) {
+            logError('创建 Diff 编辑器失败:', error);
+            return null;
+        }
+    }
+
+    async showDiffEditor(tabId, options = {}) {
+        try {
+            const editor = this.editors.get(tabId);
+            if (!editor || !editor.__isDiffEditor) {
+                if (options && Object.keys(options).length > 0) {
+                    return await this.createDiffEditor(tabId, options);
+                }
+                return null;
+            }
+
+            const groupId = options.groupId || this.tabIdToGroupId.get(tabId) || 'group-1';
+            const editorArea = this.getGroupContainer(groupId);
+            if (!editorArea) {
+                logError('未找到目标编辑器区域，无法显示 Diff 视图');
+                return null;
+            }
+
+            editorArea.querySelectorAll('.monaco-editor-container').forEach(c => (c.style.display = 'none'));
+
+            const container = this.tabIdToContainer.get(tabId) || null;
+            if (container) {
+                if (container.parentElement !== editorArea) {
+                    editorArea.appendChild(container);
+                }
+                container.style.display = 'block';
+            }
+
+            editor.layout();
+            this.currentEditor = editor.getModifiedEditor ? editor.getModifiedEditor() : editor;
+            const diffMeta = editor.__diffMeta || {};
+            this.currentFilePath = diffMeta.modifiedPath || diffMeta.originalPath || this.tabIdToFilePath.get(tabId) || null;
+            this.currentFileName = diffMeta.label || this.getFileNameFromPath(this.currentFilePath) || 'diff';
+            this.tabIdToGroupId.set(tabId, groupId);
+            this.groupActiveTab.set(groupId, tabId);
+            return editor;
+        } catch (error) {
+            logError('显示 Diff 编辑器失败:', error);
+            return null;
         }
     }
 
