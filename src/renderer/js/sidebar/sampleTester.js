@@ -774,6 +774,7 @@ class SampleTester {
             if (sample) {
                 sample.inputType = 'file';
                 sample.input = result.filePaths[0];
+                await this.tryAutoMatchOutputFile(sample);
                 this.saveSamples();
                 this.updateSampleDisplay(id);
             }
@@ -799,6 +800,29 @@ class SampleTester {
                 this.updateSampleDisplay(id);
             }
         }
+    }
+
+    async tryAutoMatchOutputFile(sample) {
+        if (!sample || !sample.input) return false;
+
+        try {
+            const pathInfo = await window.electronAPI.getPathInfo(sample.input);
+            if (!pathInfo || !pathInfo.dirname || !pathInfo.basenameWithoutExt) return false;
+
+            const candidates = [`${pathInfo.basenameWithoutExt}.ans`, `${pathInfo.basenameWithoutExt}.out`];
+            for (const name of candidates) {
+                const candidatePath = await window.electronAPI.pathJoin(pathInfo.dirname, name);
+                if (await window.electronAPI.checkFileExists(candidatePath)) {
+                    sample.outputType = 'file';
+                    sample.output = candidatePath;
+                    try { logInfo('[样例测试器] 自动匹配输出文件:', candidatePath); } catch (_) { }
+                    return true;
+                }
+            }
+        } catch (error) {
+            try { logWarn('[样例测试器] 自动匹配输出文件失败', error); } catch (_) { }
+        }
+        return false;
     }
 
 
