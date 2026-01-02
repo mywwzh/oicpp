@@ -5474,6 +5474,16 @@ ipcMain.handle('get-device-info', () => {
     return getDeviceInfo();
 });
 
+ipcMain.handle('get-cpu-threads', () => {
+    try {
+        const cpus = os.cpus();
+        const count = Array.isArray(cpus) && cpus.length > 0 ? cpus.length : 2;
+        return Math.max(1, count);
+    } catch (_) {
+        return 2;
+    }
+});
+
 ipcMain.handle('get-recent-files', () => {
     try {
         if (!Array.isArray(settings.recentFiles)) settings.recentFiles = [];

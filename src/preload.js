@@ -418,6 +418,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     onSampleTesterCreateProblem: (callback) => ipcRenderer.on('sample-tester-create-problem', (_e, data) => callback && callback(data)),
 
+    getCpuThreads: () => ipcRenderer.invoke('get-cpu-threads'),
+
     sendFeedback: (message) => ipcRenderer.invoke('send-feedback', message),
     getDeviceInfo: () => ipcRenderer.invoke('get-device-info'),
     getEncodedToken: () => ipcRenderer.invoke('get-encoded-token'),
