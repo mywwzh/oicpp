@@ -137,8 +137,8 @@ try {
     const hljs = require('highlight.js');
 
     md = new MarkdownIt({
-        // Disallow raw HTML in Markdown to reduce XSS risk.
-        html: false,
+        // Allow raw HTML in Markdown for compatibility.
+        html: true,
         linkify: true,
         typographer: true,
         highlight: function (str, lang) {
