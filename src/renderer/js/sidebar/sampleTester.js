@@ -26,13 +26,18 @@ class SampleTester {
                             window.alert?.('请先打开工作区：然后重新发送题目。');
                             return;
                         }
-                        const ojPart = (data.OJ || 'OJ').replace(/[^A-Za-z0-9]/g, '');
-                        const nameRaw = (data.problemName || 'problem').trim();
-                        let firstTokenMatch = nameRaw.match(/[A-Za-z0-9_\-]+/);
-                        let idPart = firstTokenMatch ? firstTokenMatch[0] : nameRaw.replace(/[^A-Za-z0-9_\-]/g, '_');
-                        if (!idPart) idPart = 'problem';
-                        if (idPart.length > 32) idPart = idPart.slice(0, 32);
-                        const fileName = `${ojPart}_${idPart}.cpp`;
+                        let fileName;
+                        if (data.openFileName) {
+                            fileName = `${data.openFileName}.cpp`;
+                        } else {
+                            const ojPart = (data.OJ || 'OJ').replace(/[^A-Za-z0-9]/g, '');
+                            const nameRaw = (data.problemName || 'problem').trim();
+                            let firstTokenMatch = nameRaw.match(/[A-Za-z0-9_\-]+/);
+                            let idPart = firstTokenMatch ? firstTokenMatch[0] : nameRaw.replace(/[^A-Za-z0-9_\-]/g, '_');
+                            if (!idPart) idPart = 'problem';
+                            if (idPart.length > 32) idPart = idPart.slice(0, 32);
+                            fileName = `${ojPart}_${idPart}.cpp`;
+                        }
                         (async () => {
                             try {
                                 const targetPath = await window.electronAPI.pathJoin(workspacePath, fileName);
