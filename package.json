@@ -1,6 +1,6 @@
 {
   "name": "oicpp-ide",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "OICPP IDE for competitive programming",
   "author": {
     "name": "mywwzh",
@@ -68,7 +68,8 @@
     "linux": {
       "target": [
         "deb",
-        "rpm"
+        "rpm",
+        "AppImage"
       ],
       "category": "Development",
       "icon": "build/icons/png"
