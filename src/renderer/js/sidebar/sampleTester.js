@@ -480,6 +480,7 @@ class SampleTester {
             globalSettings.style.display = 'none';
             addBtn.disabled = true;
             runAllBtn.disabled = true;
+            this.updateSummary();
             return;
         }
 
@@ -498,6 +499,80 @@ class SampleTester {
             samplesList.style.display = 'block';
             this.renderSamples();
         }
+
+        this.updateSummary();
+    }
+
+    updateSummary() {
+        const summaryEl = document.getElementById('samples-summary');
+        if (!summaryEl) return;
+
+        if (!this.currentFile || this.samples.length === 0) {
+            summaryEl.style.display = 'none';
+            return;
+        }
+
+        const total = this.samples.length;
+        const counts = {
+            AC: 0,
+            WA: 0,
+            TLE: 0,
+            RE: 0,
+            CE: 0,
+            OLE: 0,
+            PENDING: 0
+        };
+
+        this.samples.forEach(sample => {
+            const status = sample?.result?.status;
+            if (status && counts.hasOwnProperty(status)) {
+                counts[status] += 1;
+            } else if (status) {
+                counts.PENDING += 1;
+            } else {
+                counts.PENDING += 1;
+            }
+        });
+
+        let overallLabel = '未运行';
+        let overallClass = 'status-pending';
+        if (counts.PENDING === 0) {
+            if (counts.AC === total) {
+                overallLabel = 'AC';
+                overallClass = 'status-ac';
+            } else {
+                const priority = ['CE', 'RE', 'TLE', 'WA', 'OLE', 'AC'];
+                const found = priority.find(s => counts[s] > 0);
+                if (found) {
+                    overallLabel = found;
+                    overallClass = `status-${found.toLowerCase()}`;
+                }
+            }
+        } else if (counts.PENDING < total) {
+            overallLabel = '运行中';
+        }
+
+        const badgeOrder = ['AC', 'WA', 'TLE', 'RE', 'CE', 'OLE', 'PENDING'];
+        const badges = badgeOrder
+            .filter(status => counts[status] > 0)
+            .map(status => {
+                const label = status === 'PENDING' ? '未运行' : status;
+                const klass = status === 'PENDING' ? 'status-pending' : `status-${status.toLowerCase()}`;
+                return `<span class="summary-pill ${klass}">${label} ${counts[status]}</span>`;
+            })
+            .join('');
+
+        summaryEl.innerHTML = `
+            <div class="summary-left">
+                <span class="summary-label">总览</span>
+                <span class="status-badge ${overallClass}">${overallLabel}</span>
+                <span class="summary-label">${total} 组</span>
+            </div>
+            <div class="summary-right">
+                ${badges}
+            </div>
+        `;
+        summaryEl.style.display = 'flex';
     }
 
     renderSamples() {
@@ -1628,6 +1703,8 @@ class SampleTester {
         } else {
             element.classList.add('error');
         }
+
+        this.updateSummary();
     }
 
     async exportSampleOutput(sampleId) {
