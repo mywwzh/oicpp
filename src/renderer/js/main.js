@@ -2624,7 +2624,8 @@ ${data.message || '程序已加载，等待开始执行'}
 
 
     async showAbout() {
-        let buildInfo = { version: '1.2.0 (v24)', buildTime: '未知', author: 'mywwzh' };
+        const fallbackBuildInfo = { version: '1.2.0 (v24)', buildTime: '未知', author: 'mywwzh' };
+        let buildInfo = { ...fallbackBuildInfo };
         try {
             const buildInfoData = window.electronAPI ? await window.electronAPI.getBuildInfo() : null;
             if (buildInfoData) {
@@ -2632,6 +2633,23 @@ ${data.message || '程序已加载，等待开始执行'}
             }
         } catch (error) {
             logWarn('无法读取构建信息:', error);
+        }
+
+        let versionLabel = typeof buildInfo.version === 'string' && buildInfo.version.trim()
+            ? buildInfo.version.trim()
+            : fallbackBuildInfo.version;
+
+        if (!/\(v[^)]+\)/i.test(versionLabel)) {
+            const tag = buildInfo.buildTag || buildInfo.buildVersion || buildInfo.buildNo;
+            if (typeof tag === 'string' && tag.trim()) {
+                const normalizedTag = tag.trim().startsWith('v') ? tag.trim() : `v${tag.trim()}`;
+                versionLabel = `${versionLabel} (${normalizedTag})`;
+            } else {
+                const fallbackMatch = fallbackBuildInfo.version.match(/\(v[^)]+\)/i);
+                if (fallbackMatch && fallbackMatch[0]) {
+                    versionLabel = `${versionLabel} ${fallbackMatch[0]}`;
+                }
+            }
         }
 
         const dialog = document.createElement('div');
@@ -2646,7 +2664,7 @@ ${data.message || '程序已加载，等待开始执行'}
                 </div>
                 <div class="about-content">
                     <div class="about-info">
-                        <p><strong>版本:</strong> ${buildInfo.version}</p>
+                        <p><strong>版本:</strong> ${versionLabel}</p>
                         <p><strong>构建时间:</strong> ${buildInfo.buildTime}</p>
                         <p><strong>开发者:</strong> ${buildInfo.author}</p>
                         <p><strong>描述:</strong> 专为 OI 选手优化的 C++ 开发环境</p>
