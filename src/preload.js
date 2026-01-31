@@ -43,6 +43,106 @@ let md = null;
 let TurndownService = null;
 let turndownInstance = null;
 
+const normalizeMarkdownMath = (input) => {
+    if (!input || typeof input !== 'string') return input;
+
+    const normalizeInlineMathInLine = (line) => {
+        let out = '';
+        let inCode = false;
+        let codeFence = '';
+        let i = 0;
+
+        while (i < line.length) {
+            const ch = line[i];
+            if (ch === '`') {
+                let count = 1;
+                while (i + count < line.length && line[i + count] === '`') {
+                    count++;
+                }
+                const fence = '`'.repeat(count);
+                if (!inCode) {
+                    inCode = true;
+                    codeFence = fence;
+                } else if (fence === codeFence) {
+                    inCode = false;
+                    codeFence = '';
+                }
+                out += fence;
+                i += count;
+                continue;
+            }
+
+            if (!inCode && ch === '$') {
+                const next = line[i + 1];
+                if (next === '$' || (i > 0 && line[i - 1] === '\\')) {
+                    out += ch;
+                    i += 1;
+                    continue;
+                }
+                let j = i + 1;
+                while (j < line.length) {
+                    if (line[j] === '$' && line[j - 1] !== '\\') {
+                        break;
+                    }
+                    j += 1;
+                }
+                if (j < line.length && line[j] === '$') {
+                    const content = line.slice(i + 1, j);
+                    const trimmed = content.replace(/^\s+|\s+$/g, '');
+                    out += `$${trimmed.length ? trimmed : content}$`;
+                    i = j + 1;
+                    continue;
+                }
+            }
+
+            out += ch;
+            i += 1;
+        }
+
+        return out;
+    };
+
+    const lines = input.split('\n');
+    let inFence = false;
+    let fenceMarker = '';
+    let inMathBlock = false;
+
+    for (let idx = 0; idx < lines.length; idx++) {
+        const line = lines[idx];
+        const fenceMatch = line.match(/^\s{0,3}(```+|~~~+)/);
+        if (fenceMatch) {
+            const marker = fenceMatch[1][0];
+            if (!inFence) {
+                inFence = true;
+                fenceMarker = marker;
+            } else if (marker === fenceMarker) {
+                inFence = false;
+                fenceMarker = '';
+            }
+            continue;
+        }
+        if (!inFence) {
+            const mathFenceMatch = line.match(/^\s*\$\$\s*$/);
+            if (mathFenceMatch) {
+                inMathBlock = !inMathBlock;
+                lines[idx] = '$$';
+                continue;
+            }
+            if (inMathBlock) {
+                let normalized = line.trim();
+                normalized = normalized
+                    .replace(/\\begin\{align\*?\}/g, '\\begin{aligned}')
+                    .replace(/\\end\{align\*?\}/g, '\\end{aligned}');
+                lines[idx] = normalized;
+                continue;
+            }
+            lines[idx] = normalizeInlineMathInLine(line);
+        }
+    }
+
+    return lines.join('\n');
+};
+
 try {
     TurndownService = require('turndown');
     turndownInstance = new TurndownService({
@@ -151,7 +251,10 @@ try {
             return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
         }
     })
-    .use(mk)
+    .use(mk, {
+        throwOnError: false,
+        strict: 'ignore'
+    })
     .use(taskLists)
     .use(imageFigures, {
         figcaption: true
@@ -199,6 +302,7 @@ contextBridge.exposeInMainWorld('markdownAPI', {
     render: (text, filePath) => {
         if (!md) return text;
         try {
+            const normalizedText = normalizeMarkdownMath(text || '');
             const defaultImageRender = md.renderer.rules.image || function(tokens, idx, options, env, self) {
                 return self.renderToken(tokens, idx, options);
             };
@@ -224,7 +328,7 @@ contextBridge.exposeInMainWorld('markdownAPI', {
                 }
                 return defaultImageRender(tokens, idx, options, env, self);
             };
-            return md.render(text);
+            return md.render(normalizedText);
         } catch (err) {
             console.error('Markdown render error:', err);
             return text;
