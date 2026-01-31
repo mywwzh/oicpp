@@ -2018,7 +2018,16 @@ class TabManager {
         logError('activateTab: 无法根据文件名找到标签页', fileName);
     }
 
+    isDiscardCloseInProgress() {
+        try {
+            return !!window.__oicppDiscardClose;
+        } catch (_) {
+            return false;
+        }
+    }
+
     saveCurrentEditorContent() {
+        if (this.isDiscardCloseInProgress()) return;
         if (!this.activeTab) return;
 
         const currentTab = this.tabs.get(this.activeTab);
@@ -2159,20 +2168,32 @@ class TabManager {
             };
 
             const safeName = escapeHtml(tabData.fileName || fileName || '当前文件');
-            const message = `标签页 “${safeName}” 有未保存修改。<br><br>关闭将自动保存这些修改并关闭标签页，是否继续？`;
+            const message = `标签页 “${safeName}” 有未保存修改。<br><br>请选择如何处理这些修改。`;
 
-            const proceed = () => this.closeTab(fileName, { ...options, skipCloseConfirm: true });
+            const proceedSave = () => this.closeTab(fileName, { ...options, skipCloseConfirm: true });
+            const proceedDiscard = () => this.closeTab(fileName, { ...options, skipCloseConfirm: true, skipAutoSave: true });
 
             try {
-                if (window.dialogManager?.showConfirmDialog) {
+                if (window.dialogManager?.showActionDialog) {
+                    window.dialogManager.showActionDialog('确认关闭标签页', message, [
+                        { id: 'save', label: '保存', className: 'dialog-btn-confirm' },
+                        { id: 'discard', label: '丢弃', className: 'dialog-btn-cancel' },
+                        { id: 'cancel', label: '取消' }
+                    ])
+                        .then((result) => {
+                            if (result === 'save') proceedSave();
+                            else if (result === 'discard') proceedDiscard();
+                        })
+                        .catch((e) => logWarn('关闭标签页确认弹窗失败:', e));
+                } else if (window.dialogManager?.showConfirmDialog) {
                     window.dialogManager.showConfirmDialog('确认关闭标签页', message)
                         .then((result) => {
-                            if (result) proceed();
+                            if (result) proceedSave();
                         })
                         .catch((e) => logWarn('关闭标签页确认弹窗失败:', e));
                 } else {
                     const result = window.confirm(`文件 “${tabData.fileName || fileName}” 有未保存修改。\n关闭将自动保存这些修改并关闭标签页，是否继续？`);
-                    if (result) proceed();
+                    if (result) proceedSave();
                 }
             } catch (e) {
                 logWarn('关闭标签页确认异常:', e);
@@ -2203,7 +2224,7 @@ class TabManager {
             }
         }
 
-        if (!options.skipAutoSave && tabData.viewType !== 'pdf') {
+        if (!options.skipAutoSave && !this.isDiscardCloseInProgress() && tabData.viewType !== 'pdf') {
             try {
                 const isActive = this.activeTab === fileName;
                 const editorMgr = this.monacoEditorManager || window.monacoEditorManager || window.editorManager;
@@ -4073,6 +4094,9 @@ class TabManager {
     }
 
     async autoSaveModifiedTabs() {
+        if (this.isDiscardCloseInProgress()) {
+            return 0;
+        }
         if (!window.electronAPI || typeof window.electronAPI.saveFile !== 'function') {
             logWarn('[TabManager][自动保存] saveFile API 不可用，跳过自动保存');
             return 0;
@@ -4436,6 +4460,9 @@ class TabManager {
     }
 
     async saveAllFiles() {
+        if (this.isDiscardCloseInProgress()) {
+            return;
+        }
         const tasks = [];
         for (const [uniqueKey, tab] of this.tabs.entries()) {
             if (tab?.viewType && tab.viewType !== 'code') {

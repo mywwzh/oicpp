@@ -145,6 +145,41 @@ class DialogManager {
         });
     }
 
+    showActionDialog(title, message, actions = []) {
+        return new Promise((resolve, reject) => {
+            this.resetDialogState();
+            const overlay = document.getElementById('dialog-overlay');
+            const container = document.getElementById('dialog-container');
+
+            const buttonsHtml = (actions || []).map((action) => {
+                const safeId = this.escapeHtml(String(action.id ?? ''));
+                const safeLabel = this.escapeHtml(String(action.label ?? ''));
+                const className = action.className ? ` ${this.escapeHtml(action.className)}` : '';
+                return `<button class="dialog-btn${className}" data-action="${safeId}" onclick="dialogManager.actionDialog('${safeId}')">${safeLabel}</button>`;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="dialog-header">
+                    <h3>${title}</h3>
+                    <button class="dialog-close" onclick="dialogManager.hideDialog()">&times;</button>
+                </div>
+                <div class="dialog-body">
+                    <p>${message}</p>
+                </div>
+                <div class="dialog-footer">
+                    ${buttonsHtml}
+                </div>
+            `;
+
+            overlay.style.display = 'flex';
+
+            this.currentDialog = {
+                resolve: resolve,
+                reject: reject
+            };
+        });
+    }
+
     showNewYearGreeting(now = new Date()) {
         return new Promise((resolve) => {
             this.resetDialogState();
@@ -268,6 +303,12 @@ class DialogManager {
         if (!this.currentDialog) return;
 
         this.currentDialog.resolve(null);
+        this.hideDialog();
+    }
+
+    actionDialog(actionId) {
+        if (!this.currentDialog) return;
+        this.currentDialog.resolve(actionId);
         this.hideDialog();
     }
 

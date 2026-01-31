@@ -503,6 +503,11 @@ class OICPPApp {
     }
 
     async performAutoSave() {
+        try {
+            if (window.__oicppDiscardClose) {
+                return 0;
+            }
+        } catch (_) { }
         if (!window.tabManager || typeof window.tabManager.autoSaveModifiedTabs !== 'function') {
             return 0;
         }
