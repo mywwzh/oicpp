@@ -286,6 +286,7 @@ function getDefaultSettings() {
         lastUpdateCheck: '1970-01-01',
         pendingUpdate: null, // 待安装的更新信息
         lastOpen: '', // 最后打开的工作区路径
+        autoOpenLastWorkspace: true,
         recentFiles: [], // 最近使用的文件列表
         codeSnippets: [],
         windowOpacity: 1.0,
@@ -611,6 +612,10 @@ function createWindow() {
                 return;
             }
             let target = null;
+            if (settings.autoOpenLastWorkspace === false) {
+                logInfo('[启动] 已关闭自动恢复工作区');
+                return;
+            }
             if (settings.lastOpen && fs.existsSync(settings.lastOpen)) {
                 target = settings.lastOpen;
             } else if (Array.isArray(settings.recentFiles) && settings.recentFiles.length > 0) {
@@ -4269,7 +4274,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings'];
+            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace'];
 
             for (const key of validKeys) {
                 if (savedSettings[key] !== undefined) {
@@ -4307,7 +4312,7 @@ function loadSettings() {
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings'];
+    const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -4366,7 +4371,7 @@ function updateSettings(settingsType, newSettings) {
         const validKeys = [
             'compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme',
             'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'autoSave', 'autoSaveInterval',
-            'codeSnippets', 'windowOpacity', 'backgroundImage', 'markdownMode', 'keybindings'
+            'codeSnippets', 'windowOpacity', 'backgroundImage', 'markdownMode', 'keybindings', 'autoOpenLastWorkspace'
         ];
 
         for (const key in newSettings) {
