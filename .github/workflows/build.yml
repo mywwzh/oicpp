@@ -3,11 +3,11 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag name to release (e.g., v1.0.0)'
+        description: "Tag name to release (e.g., v1.0.0)"
         required: true
         type: string
 
@@ -34,12 +34,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: |
           npm install
           npm install --os=linux --cpu=x64 sharp
+
+      - name: Install AppImage dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
 
       - name: Build Linux packages
         env:
@@ -53,6 +58,7 @@ jobs:
           path: |
             dist/*.deb
             dist/*.rpm
+            dist/*.AppImage
 
       - name: Upload Linux packages to remote
         env:
@@ -62,7 +68,7 @@ jobs:
           VERSION=$VERSION
           VERSION=${VERSION#v}
           echo "Uploading packages for version $VERSION to $UPLOAD_API"
-          for f in dist/*.deb dist/*.rpm; do
+          for f in dist/*.deb dist/*.rpm dist/*.AppImage; do
             [ -f "$f" ] || continue
             echo "Uploading $f"
             curl -sS -X POST -H "Authorization: Bearer $UPLOAD_TOKEN" -F "file=@$f" -F "version=$VERSION" -F "platform=linux" "$UPLOAD_API"
@@ -89,7 +95,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install NSIS
         run: |
@@ -118,7 +124,7 @@ jobs:
 
           Copy-Item "ConsolePauser.exe" -Destination "dist\win-unpacked\"
           Copy-Item "oicpp.ico" -Destination "dist\win-unpacked\"
-          
+
           makensis installer.nsi
 
       - name: Upload Windows Artifacts
@@ -148,7 +154,7 @@ jobs:
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: '*-artifacts'
+          pattern: "*-artifacts"
           merge-multiple: true
           path: artifacts
 
