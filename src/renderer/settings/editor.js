@@ -15,6 +15,7 @@ class EditorSettings {
             highlightCurrentLine: true,
             autoSave: true,
             autoSaveInterval: 60000,
+            autoOpenLastWorkspace: true,
             markdownMode: 'split',
             keybindings: this.getDefaultKeybindings()
         };
@@ -179,6 +180,13 @@ class EditorSettings {
                 this.notifyMainWindowPreview();
             });
             autoSaveIntervalInput.addEventListener('input', () => {
+                this.notifyMainWindowPreview();
+            });
+        }
+
+        const autoOpenLastWorkspaceCheckbox = document.getElementById('editor-auto-open-last-workspace');
+        if (autoOpenLastWorkspaceCheckbox) {
+            autoOpenLastWorkspaceCheckbox.addEventListener('change', () => {
                 this.notifyMainWindowPreview();
             });
         }
@@ -456,6 +464,7 @@ class EditorSettings {
                     enableAutoCompletion: allSettings.enableAutoCompletion !== false,
                     autoSave: allSettings.autoSave !== false,
                     autoSaveInterval: typeof allSettings.autoSaveInterval === 'number' ? allSettings.autoSaveInterval : 60000,
+                    autoOpenLastWorkspace: allSettings.autoOpenLastWorkspace !== false,
                     windowOpacity: typeof allSettings.windowOpacity === 'number' ? allSettings.windowOpacity : 1.0,
                     backgroundImage: allSettings.backgroundImage || '',
                     markdownMode,
@@ -475,6 +484,7 @@ class EditorSettings {
                     enableAutoCompletion: true,
                     autoSave: true,
                     autoSaveInterval: 60000,
+                    autoOpenLastWorkspace: true,
                     windowOpacity: 1.0,
                     backgroundImage: '',
                     markdownMode: 'split',
@@ -494,6 +504,7 @@ class EditorSettings {
                 enableAutoCompletion: true,
                 autoSave: true,
                 autoSaveInterval: 60000,
+                autoOpenLastWorkspace: true,
                 windowOpacity: 1.0,
                 backgroundImage: '',
                 markdownMode: 'split',
@@ -621,6 +632,10 @@ class EditorSettings {
         const autoSaveCheckbox = document.getElementById('editor-auto-save-enabled');
         if (autoSaveCheckbox) {
             newSettings.autoSave = !!autoSaveCheckbox.checked;
+        }
+        const autoOpenLastWorkspaceCheckbox = document.getElementById('editor-auto-open-last-workspace');
+        if (autoOpenLastWorkspaceCheckbox) {
+            newSettings.autoOpenLastWorkspace = !!autoOpenLastWorkspaceCheckbox.checked;
         }
         const autoSaveIntervalInput = document.getElementById('editor-auto-save-interval');
         if (autoSaveIntervalInput) {
@@ -788,6 +803,7 @@ class EditorSettings {
         const autoCompletionCheckbox = document.getElementById('editor-auto-completion');
         const autoSaveCheckbox = document.getElementById('editor-auto-save-enabled');
         const autoSaveIntervalInput = document.getElementById('editor-auto-save-interval');
+        const autoOpenLastWorkspaceCheckbox = document.getElementById('editor-auto-open-last-workspace');
         const opacityInput = document.getElementById('editor-opacity');
         const opacityValue = document.getElementById('editor-opacity-value');
         const bgImageInput = document.getElementById('editor-bg-image');
@@ -854,6 +870,10 @@ class EditorSettings {
             const intervalMs = Number.isFinite(this.settings.autoSaveInterval) && this.settings.autoSaveInterval > 0 ? this.settings.autoSaveInterval : 60000;
             autoSaveIntervalInput.value = Math.max(1, Math.round(intervalMs / 1000));
             this.toggleAutoSaveInterval(autoSaveIntervalInput, autoSaveEnabled);
+        }
+
+        if (autoOpenLastWorkspaceCheckbox) {
+            autoOpenLastWorkspaceCheckbox.checked = this.settings.autoOpenLastWorkspace !== false;
         }
 
         if (opacityInput && opacityValue) {
