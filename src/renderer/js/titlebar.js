@@ -117,7 +117,7 @@ class TitlebarManager {
             return;
         }
 
-        if (!window.dialogManager || typeof window.dialogManager.showConfirmDialog !== 'function') {
+        if (!window.dialogManager || typeof window.dialogManager.showActionDialog !== 'function') {
             logWarn('dialogManager 不可用，已阻止关闭以避免无提示自动保存');
             if (source === 'system') {
                 try { window.electronIPC.send('app-close-cancelled'); } catch (_) { }
@@ -136,18 +136,34 @@ class TitlebarManager {
                 .join('<br>');
             const moreHtml = moreCount > 0 ? `<br>... 还有 ${moreCount} 个文件` : '';
 
-            const message = `检测到 ${unsavedFiles.length} 个未保存文件：<br>${listHtml}${moreHtml}<br><br>关闭将自动保存以上修改并退出。是否继续？`;
-            const result = await window.dialogManager.showConfirmDialog('确认退出', message);
-            if (result) {
+            const message = `检测到 ${unsavedFiles.length} 个未保存文件：<br>${listHtml}${moreHtml}<br><br>请选择如何处理这些修改。`;
+            const result = await window.dialogManager.showActionDialog('确认退出', message, [
+                { id: 'save', label: '保存', className: 'dialog-btn-confirm' },
+                { id: 'discard', label: '丢弃', className: 'dialog-btn-cancel' },
+                { id: 'cancel', label: '取消' }
+            ]);
+
+            if (result === 'save') {
                 if (source === 'system') {
                     window.electronIPC.send('app-close-confirmed');
                 } else {
                     window.electronIPC.send('window-close');
                 }
-            } else {
+                return;
+            }
+
+            if (result === 'discard') {
+                try { window.__oicppDiscardClose = true; } catch (_) { }
                 if (source === 'system') {
-                    window.electronIPC.send('app-close-cancelled');
+                    window.electronIPC.send('app-close-discard');
+                } else {
+                    window.electronIPC.send('window-close-discard');
                 }
+                return;
+            }
+
+            if (source === 'system') {
+                window.electronIPC.send('app-close-cancelled');
             }
         } finally {
             this._closeConfirmInProgress = false;
