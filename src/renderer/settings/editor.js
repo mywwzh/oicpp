@@ -3,6 +3,7 @@ class EditorSettings {
         this.settings = {
             font: 'Consolas, "Courier New", monospace',
             fontSize: 14,
+            lineHeight: 0,
             theme: 'dark',
             tabSize: 4,
             wordWrap: false,
@@ -279,6 +280,14 @@ class EditorSettings {
             logError('未找到字体大小输入框元素');
         }
 
+        const lineHeightInput = document.getElementById('editor-line-height');
+        if (lineHeightInput) {
+            lineHeightInput.addEventListener('input', () => {
+                this.updatePreview();
+                this.notifyMainWindowPreview();
+            });
+        }
+
         const fontSelect = document.getElementById('editor-font');
         if (fontSelect) {
             fontSelect.addEventListener('change', (e) => {
@@ -353,12 +362,22 @@ class EditorSettings {
         if (preview) {
             preview.style.fontFamily = currentSettings.font;
             preview.style.fontSize = currentSettings.fontSize + 'px';
+            if (currentSettings.lineHeight && currentSettings.lineHeight > 0) {
+                preview.style.lineHeight = currentSettings.lineHeight + 'px';
+            } else {
+                preview.style.lineHeight = '';
+            }
         }
 
         const codeExamples = document.querySelectorAll('.code-example, pre, code');
         codeExamples.forEach(element => {
             element.style.fontFamily = currentSettings.font;
             element.style.fontSize = currentSettings.fontSize + 'px';
+            if (currentSettings.lineHeight && currentSettings.lineHeight > 0) {
+                element.style.lineHeight = currentSettings.lineHeight + 'px';
+            } else {
+                element.style.lineHeight = '';
+            }
         });
     }
 
@@ -428,6 +447,7 @@ class EditorSettings {
                 this.settings = {
                     font: allSettings.font || 'Consolas',
                     fontSize: allSettings.fontSize || 14,
+                    lineHeight: typeof allSettings.lineHeight === 'number' && allSettings.lineHeight > 0 ? allSettings.lineHeight : 0,
                     theme: allSettings.theme || 'dark',
                     tabSize: allSettings.tabSize || 4,
                     fontLigaturesEnabled: allSettings.fontLigaturesEnabled !== false,
@@ -447,6 +467,7 @@ class EditorSettings {
                 this.settings = {
                     font: 'Consolas',
                     fontSize: 14,
+                    lineHeight: 0,
                     theme: 'dark',
                     tabSize: 4,
                     stickyScrollEnabled: true,
@@ -465,6 +486,7 @@ class EditorSettings {
             this.settings = {
                 font: 'Consolas',
                 fontSize: 14,
+                lineHeight: 0,
                 theme: 'dark',
                 tabSize: 4,
                 stickyScrollEnabled: true,
@@ -564,12 +586,17 @@ class EditorSettings {
         const fontSelect = document.getElementById('editor-font');
         const themeSelect = document.getElementById('editor-theme');
         const fontSizeInput = document.getElementById('editor-font-size');
+        const lineHeightInput = document.getElementById('editor-line-height');
 
         const newSettings = {};
 
         if (fontSelect) newSettings.font = fontSelect.value;
         if (themeSelect) newSettings.theme = themeSelect.value;
         if (fontSizeInput) newSettings.fontSize = parseInt(fontSizeInput.value);
+        if (lineHeightInput) {
+            const parsedLineHeight = parseInt(lineHeightInput.value, 10);
+            newSettings.lineHeight = !Number.isNaN(parsedLineHeight) && parsedLineHeight > 0 ? parsedLineHeight : 0;
+        }
         const foldingCheckbox = document.getElementById('editor-folding');
         if (foldingCheckbox) newSettings.foldingEnabled = !!foldingCheckbox.checked;
         const stickyScrollCheckbox = document.getElementById('editor-sticky-scroll');
@@ -752,6 +779,7 @@ class EditorSettings {
     updateUI() {
         const fontSelect = document.getElementById('editor-font');
         const fontSizeInput = document.getElementById('editor-font-size');
+        const lineHeightInput = document.getElementById('editor-line-height');
         const themeSelect = document.getElementById('editor-theme');
         const foldingCheckbox = document.getElementById('editor-folding');
         const stickyScrollCheckbox = document.getElementById('editor-sticky-scroll');
@@ -785,6 +813,11 @@ class EditorSettings {
         if (fontSizeInput && this.settings.fontSize) {
             fontSizeInput.value = this.settings.fontSize;
             logInfo('字体大小已更新:', fontSizeInput.value);
+        }
+
+        if (lineHeightInput) {
+            const lh = Number.isFinite(this.settings.lineHeight) ? this.settings.lineHeight : 0;
+            lineHeightInput.value = lh > 0 ? lh : '';
         }
 
         if (themeSelect && this.settings.theme) {
