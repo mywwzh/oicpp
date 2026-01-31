@@ -26,13 +26,8 @@ class SampleTester {
                             window.alert?.('请先打开工作区：然后重新发送题目。');
                             return;
                         }
-                        const ojPart = (data.OJ || 'OJ').replace(/[^A-Za-z0-9]/g, '');
-                        const nameRaw = (data.problemName || 'problem').trim();
-                        let firstTokenMatch = nameRaw.match(/[A-Za-z0-9_\-]+/);
-                        let idPart = firstTokenMatch ? firstTokenMatch[0] : nameRaw.replace(/[^A-Za-z0-9_\-]/g, '_');
-                        if (!idPart) idPart = 'problem';
-                        if (idPart.length > 32) idPart = idPart.slice(0, 32);
-                        const fileName = `${ojPart}_${idPart}.cpp`;
+                        const nameRaw = (data.problemName || '').trim();
+                        const fileName = this.buildProblemFileName(nameRaw, data.OJ);
                         (async () => {
                             try {
                                 const targetPath = await window.electronAPI.pathJoin(workspacePath, fileName);
@@ -92,6 +87,54 @@ class SampleTester {
                 });
             }
         } catch (e) { logWarn('[样例测试器] 注册外部 API 监听失败', e); }
+    }
+
+    buildProblemFileName(nameRaw, ojRaw) {
+        const normalizedName = this.normalizeProblemFileName(nameRaw);
+        if (normalizedName) {
+            return normalizedName;
+        }
+        const ojPart = (ojRaw || 'OJ').replace(/[^A-Za-z0-9]/g, '') || 'OJ';
+        const idPart = this.extractProblemIdToken(nameRaw);
+        return `${ojPart}_${idPart}.cpp`;
+    }
+
+    normalizeProblemFileName(nameRaw) {
+        if (!nameRaw || typeof nameRaw !== 'string') {
+            return '';
+        }
+
+        let cleaned = nameRaw
+            .replace(/[\x00-\x1F]/g, '')
+            .replace(/[<>:"/\\|?*]/g, '_')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        cleaned = cleaned.replace(/[. ]+$/g, '').trim();
+        if (!cleaned) {
+            return '';
+        }
+
+        const reserved = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+        if (reserved.test(cleaned)) {
+            cleaned = `_${cleaned}`;
+        }
+
+        const hasCppExt = /\.(cpp|cc|cxx)$/i.test(cleaned);
+        if (!hasCppExt) {
+            cleaned = `${cleaned}.cpp`;
+        }
+
+        return cleaned;
+    }
+
+    extractProblemIdToken(nameRaw) {
+        const raw = typeof nameRaw === 'string' ? nameRaw.trim() : '';
+        let firstTokenMatch = raw.match(/[A-Za-z0-9_\-]+/);
+        let idPart = firstTokenMatch ? firstTokenMatch[0] : raw.replace(/[^A-Za-z0-9_\-]/g, '_');
+        if (!idPart) idPart = 'problem';
+        if (idPart.length > 32) idPart = idPart.slice(0, 32);
+        return idPart;
     }
 
     async activate() {
