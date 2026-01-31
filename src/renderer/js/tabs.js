@@ -23,6 +23,7 @@ class TabManager {
         this._fileWatchListenerBound = false;
         this._externalFileChangeUnsubscribe = null;
         this._fileWatchCleanupBound = false;
+        this._tabContextMenu = null;
 
         if (typeof window !== 'undefined') {
             this.handlePdfViewerMessage = this.handlePdfViewerMessage.bind(this);
@@ -3856,8 +3857,180 @@ class TabManager {
             }
         });
 
+        tab.addEventListener('contextmenu', (e) => {
+            this.showTabContextMenu(e, tab);
+        });
+
 
         return tab;
+    }
+
+    showTabContextMenu(event, tabElement) {
+        if (!event || !tabElement) return;
+        event.preventDefault();
+        event.stopPropagation();
+
+        this.hideTabContextMenu();
+
+        const uniqueKey = tabElement.dataset.uniqueKey;
+        const tabData = uniqueKey ? this.tabs.get(uniqueKey) : null;
+        if (!uniqueKey || !tabData) return;
+
+        const menu = document.createElement('div');
+        menu.className = 'context-menu tab-context-menu';
+        menu.style.position = 'fixed';
+        menu.style.zIndex = '10000';
+
+        const filePath = this.getTabFilePath(tabData, uniqueKey);
+        const menuItems = [
+            {
+                label: '在资源管理器中打开',
+                action: () => {
+                    if (!filePath) {
+                        window.oicppApp?.showMessage?.('该文件尚未保存，无法在资源管理器中打开。', 'warning');
+                        return;
+                    }
+                    this.openInSystemExplorer(filePath);
+                }
+            },
+            { label: '---' },
+            {
+                label: '关闭此文件',
+                action: () => this.closeTabByUniqueKey(uniqueKey)
+            },
+            {
+                label: '关闭除此以外的所有',
+                action: () => this.closeOtherTabsByUniqueKey(uniqueKey)
+            },
+            {
+                label: '关闭右侧的所有标签页',
+                action: () => this.closeTabsToRightByUniqueKey(uniqueKey)
+            }
+        ];
+
+        menuItems.forEach((menuItem) => {
+            const item = document.createElement('div');
+            item.className = 'context-menu-item';
+            if (menuItem.label === '---') {
+                item.setAttribute('data-separator', 'true');
+            } else {
+                item.textContent = menuItem.label;
+                item.addEventListener('click', () => {
+                    menuItem.action?.();
+                    this.hideTabContextMenu();
+                });
+            }
+            menu.appendChild(item);
+        });
+
+        document.body.appendChild(menu);
+        this._tabContextMenu = menu;
+
+        const menuRect = menu.getBoundingClientRect();
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+        let left = event.clientX;
+        let top = event.clientY;
+
+        if (left + menuRect.width > windowWidth) {
+            left = windowWidth - menuRect.width - 10;
+        }
+        if (top + menuRect.height > windowHeight) {
+            top = windowHeight - menuRect.height - 10;
+        }
+        menu.style.left = `${Math.max(0, left)}px`;
+        menu.style.top = `${Math.max(0, top)}px`;
+
+        const hideMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                this.hideTabContextMenu();
+                document.removeEventListener('click', hideMenu);
+                document.removeEventListener('contextmenu', hideMenu, true);
+            }
+        };
+        document.addEventListener('click', hideMenu);
+        document.addEventListener('contextmenu', hideMenu, true);
+    }
+
+    hideTabContextMenu() {
+        if (this._tabContextMenu) {
+            this._tabContextMenu.remove();
+            this._tabContextMenu = null;
+        }
+    }
+
+    getTabFilePath(tabData, uniqueKey) {
+        if (!tabData && !uniqueKey) return null;
+        const raw = tabData?.filePath || tabData?.uniqueKey || uniqueKey || '';
+        if (typeof raw !== 'string' || !raw.trim()) return null;
+        if (raw.includes('/') || raw.includes('\\')) {
+            return raw;
+        }
+        return null;
+    }
+
+    openInSystemExplorer(filePath) {
+        try {
+            if (!filePath) return;
+            if (window.electronAPI?.openPath) {
+                window.electronAPI.openPath(filePath, { reveal: true });
+            } else if (window.electronAPI?.showItemInFolder) {
+                window.electronAPI.showItemInFolder(filePath);
+            } else if (window.electron?.shell?.showItemInFolder) {
+                window.electron.shell.showItemInFolder(filePath);
+            } else if (window.electron?.shell?.openPath) {
+                window.electron.shell.openPath(filePath);
+            }
+        } catch (error) {
+            logWarn('打开资源管理器失败:', error);
+        }
+    }
+
+    closeOtherTabsByUniqueKey(uniqueKey) {
+        if (!uniqueKey) return;
+        const tabData = this.tabs.get(uniqueKey);
+        if (!tabData) return;
+        const groupId = tabData.groupId || this.activeGroupId;
+        const group = groupId ? this.groups.get(groupId) : null;
+        let tabsToClose = [];
+        if (group && Array.isArray(group.tabOrder)) {
+            tabsToClose = group.tabOrder.filter(key => key !== uniqueKey);
+        } else {
+            tabsToClose = Array.from(this.tabs.keys()).filter(key => key !== uniqueKey);
+        }
+
+        const modifiedTabs = tabsToClose.filter(key => this.tabs.get(key)?.modified);
+        if (modifiedTabs.length > 0) {
+            const result = confirm(`有 ${modifiedTabs.length} 个文件未保存，确定要关闭其他标签页吗？`);
+            if (!result) return;
+        }
+
+        tabsToClose.forEach(key => {
+            this.closeTabByUniqueKey(key, { skipCloseConfirm: true });
+        });
+    }
+
+    closeTabsToRightByUniqueKey(uniqueKey) {
+        if (!uniqueKey) return;
+        const tabData = this.tabs.get(uniqueKey);
+        if (!tabData) return;
+        const groupId = tabData.groupId || this.activeGroupId;
+        const group = groupId ? this.groups.get(groupId) : null;
+        if (!group || !Array.isArray(group.tabOrder)) return;
+        const index = group.tabOrder.indexOf(uniqueKey);
+        if (index === -1) return;
+        const tabsToClose = group.tabOrder.slice(index + 1);
+        if (!tabsToClose.length) return;
+
+        const modifiedTabs = tabsToClose.filter(key => this.tabs.get(key)?.modified);
+        if (modifiedTabs.length > 0) {
+            const result = confirm(`有 ${modifiedTabs.length} 个文件未保存，确定要关闭右侧标签页吗？`);
+            if (!result) return;
+        }
+
+        tabsToClose.forEach(key => {
+            this.closeTabByUniqueKey(key, { skipCloseConfirm: true });
+        });
     }
 
     addTabDragListeners(tab) {
