@@ -273,6 +273,7 @@ function getDefaultSettings() {
         testlibPath: '', // testlib库路径
         font: 'Consolas',
         fontSize: 14,
+        lineHeight: 0,
         theme: 'dark',
         tabSize: 4,
         fontLigaturesEnabled: true, // 是否启用编程字体连字（Fira Code 等）
@@ -4241,7 +4242,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings'];
+            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings'];
 
             for (const key of validKeys) {
                 if (savedSettings[key] !== undefined) {
@@ -4279,7 +4280,7 @@ function loadSettings() {
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings'];
+    const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -4336,7 +4337,7 @@ function updateSettings(settingsType, newSettings) {
     try {
 
         const validKeys = [
-            'compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme',
+            'compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme',
             'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'autoSave', 'autoSaveInterval',
             'codeSnippets', 'windowOpacity', 'backgroundImage', 'markdownMode', 'keybindings'
         ];
@@ -4424,7 +4425,7 @@ function importSettings(filePath) {
             throw new Error('无效的设置文件格式');
         }
 
-        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings'];
+        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings'];
         const defaultSettings = getDefaultSettings();
 
         for (const key of validKeys) {
