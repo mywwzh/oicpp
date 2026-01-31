@@ -40,6 +40,7 @@ class MonacoEditorManager {
     this._includeCacheToken = 0;
     this._includeRootsCache = new Map();
     this._fileIncludeCache = new Map();
+        this.lineHeightSetting = 0;
         
         this.init();
 
@@ -299,6 +300,16 @@ class MonacoEditorManager {
         } catch (error) {
             logError('Monaco Editor 管理器初始化失败:', error);
         }
+    }
+
+    getLineHeightValue(fontSize, lineHeightSetting) {
+        const parsedLineHeight = parseInt(lineHeightSetting, 10);
+        if (!Number.isNaN(parsedLineHeight) && parsedLineHeight > 0) {
+            return parsedLineHeight;
+        }
+        const parsedFontSize = parseInt(fontSize, 10);
+        const safeFontSize = Number.isNaN(parsedFontSize) || parsedFontSize <= 0 ? 14 : parsedFontSize;
+        return Math.round(safeFontSize * 1.4);
     }
 
     async waitForMonaco() {
@@ -737,6 +748,7 @@ class MonacoEditorManager {
             let fontLigaturesEnabled = true; // 字体连字
             let tabSize = 4;
             let autoCompletionEnabled = true;
+            let lineHeightSetting = 0;
             try {
                 if (window.electronAPI && window.electronAPI.getAllSettings) {
                     const allSettings = await window.electronAPI.getAllSettings();
@@ -744,6 +756,9 @@ class MonacoEditorManager {
                         currentTheme = allSettings.theme || 'dark';
                         if (allSettings.fontSize) {
                             fontSize = parseInt(allSettings.fontSize);
+                        }
+                        if (typeof allSettings.lineHeight === 'number' && allSettings.lineHeight > 0) {
+                            lineHeightSetting = allSettings.lineHeight;
                         }
                         if (allSettings.font) {
                             if (window.fontDetector) {
@@ -771,6 +786,8 @@ class MonacoEditorManager {
             } catch (error) {
                 logWarn('获取设置失败，使用默认设置:', error);
             }
+
+            this.lineHeightSetting = lineHeightSetting;
             
             let monacoTheme = 'oicpp-dark';
             if (currentTheme === 'light') monacoTheme = 'oicpp-light';
@@ -802,7 +819,7 @@ class MonacoEditorManager {
                 fontLigatures: !!fontLigaturesEnabled,
                 fontWeight: 'normal',
                 letterSpacing: 0,
-                lineHeight: Math.round(fontSize * 1.4),
+                lineHeight: this.getLineHeightValue(fontSize, lineHeightSetting),
                 lineNumbers: 'on',
                 lineNumbersMinChars: 3,
                 minimap: { enabled: true },
@@ -1833,11 +1850,26 @@ class MonacoEditorManager {
     updateSettings(settings) {
         if (this.currentEditor && settings) {
             const updateOptions = {};
-            
+            let targetFontSize = null;
             if (settings.fontSize !== undefined) {
-                const fontSize = parseInt(settings.fontSize);
-                updateOptions.fontSize = fontSize;
-                updateOptions.lineHeight = Math.round(fontSize * 1.4);
+                const fontSize = parseInt(settings.fontSize, 10);
+                if (!Number.isNaN(fontSize)) {
+                    updateOptions.fontSize = fontSize;
+                    targetFontSize = fontSize;
+                }
+            } else {
+                try {
+                    targetFontSize = this.currentEditor.getOptions().get(monaco.editor.EditorOption.fontSize);
+                } catch (_) { }
+            }
+
+            if (settings.lineHeight !== undefined) {
+                const parsedLineHeight = parseInt(settings.lineHeight, 10);
+                this.lineHeightSetting = !Number.isNaN(parsedLineHeight) && parsedLineHeight > 0 ? parsedLineHeight : 0;
+            }
+
+            if (targetFontSize !== null || settings.lineHeight !== undefined) {
+                updateOptions.lineHeight = this.getLineHeightValue(targetFontSize, this.lineHeightSetting);
             }
             
             if (settings.fontFamily) {
@@ -1978,7 +2010,7 @@ class MonacoEditorManager {
                     if (newFontSize !== currentFontSize) {
                         this.currentEditor.updateOptions({ 
                             fontSize: newFontSize,
-                            lineHeight: Math.round(newFontSize * 1.4)
+                            lineHeight: this.getLineHeightValue(newFontSize, this.lineHeightSetting)
                         });
                         
                         if (window.electronAPI && window.electronAPI.updateSettings) {
@@ -2027,7 +2059,7 @@ class MonacoEditorManager {
                         if (newFontSize !== currentFontSize) {
                             editor.updateOptions({ 
                                 fontSize: newFontSize,
-                                lineHeight: Math.round(newFontSize * 1.4)
+                                lineHeight: this.getLineHeightValue(newFontSize, this.lineHeightSetting)
                             });
                             if (window.electronAPI?.updateSettings) {
                                 window.electronAPI.updateSettings({ fontSize: newFontSize }).catch(err => {
@@ -2064,11 +2096,26 @@ class MonacoEditorManager {
     this.editors.forEach((editor, fileName) => {
             if (editor && editor !== this.currentEditor) {
                 const updateOptions = {};
-                
+                let targetFontSize = null;
                 if (settings.fontSize !== undefined) {
-                    const fontSize = parseInt(settings.fontSize);
-                    updateOptions.fontSize = fontSize;
-                    updateOptions.lineHeight = Math.round(fontSize * 1.4);
+                    const fontSize = parseInt(settings.fontSize, 10);
+                    if (!Number.isNaN(fontSize)) {
+                        updateOptions.fontSize = fontSize;
+                        targetFontSize = fontSize;
+                    }
+                } else {
+                    try {
+                        targetFontSize = editor.getOptions().get(monaco.editor.EditorOption.fontSize);
+                    } catch (_) { }
+                }
+
+                if (settings.lineHeight !== undefined) {
+                    const parsedLineHeight = parseInt(settings.lineHeight, 10);
+                    this.lineHeightSetting = !Number.isNaN(parsedLineHeight) && parsedLineHeight > 0 ? parsedLineHeight : 0;
+                }
+
+                if (targetFontSize !== null || settings.lineHeight !== undefined) {
+                    updateOptions.lineHeight = this.getLineHeightValue(targetFontSize, this.lineHeightSetting);
                 }
                 if (settings.fontFamily || settings.font) {
                     const fontToValidate = settings.fontFamily || settings.font;
