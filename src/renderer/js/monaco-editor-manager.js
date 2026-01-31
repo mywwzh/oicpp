@@ -1177,29 +1177,16 @@ class MonacoEditorManager {
             } catch (_) {}
             
             
-            editor.onDidType((text) => {
+            const isStructLikeDefinition = (model, braceLineNumber, requireBraceLineMatch = false, startLineNumber = braceLineNumber) => {
                 try {
-                    if (text !== '}') return;
-                    const model = editor.getModel();
-                    if (!model) return;
-                    const languageId = model.getLanguageId();
-                    if (languageId !== 'cpp' && languageId !== 'c') return;
-                    const pos = editor.getPosition();
-                    if (!pos) return;
-
-                    const currentLineContent = model.getLineContent(pos.lineNumber);
-                    const afterBrace = currentLineContent.slice(pos.column - 1).trim();
-                    if (afterBrace.startsWith(';')) return;
-
-                    let found = false;
-                    for (let line = pos.lineNumber - 1, scanned = 0; line >= 1 && scanned < 200; line--, scanned++) {
+                    for (let line = startLineNumber, scanned = 0; line >= 1 && scanned < 200; line--, scanned++) {
                         const raw = model.getLineContent(line);
                         const content = raw.trim();
                         if (!content) continue;
 
                         if (/;\s*$/.test(content) && !content.includes('{')) break;
 
-                        if (/\b(struct|class)\b/.test(content)) {
+                        if (/\b(struct|class|union|enum)\b/.test(content)) {
                             const prevLineRaw = model.getLineContent(line - 1) || '';
                             if (/\btypedef\b/.test(content) || /\btypedef\b/.test(prevLineRaw)) {
                                 continue;
@@ -1212,14 +1199,67 @@ class MonacoEditorManager {
                                 continue;
                             }
 
-                            found = true;
-                            break;
+                            if (!requireBraceLineMatch) return true;
+                            if (hasOpeningBraceSameLine && line === braceLineNumber) return true;
+                            if (!hasOpeningBraceSameLine && nextLineHasBrace && line + 1 === braceLineNumber) return true;
                         }
 
                         if (content.includes('}')) break;
                     }
+                } catch (_) {}
+                return false;
+            };
 
-                    if (!found) return;
+            const tryAutoSemicolonAtLine = (model, lineNumber) => {
+                try {
+                    if (!lineNumber || lineNumber < 1 || lineNumber > model.getLineCount()) return false;
+                    const lineText = model.getLineContent(lineNumber);
+                    const trimmed = lineText.trim();
+                    if (trimmed !== '}') return false;
+                    const braceIndex = lineText.indexOf('}');
+                    if (braceIndex < 0) return false;
+                    const afterCloseRaw = lineText.slice(braceIndex + 1);
+                    if (afterCloseRaw.trimStart().startsWith(';')) return false;
+                    if (!isStructLikeDefinition(model, lineNumber, false, Math.max(1, lineNumber - 1))) return false;
+                    const insertRange = new monaco.Range(lineNumber, braceIndex + 2, lineNumber, braceIndex + 2);
+                    editor.executeEdits('auto-semicolon', [{ range: insertRange, text: ';' }]);
+                    return true;
+                } catch (_) {}
+                return false;
+            };
+
+            editor.onDidType((text) => {
+                try {
+                    const model = editor.getModel();
+                    if (!model) return;
+                    const languageId = model.getLanguageId();
+                    if (languageId !== 'cpp' && languageId !== 'c') return;
+                    const pos = editor.getPosition();
+                    if (!pos) return;
+
+                    if (text === '{') {
+                        if (!isStructLikeDefinition(model, pos.lineNumber, true)) return;
+                        setTimeout(() => {
+                            const afterPos = editor.getPosition();
+                            if (!afterPos) return;
+                            const lineTextNow = model.getLineContent(afterPos.lineNumber);
+                            const closeIndex = afterPos.column - 1;
+                            if (lineTextNow[closeIndex] !== '}') return;
+                            const afterCloseRaw = lineTextNow.slice(closeIndex + 1);
+                            if (afterCloseRaw.trimStart().startsWith(';')) return;
+                            const insertRange = new monaco.Range(afterPos.lineNumber, closeIndex + 2, afterPos.lineNumber, closeIndex + 2);
+                            editor.executeEdits('auto-semicolon', [{ range: insertRange, text: ';' }]);
+                        }, 0);
+                        return;
+                    }
+
+                    if (text !== '}') return;
+
+                    const currentLineContent = model.getLineContent(pos.lineNumber);
+                    const afterBrace = currentLineContent.slice(pos.column - 1).trim();
+                    if (afterBrace.startsWith(';')) return;
+
+                    if (!isStructLikeDefinition(model, pos.lineNumber, false, Math.max(1, pos.lineNumber - 1))) return;
 
                     setTimeout(() => {
                         const afterPos = editor.getPosition();
@@ -1237,6 +1277,49 @@ class MonacoEditorManager {
                 if (event?.isFlush) {
                     return;
                 }
+                try {
+                    const model = editor.getModel();
+                    if (model) {
+                        const languageId = model.getLanguageId();
+                        if (languageId === 'cpp' || languageId === 'c') {
+                            const changes = event?.changes || [];
+                            const seenLines = new Set();
+                            let shouldCheckAroundCursor = false;
+                            let seenDeletion = false;
+                            changes.forEach(change => {
+                                const text = change?.text || '';
+                                const isDeletion = text === '';
+                                if (isDeletion) {
+                                    seenDeletion = true;
+                                }
+                                if (text.includes('\n') || text.includes('{') || text.includes('}')) {
+                                    shouldCheckAroundCursor = true;
+                                }
+                                const lineNumber = change.range?.endLineNumber || change.range?.startLineNumber;
+                                if (!lineNumber || seenLines.has(lineNumber)) return;
+                                seenLines.add(lineNumber);
+                                if (isDeletion) {
+                                    const lineText = model.getLineContent(lineNumber);
+                                    if (lineText.includes('}') && !lineText.includes(';')) {
+                                        return;
+                                    }
+                                }
+                                tryAutoSemicolonAtLine(model, lineNumber);
+                            });
+
+                            if (shouldCheckAroundCursor && !seenDeletion) {
+                                setTimeout(() => {
+                                    const pos = editor.getPosition();
+                                    if (!pos) return;
+                                    const lines = [pos.lineNumber - 2, pos.lineNumber - 1, pos.lineNumber, pos.lineNumber + 1, pos.lineNumber + 2];
+                                    for (const ln of lines) {
+                                        if (tryAutoSemicolonAtLine(model, ln)) break;
+                                    }
+                                }, 0);
+                            }
+                        }
+                    }
+                } catch (_) {}
                 if (window.tabManager) {
                     let uniqueKey = fileName;
                     if (filePath) {
