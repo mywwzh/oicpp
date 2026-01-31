@@ -536,6 +536,18 @@ function requestSaveAllAndClose(context = '关闭窗口') {
     }
 }
 
+function requestCloseWithoutSave(context = '关闭窗口') {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        return;
+    }
+    try {
+        armAllowMainWindowClose();
+        mainWindow.close();
+    } catch (e) {
+        try { logWarn(`[${context}] 丢弃保存关闭失败:`, e?.message || String(e)); } catch (_) { }
+    }
+}
+
 function createWindow() {
     loadSettings();
     mainWindow = new BrowserWindow({
@@ -874,6 +886,12 @@ function setupWindowControls() {
         requestSaveAllAndClose('关闭窗口');
     });
 
+    ipcMain.on('window-close-discard', () => {
+        // 丢弃未保存修改并关闭
+        armAllowMainWindowClose();
+        requestCloseWithoutSave('关闭窗口');
+    });
+
     // 系统级关闭确认回传（Alt+F4 等）
     ipcMain.on('app-close-confirmed', () => {
         closeRequestInProgress = false;
@@ -883,6 +901,16 @@ function setupWindowControls() {
         }
         armAllowMainWindowClose();
         requestSaveAllAndClose('关闭窗口');
+    });
+
+    ipcMain.on('app-close-discard', () => {
+        closeRequestInProgress = false;
+        if (closeRequestInProgressTimer) {
+            try { clearTimeout(closeRequestInProgressTimer); } catch (_) { }
+            closeRequestInProgressTimer = null;
+        }
+        armAllowMainWindowClose();
+        requestCloseWithoutSave('关闭窗口');
     });
 
     ipcMain.on('app-close-cancelled', () => {
