@@ -116,6 +116,7 @@
     height: 100%;
     flex: 1;
     justify-content: flex-start;
+    position: relative;
 }
 
 .menu-bar {
@@ -125,6 +126,7 @@
     font-size: 13px;
     -webkit-app-region: no-drag;
     color: var(--text-color, #cccccc);
+    margin-right: auto;
 }
 
 .menu-item {
@@ -213,7 +215,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    flex: 1;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
     padding: 0 8px;
 }
 .titlebar-quickopen {
