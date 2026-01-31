@@ -23,6 +23,7 @@ class UnifiedSettingsManager {
             codeSnippets: [],
             windowOpacity: 1.0,
             backgroundImage: '',
+            autoOpenLastWorkspace: true,
             keybindings: {
                 formatCode: 'Alt+Shift+S',
                 showFunctionPicker: 'Ctrl+Shift+G',
