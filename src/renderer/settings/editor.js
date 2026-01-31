@@ -71,8 +71,8 @@ class EditorSettings {
             { key: 'debugContinue', label: '调试继续 (继续/暂停)' },
             { key: 'debugStepOver', label: '单步跳过' },
             { key: 'debugStepInto', label: '单步进入' },
-            { key: 'debugStepOut', label: '单步跳出' },
-            { key: 'cloudCompile', label: '云端编译' }
+                        { key: 'debugStepOut', label: '单步跳出' },
+                        { key: 'cloudCompile', label: '云端编译' }
         ];
     }
 
@@ -155,7 +155,6 @@ class EditorSettings {
                 this.resetSettings();
             });
         }
-
         const resetKeybindingBtn = document.getElementById('reset-keybindings');
         if (resetKeybindingBtn) {
             resetKeybindingBtn.addEventListener('click', () => {
