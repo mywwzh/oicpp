@@ -838,7 +838,6 @@ function startSampleTesterServer() {
 function validateSampleTesterPayload(data) {
     if (!data || typeof data !== 'object') return { valid: false, message: 'body must be JSON object', invalidField: 'body' };
     if (!data.problemName || typeof data.problemName !== 'string') return { valid: false, message: 'problemName missing.', invalidField: 'problemName' };
-    if (data.problemName.length > 32) return { valid: false, message: 'problemName too long.', invalidField: 'problemName' };
     if (!Array.isArray(data.samples) || data.samples.length === 0) return { valid: false, message: 'samples must not be empty.', invalidField: 'samples' };
     const ids = new Set();
     for (const s of data.samples) {
