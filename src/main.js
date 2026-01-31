@@ -29,6 +29,7 @@ function getUserIconPath() {
 
 let mainWindow;
 let sampleTesterServer = null; // HTTP 服务实例
+let competitiveCompanionServer = null; // Competitive Companion
 
 let allowMainWindowClose = false;
 let allowMainWindowCloseTimer = null;
@@ -802,41 +803,209 @@ function createMenuBar() {
     Menu.setApplicationMenu(menu);
 }
 
+function writeJson(res, statusCode, payload) {
+    res.writeHead(statusCode, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS'
+    });
+    res.end(JSON.stringify(payload));
+}
+
+function getRequestPath(req) {
+    try {
+        const url = new URL(req.url || '/', 'http://127.0.0.1');
+        let pathname = url.pathname || '/';
+        if (pathname.length > 1 && pathname.endsWith('/')) {
+            pathname = pathname.slice(0, -1);
+        }
+        return pathname || '/';
+    } catch (_) {
+        return req.url || '/';
+    }
+}
+
+function readJsonBody(req, res, callback) {
+    let body = '';
+    req.on('data', chunk => {
+        body += chunk;
+        if (body.length > 2 * 1024 * 1024) {
+            req.destroy();
+        }
+    }); // 2MB 限制
+    req.on('end', () => {
+        let data = null;
+        try { data = JSON.parse(body || '{}'); } catch (_) { }
+        if (!data || typeof data !== 'object') {
+            return writeJson(res, 400, { code: 400, message: 'Invalid JSON body' });
+        }
+        callback(data);
+    });
+}
+
+function normalizeCompetitiveCompanionPayload(data) {
+    if (!data || typeof data !== 'object') {
+        return { ok: false, message: 'body must be JSON object', invalidField: 'body' };
+    }
+
+    const titleRaw = (typeof data.title === 'string' && data.title.trim())
+        ? data.title.trim()
+        : (typeof data.name === 'string' && data.name.trim())
+            ? data.name.trim()
+            : (typeof data.problemName === 'string' && data.problemName.trim())
+                ? data.problemName.trim()
+                : '';
+
+    if (!titleRaw) {
+        return { ok: false, message: 'problem title missing', invalidField: 'title' };
+    }
+
+    if (!Array.isArray(data.tests) || data.tests.length === 0) {
+        return { ok: false, message: 'tests must not be empty', invalidField: 'tests' };
+    }
+
+    let ojName = 'Competitive Companion';
+    if (typeof data.group === 'string' && data.group.trim()) {
+        ojName = data.group.trim();
+    } else if (typeof data.source === 'string' && data.source.trim()) {
+        ojName = data.source.trim();
+    } else if (typeof data.url === 'string' && data.url.trim()) {
+        try {
+            const host = new URL(data.url.trim()).hostname;
+            if (host) ojName = host;
+        } catch (_) { }
+    }
+
+    let timeLimitMs;
+    if (typeof data.timeLimit === 'number' && Number.isFinite(data.timeLimit) && data.timeLimit > 0) {
+        timeLimitMs = data.timeLimit <= 50 ? Math.round(data.timeLimit * 1000) : Math.round(data.timeLimit);
+    }
+
+    const samples = data.tests.map((t, idx) => ({
+        id: idx + 1,
+        input: typeof t?.input === 'string' ? t.input : '',
+        output: typeof t?.output === 'string' ? t.output : '',
+        timeLimit: timeLimitMs
+    }));
+
+    const payload = {
+        OJ: ojName,
+        problemName: titleRaw,
+        samples
+    };
+
+    return { ok: true, payload };
+}
+
+function createCompetitiveCompanionServer(port, tagLabel) {
+    const label = tagLabel || 'CompetitiveCompanion';
+    const server = http.createServer(async (req, res) => {
+        const requestPath = getRequestPath(req);
+        const acceptPaths = new Set(['/', '/competitive-companion', '/add', '/receive', '/companion']);
+        if (req.method === 'OPTIONS') {
+            return writeJson(res, 204, { code: 204, message: 'No Content' });
+        }
+        if (req.method === 'POST' && acceptPaths.has(requestPath)) {
+            readJsonBody(req, res, (data) => {
+                const normalized = normalizeCompetitiveCompanionPayload(data);
+                if (!normalized.ok) {
+                    const resp = { code: 400, message: 'Invalid parameters: ' + normalized.message, invalidField: normalized.invalidField };
+                    return writeJson(res, 400, resp);
+                }
+
+                const result = validateSampleTesterPayload(normalized.payload);
+                if (!result.valid) {
+                    const resp = { code: 400, message: 'Invalid parameters: ' + result.message, invalidField: result.invalidField };
+                    return writeJson(res, 400, resp);
+                }
+
+                try {
+                    logger.logInfo(`[${label}] 收到题目:`, normalized.payload.problemName, '样例数:', normalized.payload.samples?.length || 0);
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('sample-tester-create-problem', normalized.payload);
+                    }
+                } catch (e) { logger.logerror(`发送 ${label} 样例创建事件失败`, e); }
+
+                return writeJson(res, 200, { code: 200, message: 'Problem created successfully' });
+            });
+            return;
+        }
+        return writeJson(res, 404, { code: 404, message: 'Not Found' });
+    });
+
+    server.on('request', (req) => {
+        try {
+            const requestPath = getRequestPath(req);
+            logger.logInfo(`[${label}] 请求:`, req.method, requestPath, '来自', req.socket?.remoteAddress || 'unknown');
+        } catch (_) { }
+    });
+
+    server.on('error', (err) => {
+        if (err && err.code === 'EADDRINUSE') {
+            try { logWarn(`[${label}] 端口 ${port} 被占用，可能被其他工具占用（如 cph）。可在 Competitive Companion 中添加 http://127.0.0.1:${port}/ 作为自定义端口。`); } catch (_) { }
+            return;
+        }
+        try { logger.logerror(`[${label}] 服务出错`, err); } catch (_) { }
+    });
+
+    server.listen(port, '0.0.0.0', () => {
+        logger.logInfo(`[${label}] 服务已启动 http://127.0.0.1:${port}`);
+    });
+
+    return server;
+}
+
 function startSampleTesterServer() {
     try {
         if (sampleTesterServer) return; // 已启动
         const PORT = 20030;
         sampleTesterServer = http.createServer(async (req, res) => {
-            if (req.method === 'POST' && req.url === '/createNewProblem') {
-                let body = '';
-                req.on('data', chunk => { body += chunk; if (body.length > 2 * 1024 * 1024) req.destroy(); }); // 2MB 限制
-                req.on('end', () => {
-                    let data = null;
-                    try { data = JSON.parse(body || '{}'); } catch (_) { }
+            const requestPath = getRequestPath(req);
+            if (req.method === 'OPTIONS') {
+                return writeJson(res, 204, { code: 204, message: 'No Content' });
+            }
+            if (req.method === 'POST' && requestPath === '/createNewProblem') {
+                readJsonBody(req, res, (data) => {
                     const result = validateSampleTesterPayload(data);
                     if (!result.valid) {
                         const resp = { code: 400, message: 'Invalid parameters: ' + result.message, invalidField: result.invalidField };
-                        res.writeHead(400, { 'Content-Type': 'application/json' });
-                        return res.end(JSON.stringify(resp));
+                        return writeJson(res, 400, resp);
                     }
                     try {
+                        logger.logInfo('[SampleTesterAPI] 收到题目:', data.problemName, '样例数:', data.samples?.length || 0);
                         if (mainWindow && !mainWindow.isDestroyed()) {
                             mainWindow.webContents.send('sample-tester-create-problem', data);
                         }
                     } catch (e) { logger.logerror('发送样例创建事件失败', e); }
-                    res.writeHead(200, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ code: 200, message: 'Problem created successfully' }));
+                    return writeJson(res, 200, { code: 200, message: 'Problem created successfully' });
                 });
                 return;
             }
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ code: 404, message: 'Not Found' }));
+            return writeJson(res, 404, { code: 404, message: 'Not Found' });
         });
-        sampleTesterServer.listen(PORT, '127.0.0.1', () => {
+        sampleTesterServer.on('request', (req) => {
+            try {
+                const requestPath = getRequestPath(req);
+                logger.logInfo('[SampleTesterAPI] 请求:', req.method, requestPath, '来自', req.socket?.remoteAddress || 'unknown');
+            } catch (_) { }
+        });
+        sampleTesterServer.listen(PORT, '0.0.0.0', () => {
             logger.logInfo(`[SampleTesterAPI] 服务已启动 http://127.0.0.1:${PORT}`);
         });
     } catch (err) {
         try { logger.logerror('[SampleTesterAPI] 启动失败', err); } catch (_) { }
+    }
+
+    startCompetitiveCompanionServer();
+}
+
+function startCompetitiveCompanionServer() {
+    try {
+        if (competitiveCompanionServer) return; // 已启动
+        competitiveCompanionServer = createCompetitiveCompanionServer(10043, 'CompetitiveCompanion');
+    } catch (err) {
+        try { logger.logerror('[CompetitiveCompanion] 启动失败', err); } catch (_) { }
     }
 }
 
@@ -859,6 +1028,7 @@ function validateSampleTesterPayload(data) {
 
 app.on('before-quit', () => {
     try { if (sampleTesterServer) { sampleTesterServer.close(); sampleTesterServer = null; } } catch (_) { }
+    try { if (competitiveCompanionServer) { competitiveCompanionServer.close(); competitiveCompanionServer = null; } } catch (_) { }
 });
 
 function setupWindowControls() {
