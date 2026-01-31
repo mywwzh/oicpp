@@ -1700,6 +1700,7 @@ class SampleTester {
         element.classList.remove('success', 'error');
         if (result.status === 'AC') {
             element.classList.add('success');
+            element.classList.remove('expanded');
         } else {
             element.classList.add('error');
         }
