@@ -6,6 +6,52 @@
     width: 100%;
 }
 
+.samples-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    margin: 8px 8px 0;
+    border: 1px solid var(--border-color, #464647);
+    border-radius: 6px;
+    background: var(--card-bg, #2d2d30);
+    color: var(--text-color, #cccccc);
+    font-size: 12px;
+}
+
+.samples-summary .summary-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.samples-summary .summary-label {
+    font-weight: 600;
+    color: var(--text-secondary, #b0b0b0);
+}
+
+.samples-summary .summary-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.samples-summary .summary-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
 .no-file-message,
 .no-samples-message {
     display: flex;
