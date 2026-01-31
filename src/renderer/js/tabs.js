@@ -4226,6 +4226,7 @@ class TabManager {
         return `
             <div class="welcome-page">
                 <div class="welcome-header">
+                    <img class="welcome-logo-image" src="../../build/icons/png/128x128.png" alt="OICPP Logo">
                     <div class="welcome-logo">OICPP IDE</div>
                     <div class="welcome-subtitle">为 OIer 优化的 C++ 编程环境</div>
                     <div class="welcome-version">版本 1.2.0 (v24)</div>
@@ -4332,7 +4333,8 @@ class TabManager {
                 return;
             }
 
-            recentContainer.innerHTML = recentFiles.map(file => `
+            const limitedRecent = recentFiles.slice(0, 5);
+            recentContainer.innerHTML = limitedRecent.map(file => `
                 <div class="welcome-recent-item" data-path="${file.path}">
                     <span class="icon" data-ui-icon="folder" aria-hidden="true"></span>
                     <div class="file-info">
@@ -4622,6 +4624,7 @@ void hello() {
         return `
             <div class="welcome-page">
                 <div class="welcome-header">
+                    <img class="welcome-logo-image" src="../../build/icons/png/128x128.png" alt="OICPP Logo">
                     <div class="welcome-logo">OICPP IDE</div>
                     <div class="welcome-subtitle">为 OIer 优化的 C++ 编程环境</div>
                     <div class="welcome-version">版本 1.2.0 (v24)</div>
