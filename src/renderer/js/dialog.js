@@ -60,7 +60,7 @@ class DialogManager {
         }
     }
 
-    showInputDialog(title, defaultValue = '', placeholder = '') {
+    showInputDialog(title, defaultValue = '', placeholder = '', options = {}) {
         return new Promise((resolve, reject) => {
             this.resetDialogState();
             const overlay = document.getElementById('dialog-overlay');
@@ -87,7 +87,13 @@ class DialogManager {
             setTimeout(() => {
                 if (input) {
                     input.focus();
-                    input.select();
+                    const start = Number.isFinite(options.selectStart) ? options.selectStart : null;
+                    const end = Number.isFinite(options.selectEnd) ? options.selectEnd : null;
+                    if (start !== null && end !== null && end >= start) {
+                        input.setSelectionRange(start, end);
+                    } else {
+                        input.select();
+                    }
                 }
             }, 50);
 

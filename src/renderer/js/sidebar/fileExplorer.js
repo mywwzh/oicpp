@@ -1134,20 +1134,38 @@ class FileExplorer {
 
     async renameFile(file) {
         try {
-            const newName = await dialogManager.showInputDialog('重命名', file.name, '请输入新名称');
-            if (newName && newName !== file.name) {
+            const name = file?.name || '';
+            let selectStart = 0;
+            let selectEnd = name.length;
+            if (file?.type !== 'folder') {
+                const lastDot = name.lastIndexOf('.');
+                if (lastDot > 0) {
+                    selectEnd = lastDot;
+                }
+            }
+            const dm = window.dialogManager || (typeof dialogManager !== 'undefined' ? dialogManager : null);
+            if (!dm || typeof dm.showInputDialog !== 'function') {
+                this.showError('对话框不可用，无法重命名');
+                return;
+            }
+            const newName = await dm.showInputDialog('重命名', name, '请输入新名称', {
+                selectStart,
+                selectEnd
+            });
+            const trimmedName = typeof newName === 'string' ? newName.trim() : newName;
+            if (trimmedName && trimmedName !== file.name) {
                 // Validate the new name before sending to backend
-                const validation = this.validateFileName(newName);
+                const validation = this.validateFileName(trimmedName);
                 if (!validation.valid) {
                     this.showError(validation.error);
                     logWarn('重命名文件失败 - 非法名称:', newName, '-', validation.error);
                     return;
                 }
 
-                logInfo('重命名文件:', file.name, '->', newName);
+                logInfo('重命名文件:', file.name, '->', trimmedName);
 
                 if (window.electronIPC) {
-                    window.electronIPC.send('rename-file', file.path, newName);
+                    window.electronIPC.send('rename-file', file.path, trimmedName);
 
                     const handleRenameResult = (event, oldPath, newPath, error) => {
                         if (oldPath === file.path) {
@@ -1163,6 +1181,15 @@ class FileExplorer {
                                     const newTitle = newPath.substring(newPath.lastIndexOf(sep) + 1);
                                     window.tabManager.updateTabTitle(file.name, newTitle);
                                     try { window.tabManager.updateTabPathBySource(oldPath, newPath); } catch (_) { }
+                                }
+
+                                try {
+                                    const samplePanel = window.sidebarManager?.panels?.samples;
+                                    if (samplePanel && typeof samplePanel.handleFileRenamed === 'function') {
+                                        samplePanel.handleFileRenamed(oldPath, newPath);
+                                    }
+                                } catch (e) {
+                                    logWarn('[文件管理器] 同步样例配置失败:', e);
                                 }
                             }
                             window.electronIPC.ipcRenderer.removeListener('file-renamed', handleRenameResult);
