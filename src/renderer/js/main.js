@@ -79,6 +79,7 @@ class OICPPApp {
             this.handleKeyDown(e);
         });
 
+
         document.addEventListener('dragover', (e) => {
             e.preventDefault();
         });
