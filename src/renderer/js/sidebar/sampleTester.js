@@ -254,9 +254,6 @@ class SampleTester {
         }
 
         try {
-            const pathInfo = await window.electronAPI.getPathInfo(this.currentFile);
-            const filename = pathInfo.basenameWithoutExt;
-
             const fileExplorer = window.sidebarManager?.panels?.files;
             if (!fileExplorer || !fileExplorer.workspacePath) {
                 logError('[样例测试器] 无法获取工作区路径');
@@ -289,6 +286,67 @@ class SampleTester {
         } catch (error) {
             logError('[样例测试器] 更新样例文件路径失败:', error);
             this.samplesFilePath = null;
+        }
+    }
+
+    async computeSamplesFilePathForFile(filePath) {
+        if (!filePath) return null;
+        const fileExplorer = window.sidebarManager?.panels?.files;
+        if (!fileExplorer || !fileExplorer.workspacePath) {
+            return null;
+        }
+
+        const workspaceRoot = fileExplorer.workspacePath;
+        let relativePath;
+        if (filePath.startsWith(workspaceRoot)) {
+            relativePath = filePath.substring(workspaceRoot.length);
+            if (relativePath.startsWith('\\') || relativePath.startsWith('/')) {
+                relativePath = relativePath.substring(1);
+            }
+        } else {
+            relativePath = filePath.replace(/[:\\]/g, '_');
+        }
+
+        const oicppDir = await window.electronAPI.pathJoin(workspaceRoot, '.oicpp');
+        const sampleTesterDir = await window.electronAPI.pathJoin(oicppDir, 'sampleTester');
+
+        await window.electronAPI.ensureDirectory(oicppDir);
+        await window.electronAPI.ensureDirectory(sampleTesterDir);
+
+        const safeRelativePath = relativePath.replace(/[\\\/]/g, '_').replace(/[<>:"|?*]/g, '_');
+        return await window.electronAPI.pathJoin(sampleTesterDir, `${safeRelativePath}.json`);
+    }
+
+    async handleFileRenamed(oldPath, newPath) {
+        try {
+            if (!oldPath || !newPath) return;
+            const oldSamplesPath = await this.computeSamplesFilePathForFile(oldPath);
+            const newSamplesPath = await this.computeSamplesFilePathForFile(newPath);
+            if (!oldSamplesPath || !newSamplesPath) return;
+
+            const exists = await window.electronAPI.checkFileExists(oldSamplesPath);
+            if (exists) {
+                const sep = newSamplesPath.includes('\\') ? '\\' : '/';
+                const newFileName = newSamplesPath.substring(newSamplesPath.lastIndexOf(sep) + 1);
+                await new Promise((resolve) => {
+                    const handleRenameResult = (event, renamedOldPath, renamedNewPath, error) => {
+                        if (renamedOldPath === oldSamplesPath) {
+                            window.electronIPC.ipcRenderer.removeListener('file-renamed', handleRenameResult);
+                            resolve({ renamedNewPath, error });
+                        }
+                    };
+                    window.electronIPC.on('file-renamed', handleRenameResult);
+                    window.electronIPC.send('rename-file', oldSamplesPath, newFileName);
+                });
+                logInfo('[样例测试器] 样例配置已重命名:', oldSamplesPath, '->', newSamplesPath);
+            }
+
+            if (this.currentFile === oldPath) {
+                this.currentFile = newPath;
+                this.samplesFilePath = newSamplesPath;
+            }
+        } catch (error) {
+            logWarn('[样例测试器] 重命名样例配置失败:', error);
         }
     }
 
