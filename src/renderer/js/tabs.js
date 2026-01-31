@@ -4402,7 +4402,7 @@ class TabManager {
                     <img class="welcome-logo-image" src="../../build/icons/png/128x128.png" alt="OICPP Logo">
                     <div class="welcome-logo">OICPP IDE</div>
                     <div class="welcome-subtitle">为 OIer 优化的 C++ 编程环境</div>
-                    <div class="welcome-version">版本 1.2.0 (v24)</div>
+                    <div class="welcome-version">版本 1.2.1 (v25)</div>
                 </div>
                 
                 <div class="welcome-content">
@@ -4800,7 +4800,7 @@ void hello() {
                     <img class="welcome-logo-image" src="../../build/icons/png/128x128.png" alt="OICPP Logo">
                     <div class="welcome-logo">OICPP IDE</div>
                     <div class="welcome-subtitle">为 OIer 优化的 C++ 编程环境</div>
-                    <div class="welcome-version">版本 1.2.0 (v24)</div>
+                    <div class="welcome-version">版本 1.2.1 (v25)</div>
                 </div>
                 
                 <div class="welcome-content">
@@ -4828,7 +4828,7 @@ void hello() {
                 
                 <div class="welcome-footer">
                     <p>OICPP IDE - 为 OIer 优化的 C++ 编程环境</p>
-                    <p>版本 1.2.0 (v24), Copyright (C) 2025 mywwzh.</p>
+                    <p>版本 1.2.1 (v25), Copyright (C) 2025 mywwzh.</p>
                 </div>
             </div>
         `;
