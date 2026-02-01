@@ -1202,6 +1202,13 @@ class TabManager {
             }));
         } catch (_) { }
 
+        if (tabData.viewType === 'wysiwyg') {
+            tabData.viewType = 'code';
+            if (tabData.element) {
+                tabData.element.dataset.viewType = 'code';
+            }
+        }
+
         if (tabData.viewType === 'pdf') {
             this.hideGroupViewContainers(tabData.groupId);
             if (!tabData.viewerContainer || !tabData.viewerContainer.parentElement) {
@@ -1230,24 +1237,6 @@ class TabManager {
                 } catch (err) {
                     logWarn('切换到PDF视图时更新编辑器状态失败:', err);
                 }
-            }
-        } else if (tabData.viewType === 'wysiwyg') {
-
-            this.hideGroupViewContainers(tabData.groupId);
-            if (!tabData.wysiwygEditor) {
-                tabData.wysiwygEditor = this.createWysiwygEditor({
-                    groupId: tabData.groupId,
-                    tabId: tabData.tabId,
-                    content: tabData.content,
-                    filePath: tabData.filePath,
-                    tabData: tabData
-                });
-            }
-            if (tabData.wysiwygEditor && tabData.wysiwygEditor.container) {
-                tabData.wysiwygEditor.show();
-            }
-            if (this.monacoEditorManager) {
-                this.monacoEditorManager.groupActiveTab.set(tabData.groupId, null);
             }
         } else if (tabData.viewType === 'markdown-preview') {
             this.hideGroupViewContainers(tabData.groupId);
@@ -1824,11 +1813,7 @@ class TabManager {
                 }
             }
 
-            if (tabData.viewType === 'wysiwyg') {
-                if (tabData.wysiwygEditor && typeof tabData.wysiwygEditor.setContent === 'function') {
-                    tabData.wysiwygEditor.setContent(content);
-                }
-            } else if (editor && editor.getModel) {
+            if (editor && editor.getModel) {
                 const model = editor.getModel();
                 const viewState = editor.saveViewState ? editor.saveViewState() : null;
                 model.setValue(content);
@@ -2031,11 +2016,12 @@ class TabManager {
         if (this.isDiscardCloseInProgress()) return;
         if (!this.activeTab) return;
 
-        const currentTab = this.tabs.get(this.activeTab);
+        const currentTabKey = this.activeTabKey || this.findUniqueKeyByFileName(this.activeTab);
+        const currentTab = currentTabKey ? this.tabs.get(currentTabKey) : this.getTabByFileName(this.activeTab);
         if (!currentTab) return;
 
-        const content = this.getCurrentEditorContent();
-        if (content !== null) {
+        const content = this.getTabContentForSave(currentTab);
+        if (typeof content === 'string') {
             if (currentTab.filePath && window.electronAPI?.saveFile) {
                 window.electronAPI.saveFile(currentTab.filePath, content)
                     .then(() => { logInfo('文件自动保存成功:', currentTab.filePath); })
@@ -2047,15 +2033,33 @@ class TabManager {
     }
 
     getCurrentEditorContent() {
-        if (this.monacoEditorManager && this.monacoEditorManager.currentEditor) {
-            try {
-                return this.monacoEditorManager.currentEditor.getValue();
-            } catch (error) {
-                logError('获取编辑器内容失败:', error);
-                return null;
-            }
+        const activeKey = this.activeTabKey || this.findUniqueKeyByFileName(this.activeTab);
+        const tabData = activeKey ? this.tabs.get(activeKey) : this.getTabByFileName(this.activeTab);
+        if (!tabData) return null;
+        const content = this.getTabContentForSave(tabData);
+        return typeof content === 'string' ? content : null;
+    }
+
+    getTabContentForSave(tabData) {
+        if (!tabData) return null;
+        if (tabData.viewType === 'pdf' || tabData.viewType === 'markdown-preview') {
+            return null;
         }
-        return null;
+        const editorMgr = this.monacoEditorManager || window.monacoEditorManager || window.editorManager;
+        let editor = null;
+        if (tabData.tabId && editorMgr?.editors?.get) {
+            editor = editorMgr.editors.get(tabData.tabId) || null;
+        }
+        if (!editor && editorMgr?.currentEditor && tabData.filePath && editorMgr.currentEditor.filePath === tabData.filePath) {
+            editor = editorMgr.currentEditor;
+        }
+        try {
+            const value = editor?.getValue?.();
+            if (typeof value === 'string') return value;
+        } catch (error) {
+            logError('获取编辑器内容失败:', error);
+        }
+        return typeof tabData.content === 'string' ? tabData.content : null;
     }
 
 
@@ -2227,13 +2231,9 @@ class TabManager {
 
         if (!options.skipAutoSave && !this.isDiscardCloseInProgress() && tabData.viewType !== 'pdf') {
             try {
-                const isActive = this.activeTab === fileName;
-                const editorMgr = this.monacoEditorManager || window.monacoEditorManager || window.editorManager;
-                const currentEd = editorMgr?.currentEditor;
                 const path = tabData.filePath || (uniqueKey && uniqueKey.includes('/') ? uniqueKey : null);
-                if (path && editorMgr && currentEd && isActive) {
-                    const content = currentEd.getValue?.();
-                    if (typeof content === 'string' && window.electronAPI?.saveFile) {
+                const content = this.getTabContentForSave(tabData);
+                if (path && typeof content === 'string' && window.electronAPI?.saveFile) {
                         window.electronAPI.saveFile(path, content)
                             .then(() => {
                                 if (this.markTabAsSavedByUniqueKey) {
@@ -2243,7 +2243,6 @@ class TabManager {
                                 }
                             })
                             .catch(e => logWarn('关闭前自动保存失败:', e));
-                    }
                 }
             } catch (e) { logWarn('关闭前自动保存异常:', e); }
         }
@@ -2267,6 +2266,11 @@ class TabManager {
                 tabData.viewerContainer.parentNode.removeChild(tabData.viewerContainer);
             }
             tabData.viewerContainer = null;
+        } else if (tabData.viewType === 'markdown-preview') {
+            if (tabData.previewContainer && tabData.previewContainer.parentNode) {
+                tabData.previewContainer.parentNode.removeChild(tabData.previewContainer);
+            }
+            tabData.previewContainer = null;
         } else if (tabId && window.monacoEditorManager) {
             window.monacoEditorManager.cleanupEditor(tabId);
         }
@@ -3175,7 +3179,7 @@ class TabManager {
         if (!editorArea) {
             return;
         }
-        const panes = editorArea.querySelectorAll('.monaco-editor-container, .pdf-viewer-container, .markdown-preview-container, .wysiwyg-editor-container');
+        const panes = editorArea.querySelectorAll('.monaco-editor-container, .pdf-viewer-container, .markdown-preview-container');
         panes.forEach((pane) => {
             pane.style.display = 'none';
             if (pane.classList.contains('pdf-viewer-container')) {
@@ -3254,59 +3258,6 @@ class TabManager {
 
         await this.registerFileWatchForTab(tabData);
         await this.activateTabByUniqueKey(uniqueKey);
-    }
-
-    createWysiwygEditor(options) {
-        const { groupId, tabId, content, filePath, tabData } = options;
-        const group = this.groups.get(groupId);
-        if (!group || !group.editorArea) return null;
-
-        if (typeof window.WysiwygEditor !== 'function') {
-            logError('WysiwygEditor 类未加载');
-            return null;
-        }
-
-        const editor = new window.WysiwygEditor({
-            filePath,
-            tabId,
-            groupId,
-            onChange: (markdown) => {
-                tabData.content = markdown;
-                tabData.modified = true;
-                if (tabData.uniqueKey) {
-                    this.markTabAsModifiedByUniqueKey(tabData.uniqueKey);
-                } else {
-                    this.markTabAsModified(tabData.fileName);
-                }
-                this.refreshTabLabels();
-            },
-            onSave: async (markdown) => {
-                tabData.content = markdown;
-                if (tabData.filePath && !tabData.isTempFile) {
-                    try {
-                        await window.electronAPI.saveFile(tabData.filePath, markdown);
-                        tabData.modified = false;
-                        if (tabData.uniqueKey) {
-                            this.markTabAsSavedByUniqueKey(tabData.uniqueKey);
-                        } else {
-                            this.markTabAsSaved(tabData.fileName);
-                        }
-                        logInfo('WYSIWYG 编辑器已保存文件:', tabData.filePath);
-                    } catch (err) {
-                        logError('保存文件失败:', err);
-                    }
-                }
-            }
-        });
-
-        editor.create(group.editorArea, content || '');
-        return editor;
-    }
-
-    hideWysiwygEditor(tabData) {
-        if (tabData?.wysiwygEditor?.container) {
-            tabData.wysiwygEditor.hide();
-        }
     }
 
     createMarkdownPreviewContainer(options) {
@@ -3519,9 +3470,7 @@ class TabManager {
                     const settings = await window.electronAPI.getSettings();
                     const rawMode = settings ? settings.markdownMode : null;
                     const mode = typeof rawMode === 'string' ? rawMode.trim().toLowerCase() : '';
-                    if (mode === 'wysiwyg') {
-                        initialViewType = 'wysiwyg';
-                    } else if (mode === 'split') {
+                    if (mode === 'split') {
                         initialViewType = 'markdown-split';
                     } else {
                         initialViewType = 'code';
@@ -3571,15 +3520,13 @@ class TabManager {
                 }
             }
 
-            if (this.monacoEditorManager && initialViewType !== 'wysiwyg') {
+            if (this.monacoEditorManager) {
                 tabId = this.monacoEditorManager.generateTabId(fileName, filePath);
                 if (filePath) {
                     this.monacoEditorManager.currentFilePath = filePath;
                     this.monacoEditorManager.currentFileName = fileName;
                 }
                 await this.monacoEditorManager.createNewEditor(tabId, fileName, content, filePath, { groupId: targetGroupId });
-            } else if (initialViewType === 'wysiwyg') {
-                tabId = `wysiwyg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             } else {
                 tabId = `fallback-${Date.now()}`;
             }
@@ -4279,7 +4226,6 @@ class TabManager {
             this.tryGetEditorManagerReference();
         }
 
-        const editorManager = this.monacoEditorManager;
         const modifiedEntries = Array.from(this.tabs.entries()).filter(([, tabData]) => {
             return tabData && tabData.modified && tabData.viewType !== 'pdf';
         });
@@ -4296,10 +4242,7 @@ class TabManager {
                 continue;
             }
 
-            const editor = editorManager?.editors?.get(tabData.tabId) ||
-                (editorManager?.currentEditor && editorManager.currentEditor.filePath === filePath ? editorManager.currentEditor : null);
-
-            const content = editor?.getValue ? editor.getValue() : null;
+            const content = this.getTabContentForSave(tabData);
             if (typeof content !== 'string') {
                 continue;
             }
@@ -4640,15 +4583,14 @@ class TabManager {
         }
         const tasks = [];
         for (const [uniqueKey, tab] of this.tabs.entries()) {
-            if (tab?.viewType && tab.viewType !== 'code') {
+            if (!tab || tab.viewType === 'pdf' || tab.viewType === 'markdown-preview') {
                 continue;
             }
             try {
-                const tabId = tab.tabId;
                 const filePath = tab.filePath;
-                if (!filePath || !tabId) continue;
-                const editor = this.monacoEditorManager?.editors?.get?.(tabId);
-                const content = editor?.getValue ? editor.getValue() : (this.monacoEditorManager?.currentEditor?.getValue?.() || tab.content || '');
+                if (!filePath) continue;
+                const content = this.getTabContentForSave(tab);
+                if (typeof content !== 'string') continue;
                 if (window.electronAPI?.saveFile && typeof window.electronAPI.saveFile === 'function') {
                     tasks.push(
                         window.electronAPI.saveFile(filePath, content).then(() => {
