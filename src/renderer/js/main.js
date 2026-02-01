@@ -98,6 +98,11 @@ class OICPPApp {
                               e.target.closest('.monaco-editor-container') ||
                               e.target.classList.contains('monaco-editor') ||
                               e.target.classList.contains('monaco-editor-container');
+
+            const isInCloudPanel = e.target.closest('#cloud-panel') || e.target.closest('.cloud-tree');
+            if (isInCloudPanel) {
+                return;
+            }
             
             if (isInEditor) {
                 return;
@@ -194,6 +199,9 @@ class OICPPApp {
                 this.formatCode();
                 break;
             case 'cloud-compile':
+                if (!this.ensureLocalFileForFeature('云端编译')) {
+                    break;
+                }
                 if (this.compilerManager && typeof this.compilerManager.cloudCompileCurrentFile === 'function') {
                     this.compilerManager.cloudCompileCurrentFile();
                 }
@@ -264,6 +272,10 @@ class OICPPApp {
             const status = await window.electronAPI.getIdeLoginStatus();
             this.accountLoggedIn = !!status?.loggedIn;
             this.accountInfo = status?.user || null;
+            logInfo('[Account] 获取登录状态:', {
+                loggedIn: this.accountLoggedIn,
+                user: this.accountInfo?.username || ''
+            });
         } catch (error) {
             logWarn('获取登录状态失败:', error?.message || error);
         }
@@ -275,6 +287,13 @@ class OICPPApp {
         const accountItem = document.querySelector('.menu-dropdown-item[data-action="ide-account"]');
         const logoutItem = document.querySelector('.menu-dropdown-item[data-action="ide-logout"]');
 
+        try {
+            if (window.sidebarManager && typeof window.sidebarManager.setCloudPanelVisible === 'function') {
+                window.sidebarManager.setCloudPanelVisible(this.accountLoggedIn);
+            }
+        } catch (error) {
+            logWarn('更新云同步面板可见性失败:', error);
+        }
         if (!loginItem || !accountItem || !logoutItem) return;
 
         const accountLabel = accountItem.querySelector('span') || accountItem;
@@ -295,6 +314,7 @@ class OICPPApp {
                 accountLabel.textContent = '我的账户';
             }
         }
+
     }
 
     async startIdeLogin() {
@@ -1399,6 +1419,30 @@ class OICPPApp {
         }
     }
 
+    getActiveFilePath() {
+        try {
+            const editor = this.editorManager?.currentEditor;
+            if (!editor) return null;
+            return editor.getFilePath ? editor.getFilePath() : editor.filePath || null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    isCloudFilePath(filePath) {
+        if (typeof filePath !== 'string') return false;
+        return /^cloud:/i.test(filePath);
+    }
+
+    ensureLocalFileForFeature(featureLabel = '该功能') {
+        const filePath = this.getActiveFilePath();
+        if (this.isCloudFilePath(filePath)) {
+            this.showMessage(`云文件仅支持基础编辑与手动保存，请先下载到本地再使用${featureLabel}。`, 'warning');
+            return false;
+        }
+        return true;
+    }
+
     async saveFile() {
         if (this.editorManager && this.editorManager.currentEditor) {
             const content = this.editorManager.currentEditor.getValue();
@@ -1408,6 +1452,13 @@ class OICPPApp {
             logInfo('保存文件 - 文件路径:', filePath, '内容长度:', content ? content.length : 'undefined');
             if (window.electronAPI) {
                 if (filePath) {
+                    if (this.isCloudFilePath(String(filePath))) {
+                        const ok = await this.saveCloudFileToServer(filePath, content);
+                        if (ok && window.tabManager?.markTabAsSavedByUniqueKey) {
+                            window.tabManager.markTabAsSavedByUniqueKey(filePath);
+                        }
+                        return;
+                    }
                     logInfo('调用 electronAPI.saveFile 保存到:', filePath);
                     try {
                         await window.electronAPI.saveFile(filePath, content);
@@ -1480,6 +1531,13 @@ class OICPPApp {
             
             if (window.electronAPI && filePath && content !== null) {
                 try {
+                    if (this.isCloudFilePath(String(filePath))) {
+                        const ok = await this.saveCloudFileToServer(filePath, content);
+                        if (ok && window.tabManager?.markTabAsSavedByUniqueKey) {
+                            window.tabManager.markTabAsSavedByUniqueKey(filePath);
+                        }
+                        return;
+                    }
                     await window.electronAPI.saveFile(filePath, content);
                     if (window.tabManager) {
                         if (window.tabManager.markTabAsSavedByUniqueKey) {
@@ -1538,6 +1596,25 @@ class OICPPApp {
         } else {
             logWarn('无法打开编辑器设置：Electron API 不可用');
             await this.showSettingsDialog('editor');
+        }
+    }
+
+    async saveCloudFileToServer(filePath, content) {
+        try {
+            const cloudPanel = window.sidebarManager?.getPanelManager?.('cloud') || window.cloudSyncPanel;
+            if (!cloudPanel || typeof cloudPanel.saveCloudFile !== 'function') {
+                this.showMessage('云同步面板未就绪', 'error');
+                return false;
+            }
+            const cloudPath = String(filePath).replace(/^cloud:\/\//, '/').replace(/^cloud:/i, '/');
+            const ok = await cloudPanel.saveCloudFile(cloudPath, content || '');
+            if (ok) {
+                this.showMessage('云端保存成功', 'success');
+            }
+            return ok;
+        } catch (error) {
+            this.showMessage('云端保存失败: ' + (error?.message || error), 'error');
+            return false;
         }
     }
 
@@ -1717,6 +1794,9 @@ class OICPPApp {
         return '';
     }
     startDebug() {
+        if (!this.ensureLocalFileForFeature('调试')) {
+            return;
+        }
         logInfo('开始调试');
         if (window.sidebarManager) {
             window.sidebarManager.showPanel('debug');
@@ -2630,12 +2710,18 @@ ${data.message || '程序已加载，等待开始执行'}
     }
 
     compileCode() {
+        if (!this.ensureLocalFileForFeature('编译')) {
+            return;
+        }
         if (this.compilerManager) {
             this.compilerManager.compileCurrentFile();
         }
     }
 
     runCode() {
+        if (!this.ensureLocalFileForFeature('运行')) {
+            return;
+        }
         if (this.compilerManager) {
             this.compilerManager.runCurrentFile();
         }
@@ -3127,6 +3213,9 @@ ${data.message || '程序已加载，等待开始执行'}
     }
 
     async formatCode() {
+        if (!this.ensureLocalFileForFeature('格式化')) {
+            return;
+        }
         if (this.editorManager && this.editorManager.formatCode) {
             try {
                 const success = await this.editorManager.formatCode();
@@ -3150,6 +3239,9 @@ ${data.message || '程序已加载，等待开始执行'}
     }
 
     compileAndRun() {
+        if (!this.ensureLocalFileForFeature('编译并运行')) {
+            return;
+        }
         if (this.compilerManager) {
             this.compilerManager.compileAndRun();
         }
