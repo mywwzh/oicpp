@@ -382,9 +382,14 @@ class CompilerManager {
             this.appendOutput('正在将代码发送至 Linux 云编译服务...', 'info');
 
             let token = '';
+            let loginToken = '';
             try {
                 if (window.electronAPI && window.electronAPI.getEncodedToken) {
                     token = await window.electronAPI.getEncodedToken();
+                }
+                if (window.electronAPI && window.electronAPI.getIdeLoginStatus) {
+                    const status = await window.electronAPI.getIdeLoginStatus();
+                    loginToken = status?.loginToken || '';
                 }
             } catch (e) { logWarn('获取编码 token 失败:', e); }
 
@@ -392,6 +397,10 @@ class CompilerManager {
                 cpp: codeContent,
                 token: token || ''
             };
+
+            if (loginToken) {
+                payload.login_token = loginToken;
+            }
 
             const response = await fetch(`https://oicpp.mywwzh.top/api/cloudCompilation`, {
                 method: 'POST',

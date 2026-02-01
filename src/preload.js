@@ -530,6 +530,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+    startIdeLogin: () => ipcRenderer.invoke('ide-login-start'),
+    getIdeLoginStatus: () => ipcRenderer.invoke('ide-login-status'),
+    logoutIdeAccount: () => ipcRenderer.invoke('ide-logout'),
+    onIdeLoginUpdated: (callback) => ipcRenderer.on('ide-login-updated', (_event, payload) => callback && callback(payload)),
+    onIdeLoginError: (callback) => ipcRenderer.on('ide-login-error', (_event, payload) => callback && callback(payload)),
+
     getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
     openRecentFile: (filePath) => ipcRenderer.invoke('open-recent-file', filePath),
 
