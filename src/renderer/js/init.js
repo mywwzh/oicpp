@@ -44,6 +44,7 @@ async function initializeApp() {
         window.sidebarManager = new SidebarManager();
         window.sampleTester = window.sidebarManager.getPanelManager('samples');
         window.codeComparer = window.sidebarManager.getPanelManager('compare');
+        window.cloudSyncPanel = window.sidebarManager.getPanelManager('cloud');
 
         setTimeout(() => {
             window.sidebarManager.updateFileExplorerButtons();
