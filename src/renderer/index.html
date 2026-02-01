@@ -185,6 +185,12 @@
                         <path d="M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5s-.96.06-1.42.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8z"/>
                     </svg>
                 </div>
+                <div class="sidebar-icons-spacer"></div>
+                <div class="sidebar-icon cloud-sync-icon" data-panel="cloud" title="云空间" style="display: none;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 18H6a4 4 0 0 1-.88-7.9A6 6 0 0 1 17.5 9c.16 0 .32 0 .48.02A4.5 4.5 0 0 1 19 18zm-7-4v-3H9l3-3 3 3h-3v3h-2zm-2 2h4v2h-4v-2z"/>
+                    </svg>
+                </div>
             </div>
             <div class="sidebar-panel" id="sidebar-content">
                 <div class="panel-content active" id="files-panel">
@@ -436,6 +442,39 @@
                     <div class="debug-content">
                     </div>
                 </div>
+
+                <div class="panel-content" id="cloud-panel" style="display: none;">
+                    <div class="panel-header">
+                        <span class="panel-title">云空间</span>
+                        <div class="panel-actions">
+                            <button class="icon-btn" data-action="cloud-new-file" title="新建文件" tabindex="-1">
+                                <svg width="16" height="16" viewBox="0 0 16 16">
+                                    <path d="M12 2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM9 9H7v2H6V9H4V8h2V6h1v2h2v1z"/>
+                                </svg>
+                            </button>
+                            <button class="icon-btn" data-action="cloud-new-folder" title="新建文件夹" tabindex="-1">
+                                <svg width="16" height="16" viewBox="0 0 16 16">
+                                    <path d="M14.5 3H7.71l-.85-.85A1.5 1.5 0 0 0 5.79 2H1.5A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 14.5 3zM8 8H6v2H5V8H3V7h2V5h1v2h2v1z"/>
+                                </svg>
+                            </button>
+                            <button class="icon-btn" data-action="cloud-upload" title="上传文件" tabindex="-1">
+                                <svg width="16" height="16" viewBox="0 0 16 16">
+                                    <path d="M8 2l3 3H9v4H7V5H5l3-3zm-4 9h8v2H4v-2z"/>
+                                </svg>
+                            </button>
+                            <button class="icon-btn" data-action="cloud-refresh" title="刷新" tabindex="-1">
+                                <svg width="16" height="16" viewBox="0 0 16 16">
+                                    <path d="M13.65 2.35a8 8 0 0 0-11.3 0 8 8 0 0 0 0 11.3 8 8 0 0 0 11.3 0 8 8 0 0 0 0-11.3zm-1.41 9.9a6 6 0 0 1-8.48 0 6 6 0 0 1 0-8.48 6 6 0 0 1 8.48 0 6 6 0 0 1 0 8.48z"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="cloud-summary" id="cloud-summary">
+                        <div class="cloud-summary-text" id="cloud-remaining">剩余文件数量: --</div>
+                        <div class="cloud-summary-hint">仅支持 .ans .in .out .cpp .py .txt .md，单文件 ≤ 20KB</div>
+                    </div>
+                    <div class="file-tree cloud-tree" id="cloud-tree"></div>
+                </div>
             </div>
         </div>
 
@@ -526,6 +565,7 @@
     <script src="js/sidebar/sampleTester.js"></script>
     <script src="js/sidebar/debugPanel.js"></script>
     <script src="js/sidebar/codeComparer.js"></script>
+    <script src="js/sidebar/cloudSync.js"></script>
     <script src="js/sidebar.js"></script>
     <script src="js/tabs.js"></script>
     <script src="js/main.js"></script>

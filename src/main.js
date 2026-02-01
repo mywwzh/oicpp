@@ -1400,6 +1400,10 @@ function setupIPC() {
         return { loggedIn: !!user, user, loginToken };
     });
 
+    ipcMain.handle('cloud-sync-request', async (_event, payload) => {
+        return callCloudSyncApi(payload || {});
+    });
+
     ipcMain.handle('ide-logout', () => {
         settings.account = null;
         saveSettings();
@@ -1878,6 +1882,9 @@ function setupIPC() {
             if (!filePath || typeof filePath !== 'string') {
                 throw new Error('无效的文件路径');
             }
+            if (/^cloud:/i.test(filePath)) {
+                throw new Error('云端文件不支持本地保存');
+            }
             markLocalSave(filePath);
             fs.writeFileSync(filePath, content ?? '', 'utf8');
             logInfo('文件保存成功(事件):', filePath);
@@ -1982,6 +1989,9 @@ function setupIPC() {
         try {
             if (!filePath || typeof filePath !== 'string') {
                 throw new Error('无效的文件路径');
+            }
+            if (/^cloud:/i.test(filePath)) {
+                throw new Error('云端文件不支持本地保存');
             }
             markLocalSave(filePath);
             fs.writeFileSync(filePath, content ?? '', 'utf8');
@@ -5849,9 +5859,12 @@ function getDeviceInfo() {
     if (!deviceInfo) {
         const cpus = os.cpus();
         const cpuId = cpus.length > 0 ? `CPU-${cpus[0].model.replace(/\s+/g, '-').substring(0, 50)}` : 'CPU-Unknown';
+        const deviceName = (process.platform === 'win32' && process.env.COMPUTERNAME)
+            ? process.env.COMPUTERNAME
+            : (os.hostname() || 'Unknown-Device');
 
         deviceInfo = {
-            deviceName: os.hostname() || 'Unknown-Device',
+            deviceName: deviceName,
             cpuId: cpuId
         };
     }
@@ -5863,6 +5876,97 @@ function generateEncodedToken(username = '') {
     const sys = process.platform === 'win32' ? 'win' : 'linux';
     const tokenData = `${username}&${device.deviceName}&${device.cpuId}&${sys}`;
     return Buffer.from(tokenData).toString('base64');
+}
+
+const CLOUD_SYNC_BASE = 'https://oicpp.mywwzh.top/api';
+
+function buildCloudSyncSignature({ loginToken, method, path, timestamp, nonce, bodyString }) {
+    const bodyHash = bodyString ? crypto.createHash('sha256').update(bodyString).digest('hex') : '';
+    const payload = [
+        String(method || 'GET').toUpperCase(),
+        String(path || '/'),
+        String(timestamp || ''),
+        String(nonce || ''),
+        bodyHash
+    ].join('\n');
+    return crypto.createHmac('sha256', loginToken).update(payload).digest('hex');
+}
+
+async function callCloudSyncApi(options = {}) {
+    const loginToken = getLoginToken();
+    if (!loginToken) {
+        return { ok: false, status: 401, error: '未登录' };
+    }
+
+    const method = String(options.method || 'GET').toUpperCase();
+    const pathRaw = options.path || '/cloudSync/list';
+    const pathPart = pathRaw.startsWith('/') ? pathRaw : `/${pathRaw}`;
+    const url = new URL(`${CLOUD_SYNC_BASE}${pathPart}`);
+    if (options.query && typeof options.query === 'object') {
+        for (const [key, value] of Object.entries(options.query)) {
+            if (value === undefined || value === null) continue;
+            url.searchParams.set(key, String(value));
+        }
+    }
+
+    let bodyPayload = options.body || {};
+    if (method !== 'GET' && method !== 'HEAD') {
+        if (typeof bodyPayload !== 'object' || Array.isArray(bodyPayload) || bodyPayload === null) {
+            bodyPayload = { data: bodyPayload };
+        }
+    }
+
+    const bodyString = (method === 'GET' || method === 'HEAD')
+        ? ''
+        : JSON.stringify(bodyPayload);
+
+    const timestamp = Date.now().toString();
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const signature = buildCloudSyncSignature({
+        loginToken,
+        method,
+        path: `/api${pathPart}`,
+        timestamp,
+        nonce,
+        bodyString
+    });
+
+    const headers = {
+        'Authorization': loginToken,
+        'X-OICPP-Token': generateEncodedToken(getLoggedInUsername()),
+        'X-OICPP-Timestamp': timestamp,
+        'X-OICPP-Nonce': nonce,
+        'X-OICPP-Signature': signature
+    };
+    if (bodyString) {
+        headers['Content-Type'] = 'application/json';
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+        try { controller.abort(); } catch (_) { }
+    }, 15000);
+
+    try {
+        const response = await fetch(url.toString(), {
+            method,
+            headers,
+            body: bodyString || undefined,
+            signal: controller.signal
+        });
+        const text = await response.text();
+        let data = null;
+        try {
+            data = text ? JSON.parse(text) : null;
+        } catch (_) {
+            data = text;
+        }
+        return { ok: response.ok, status: response.status, data };
+    } catch (error) {
+        return { ok: false, status: 0, error: error?.message || String(error) };
+    } finally {
+        clearTimeout(timeout);
+    }
 }
 
 async function sendHeartbeat(type = 'heartbeat', username = '') {
