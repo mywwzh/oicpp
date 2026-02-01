@@ -1,5 +1,8 @@
 const { app, BrowserWindow, Menu, ipcMain, dialog, shell, webContents } = require('electron');
 const http = require('http');
+const https = require('https');
+const crypto = require('crypto');
+const { URL } = require('url');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -30,6 +33,16 @@ function getUserIconPath() {
 let mainWindow;
 let sampleTesterServer = null; // HTTP 服务实例
 let competitiveCompanionServer = null; // Competitive Companion
+
+const AUTH_BASE = 'https://auth.mywwzh.top';
+const AUTH_LOGIN_PATH = '/oicpp_ide_login';
+const AUTH_VERIFY_PATH = '/api/verify_token';
+const AUTH_SERVICE = 'oicpp-ide';
+const IDE_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
+
+let ideLoginServer = null;
+let ideLoginState = null;
+let ideLoginTimeout = null;
 
 let allowMainWindowClose = false;
 let allowMainWindowCloseTimer = null;
@@ -78,6 +91,192 @@ function requestRendererCloseConfirmation(context = '关闭窗口') {
         try { logWarn(`[${context}] 无法通知渲染进程弹出关闭确认:`, e?.message || String(e)); } catch (_) { }
         closeRequestInProgress = false;
     }
+}
+
+function isLocalAddress(address) {
+    const addr = String(address || '');
+    return addr === '127.0.0.1' || addr === '::1' || addr.startsWith('::ffff:127.0.0.1');
+}
+
+function clearIdeLoginServer() {
+    if (ideLoginTimeout) {
+        try { clearTimeout(ideLoginTimeout); } catch (_) { }
+        ideLoginTimeout = null;
+    }
+    if (ideLoginServer) {
+        try { ideLoginServer.close(); } catch (_) { }
+        ideLoginServer = null;
+    }
+    ideLoginState = null;
+}
+
+function broadcastIdeLoginState(payload) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        try { mainWindow.webContents.send('ide-login-updated', payload); } catch (_) { }
+    }
+}
+
+function broadcastIdeLoginError(message) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        try { mainWindow.webContents.send('ide-login-error', { message }); } catch (_) { }
+    }
+}
+
+function sendLoginHtml(res, title, message, statusCode = 200) {
+    const escapeHtml = (input) => String(input || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    const safeTitle = escapeHtml(title);
+    const safeMsg = escapeHtml(message);
+    const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>${safeTitle}</title></head><body style="font-family: sans-serif; padding: 24px;"><h2>${safeTitle}</h2><p>${safeMsg}</p><p>你可以关闭此页面。</p></body></html>`;
+    try {
+        res.writeHead(statusCode, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+    } catch (_) {
+        try { res.end(); } catch (_) { }
+    }
+}
+
+function verifyIdeLoginToken(payload) {
+    return new Promise((resolve, reject) => {
+        const body = JSON.stringify(payload || {});
+        const req = https.request(`${AUTH_BASE}${AUTH_VERIFY_PATH}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(body)
+            },
+            timeout: 10000
+        }, (res) => {
+            let data = '';
+            res.on('data', chunk => { data += chunk; });
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data || '{}');
+                    resolve(json);
+                } catch (err) {
+                    reject(err);
+                }
+            });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => {
+            try { req.destroy(new Error('请求超时')); } catch (_) { }
+        });
+        req.write(body);
+        req.end();
+    });
+}
+
+async function handleIdeLoginCallback(req, res) {
+    if (!req || !res) return;
+
+    if (!isLocalAddress(req.socket?.remoteAddress)) {
+        sendLoginHtml(res, '登录失败', '非法回调来源。', 403);
+        clearIdeLoginServer();
+        return;
+    }
+
+    const reqUrl = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
+    if (reqUrl.pathname !== '/callback') {
+        sendLoginHtml(res, '未找到', '回调路径无效。', 404);
+        return;
+    }
+
+    const params = reqUrl.searchParams;
+    const uid = params.get('uid');
+    const username = params.get('username');
+    const timestamp = params.get('timestamp');
+    const token = params.get('token');
+    const accessToken = params.get('access_token');
+    const service = params.get('service');
+    const state = params.get('state');
+
+    if (!state || state !== ideLoginState) {
+        sendLoginHtml(res, '登录失败', '状态校验失败。');
+        broadcastIdeLoginError('状态校验失败');
+        clearIdeLoginServer();
+        return;
+    }
+
+    if (!uid || !username || !timestamp || !token || service !== AUTH_SERVICE) {
+        sendLoginHtml(res, '登录失败', '回调参数不完整或服务标识不匹配。');
+        broadcastIdeLoginError('回调参数不完整');
+        clearIdeLoginServer();
+        return;
+    }
+
+    try {
+        const verifyResult = await verifyIdeLoginToken({ uid, username, timestamp, token, service });
+        if (!verifyResult || verifyResult.success !== true || !verifyResult.user) {
+            sendLoginHtml(res, '登录失败', verifyResult?.error || '验证失败。');
+            broadcastIdeLoginError(verifyResult?.error || '验证失败');
+            clearIdeLoginServer();
+            return;
+        }
+
+        settings.account = {
+            user: verifyResult.user,
+            loginToken: accessToken || '',
+            loggedInAt: Date.now()
+        };
+        saveSettings();
+
+        try {
+            sendHeartbeat('start', verifyResult.user?.username || '');
+        } catch (_) { }
+
+        sendLoginHtml(res, '登录成功', '已完成登录。');
+        broadcastIdeLoginState({ loggedIn: true, user: verifyResult.user, message: '登录成功' });
+        clearIdeLoginServer();
+    } catch (err) {
+        sendLoginHtml(res, '登录失败', '验证请求失败。');
+        broadcastIdeLoginError('验证请求失败');
+        clearIdeLoginServer();
+    }
+}
+
+function startIdeLoginFlow() {
+    if (ideLoginServer) {
+        return Promise.resolve({ ok: false, message: '登录流程正在进行，请稍候完成。' });
+    }
+
+    return new Promise((resolve) => {
+        const state = crypto.randomBytes(16).toString('hex');
+        ideLoginState = state;
+
+        ideLoginServer = http.createServer((req, res) => {
+            handleIdeLoginCallback(req, res);
+        });
+
+        ideLoginServer.on('error', (err) => {
+            logError('[登录] 本地回调服务失败:', err?.message || err);
+            broadcastIdeLoginError('本地回调服务启动失败');
+            clearIdeLoginServer();
+        });
+
+        ideLoginServer.listen(0, '127.0.0.1', async () => {
+            try {
+                const port = ideLoginServer.address().port;
+                const redirect = `http://127.0.0.1:${port}/callback`;
+                const loginUrl = `${AUTH_BASE}${AUTH_LOGIN_PATH}?redirect=${encodeURIComponent(redirect)}&service=${encodeURIComponent(AUTH_SERVICE)}&state=${encodeURIComponent(state)}`;
+                await shell.openExternal(loginUrl);
+                ideLoginTimeout = setTimeout(() => {
+                    broadcastIdeLoginError('登录超时，请重试');
+                    clearIdeLoginServer();
+                }, IDE_LOGIN_TIMEOUT_MS);
+                resolve({ ok: true });
+            } catch (err) {
+                logError('[登录] 打开浏览器失败:', err?.message || err);
+                broadcastIdeLoginError('打开浏览器失败');
+                clearIdeLoginServer();
+                resolve({ ok: false, message: '打开浏览器失败' });
+            }
+        });
+    });
 }
 
 logger.init();
@@ -293,6 +492,7 @@ function getDefaultSettings() {
         windowOpacity: 1.0,
         backgroundImage: '',
         cppTemplate,
+        account: null,
         keybindings: {
             formatCode: 'Alt+Shift+S',
             showFunctionPicker: 'Ctrl+Shift+G',
@@ -1186,6 +1386,23 @@ function setupIPC() {
 
     ipcMain.handle('get-all-settings', () => {
         return settings;
+    });
+
+    ipcMain.handle('ide-login-start', async () => {
+        return startIdeLoginFlow();
+    });
+
+    ipcMain.handle('ide-login-status', () => {
+        const user = getLoggedInUser();
+        const loginToken = getLoginToken();
+        return { loggedIn: !!user, user, loginToken };
+    });
+
+    ipcMain.handle('ide-logout', () => {
+        settings.account = null;
+        saveSettings();
+        broadcastIdeLoginState({ loggedIn: false, user: null, message: '已退出登录' });
+        return { ok: true };
     });
 
     ipcMain.handle('get-top-level-settings', () => {
@@ -4444,7 +4661,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace'];
+            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
 
             for (const key of validKeys) {
                 if (savedSettings[key] !== undefined) {
@@ -4482,7 +4699,7 @@ function loadSettings() {
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace'];
+    const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -5585,6 +5802,18 @@ logInfo('OICPP IDE 主进程启动完成');
 let heartbeatInterval = null;
 let deviceInfo = null;
 
+function getLoggedInUser() {
+    return settings?.account?.user || null;
+}
+
+function getLoggedInUsername() {
+    return settings?.account?.user?.username || '';
+}
+
+function getLoginToken() {
+    return settings?.account?.loginToken || '';
+}
+
 function getDeviceInfo() {
     if (!deviceInfo) {
         const cpus = os.cpus();
@@ -5607,8 +5836,10 @@ function generateEncodedToken(username = '') {
 
 async function sendHeartbeat(type = 'heartbeat', username = '') {
     try {
-        const token = generateEncodedToken(username);
+        const actualUsername = (typeof username === 'string' && username.trim()) ? username.trim() : getLoggedInUsername();
+        const token = generateEncodedToken(actualUsername || '');
         const device = getDeviceInfo();
+        const loginToken = getLoginToken();
         let currentVersion = APP_VERSION;
         try {
             if (app && typeof app.getVersion === 'function') {
@@ -5623,8 +5854,12 @@ async function sendHeartbeat(type = 'heartbeat', username = '') {
             version: currentVersion
         };
 
+        if (loginToken) {
+            data.login_token = loginToken;
+        }
+
         if (type === 'start') {
-            data.username = username;
+            data.username = actualUsername || '';
             data.device_name = device.deviceName;
             data.cpu_id = device.cpuId;
         }
@@ -5646,14 +5881,14 @@ async function sendHeartbeat(type = 'heartbeat', username = '') {
 }
 
 function startHeartbeatService() {
-    sendHeartbeat('start', '');
+    sendHeartbeat('start', getLoggedInUsername());
 
     if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
     }
 
     heartbeatInterval = setInterval(() => {
-        sendHeartbeat('heartbeat', '');
+        sendHeartbeat('heartbeat', getLoggedInUsername());
     }, 30 * 60 * 1000); // 30分钟
 
 }
@@ -5667,7 +5902,7 @@ function stopHeartbeatService() {
 
 ipcMain.handle('get-encoded-token', () => {
     try {
-        return generateEncodedToken('');
+        return generateEncodedToken(getLoggedInUsername());
     } catch (e) {
         return '';
     }
