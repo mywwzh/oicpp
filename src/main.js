@@ -522,6 +522,8 @@ let settings = getDefaultSettings();
 
 let isUpdateDownloading = false; // 是否正在下载更新
 let currentDownloadingVersion = null; // 正在下载的版本
+let pendingInstallerLaunch = null; // 退出后待启动的安装程序
+let pendingInstallerLaunchArmed = false;
 
 let debugProcess = null;
 let debugSession = null;
@@ -4474,45 +4476,74 @@ async function downloadAndInstallUpdate(updateInfo = null) {
     }
 }
 
+function launchInstallerDetached(installerPath) {
+    const { spawn } = require('child_process');
+    const child = spawn('cmd.exe', ['/c', 'start', '""', installerPath], { detached: true, stdio: 'ignore', windowsHide: true });
+    child.on('error', (err) => {
+        try { logError('[更新] 启动安装程序失败:', err?.message || err); } catch (_) { }
+        try {
+            const { shell } = require('electron');
+            shell.openPath(installerPath).catch(() => { });
+        } catch (_) { }
+    });
+    child.unref();
+}
+
+function armInstallerLaunchOnQuit(installerPath) {
+    if (!installerPath || process.platform !== 'win32') return;
+    pendingInstallerLaunch = { installerPath, requestedAt: Date.now() };
+    if (pendingInstallerLaunchArmed) return;
+    pendingInstallerLaunchArmed = true;
+    app.once('will-quit', () => {
+        const launchInfo = pendingInstallerLaunch;
+        pendingInstallerLaunch = null;
+        pendingInstallerLaunchArmed = false;
+        if (!launchInfo || !launchInfo.installerPath) return;
+        try {
+            launchInstallerDetached(launchInfo.installerPath);
+            logInfo('[更新] 应用退出后已尝试启动安装程序');
+        } catch (err) {
+            logError('[更新] 退出后启动安装程序失败:', err?.message || err);
+        }
+    });
+}
+
 function runInstaller(installerPath) {
     try {
         logInfo('准备运行安装程序:', installerPath);
         if (!fs.existsSync(installerPath)) throw new Error('安装程序文件不存在');
-        const { shell } = require('electron');
+        const isWindows = process.platform === 'win32';
 
-        if (process.platform === 'linux') {
-            try {
-                const settingsPath = getSettingsPath();
-                if (fs.existsSync(settingsPath)) {
-                    const backupDir = path.join(os.tmpdir(), 'oicpp_backup');
-                    if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
-                    fs.copyFileSync(settingsPath, path.join(backupDir, 'settings.json'));
-                    logInfo('[更新] 已备份 settings.json 至临时目录');
-                }
-                ensureUserIconForLinux();
-            } catch (e) { logWarn('[更新] 备份设置失败(可忽略):', e.message); }
+        if (!isWindows) {
+            const { shell } = require('electron');
+            const openPromise = process.platform === 'linux' ? shell.openPath(installerPath) : shell.openExternal(installerPath);
+            openPromise.catch(() => { });
+            return;
         }
 
-        const isLinux = process.platform === 'linux';
-        const isWindows = process.platform === 'win32';
-        const openPromise = isLinux ? shell.openPath(installerPath) : shell.openExternal(installerPath);
+        try {
+            dialog.showMessageBoxSync(mainWindow, {
+                type: 'info',
+                title: '即将启动更新',
+                message: '应用将自动退出后启动更新安装程序',
+                detail: '为避免文件占用，OICPP IDE 会先退出，然后运行安装程序。',
+                buttons: ['确定'],
+                defaultId: 0
+            });
+        } catch (_) { }
 
-        openPromise.then((result) => {
-            const success = isLinux ? (result === '') : (result === true);
-            if (success) {
-                logInfo('安装程序已启动');
-                dialog.showMessageBox(mainWindow, {
-                    type: 'info',
-                    title: '安装程序已启动',
-                    message: '更新安装程序正在运行',
-                    detail: isWindows ? 'OICPP IDE 将关闭以允许安装程序更新文件。\n\n请按照安装程序的提示完成更新。' : 'OICPP IDE 将关闭以允许系统包管理器安装更新。\n\n若未自动打开，请手动运行该 .deb 包 (sudo dpkg -i <file>.deb)。',
-                    buttons: ['确定']
-                });
-                setTimeout(() => { app.quit(); }, 2000);
-            } else {
-                throw new Error('无法启动安装程序');
-            }
-        }).catch(error => { throw error; });
+        armInstallerLaunchOnQuit(installerPath);
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            armAllowMainWindowClose(SAVE_ALL_TIMEOUT + 10000);
+            requestSaveAllAndClose('更新安装');
+        } else {
+            app.quit();
+        }
+
+        setTimeout(() => {
+            try { app.quit(); } catch (_) { }
+        }, SAVE_ALL_TIMEOUT + 8000);
     } catch (error) {
         logError('运行安装程序失败:', error);
         let errorDetail = `错误信息: ${error.message}\n\n安装程序位置: ${installerPath}\n\n您可以手动运行安装程序来完成更新。`;
