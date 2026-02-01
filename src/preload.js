@@ -533,6 +533,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     startIdeLogin: () => ipcRenderer.invoke('ide-login-start'),
     getIdeLoginStatus: () => ipcRenderer.invoke('ide-login-status'),
     logoutIdeAccount: () => ipcRenderer.invoke('ide-logout'),
+    cloudSyncRequest: (payload) => ipcRenderer.invoke('cloud-sync-request', payload),
     onIdeLoginUpdated: (callback) => ipcRenderer.on('ide-login-updated', (_event, payload) => callback && callback(payload)),
     onIdeLoginError: (callback) => ipcRenderer.on('ide-login-error', (_event, payload) => callback && callback(payload)),
 

@@ -37,6 +37,11 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+    overflow-y: auto;
+}
+
+.sidebar-icons-spacer {
+    display: none;
 }
 
 .sidebar-icon {
@@ -70,6 +75,11 @@
     width: 2px;
     height: 24px;
     background-color: var(--accent-color, #007acc);
+}
+
+.sidebar-icon.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 .sidebar-icon svg {
@@ -147,6 +157,25 @@
     padding: 8px 0;
     min-width: 0;
     width: 100%;
+}
+
+.cloud-summary {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-color, #464647);
+    font-size: 11px;
+    color: var(--text-muted, #9aa0a6);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.cloud-summary-text {
+    color: var(--text-color, #cccccc);
+    font-weight: 600;
+}
+
+.cloud-summary-hint {
+    opacity: 0.8;
 }
 
 .tree-item {

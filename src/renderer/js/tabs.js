@@ -1487,7 +1487,16 @@ class TabManager {
             }
             const filePath = tabData.filePath;
             const tabId = tabData.tabId;
+            const isCloudPath = (p) => {
+                if (window.oicppApp && typeof window.oicppApp.isCloudFilePath === 'function') {
+                    return window.oicppApp.isCloudFilePath(p);
+                }
+                return typeof p === 'string' && /^cloud:/i.test(p);
+            };
             if (!filePath || !tabId || !window.electronAPI?.watchFile) {
+                return;
+            }
+            if (isCloudPath(filePath)) {
                 return;
             }
             const key = this.normalizeWatchKey(filePath);
@@ -2022,7 +2031,13 @@ class TabManager {
 
         const content = this.getTabContentForSave(currentTab);
         if (typeof content === 'string') {
-            if (currentTab.filePath && window.electronAPI?.saveFile) {
+            const isCloudPath = (p) => {
+                if (window.oicppApp && typeof window.oicppApp.isCloudFilePath === 'function') {
+                    return window.oicppApp.isCloudFilePath(p);
+                }
+                return typeof p === 'string' && /^cloud:/i.test(p);
+            };
+            if (currentTab.filePath && window.electronAPI?.saveFile && !isCloudPath(currentTab.filePath)) {
                 window.electronAPI.saveFile(currentTab.filePath, content)
                     .then(() => { logInfo('文件自动保存成功:', currentTab.filePath); })
                     .catch((e) => { logError('自动保存失败:', e); });
@@ -2175,7 +2190,33 @@ class TabManager {
             const safeName = escapeHtml(tabData.fileName || fileName || '当前文件');
             const message = `标签页 “${safeName}” 有未保存修改。<br><br>请选择如何处理这些修改。`;
 
-            const proceedSave = () => this.closeTab(fileName, { ...options, skipCloseConfirm: true });
+            const proceedSave = async () => {
+                try {
+                    const path = tabData.filePath || (explicitKey && typeof explicitKey === 'string' ? explicitKey : null);
+                    const content = this.getTabContentForSave(tabData);
+                    const isCloudPath = (p) => {
+                        if (window.oicppApp && typeof window.oicppApp.isCloudFilePath === 'function') {
+                            return window.oicppApp.isCloudFilePath(p);
+                        }
+                        return typeof p === 'string' && /^cloud:/i.test(p);
+                    };
+
+                    if (path && typeof content === 'string') {
+                        if (isCloudPath(path)) {
+                            if (window.oicppApp && typeof window.oicppApp.saveCloudFileToServer === 'function') {
+                                const ok = await window.oicppApp.saveCloudFileToServer(path, content);
+                                if (!ok) return;
+                            }
+                        } else if (window.electronAPI?.saveFile) {
+                            await window.electronAPI.saveFile(path, content);
+                        }
+                    }
+                } catch (e) {
+                    logWarn('关闭前保存失败:', e);
+                    return;
+                }
+                this.closeTab(fileName, { ...options, skipCloseConfirm: true, skipAutoSave: true });
+            };
             const proceedDiscard = () => this.closeTab(fileName, { ...options, skipCloseConfirm: true, skipAutoSave: true });
 
             try {
@@ -2186,7 +2227,10 @@ class TabManager {
                         { id: 'cancel', label: '取消' }
                     ])
                         .then((result) => {
-                            if (result === 'save') proceedSave();
+                            if (result === 'save') {
+                                proceedSave();
+                                return;
+                            }
                             else if (result === 'discard') proceedDiscard();
                         })
                         .catch((e) => logWarn('关闭标签页确认弹窗失败:', e));
@@ -2233,7 +2277,13 @@ class TabManager {
             try {
                 const path = tabData.filePath || (uniqueKey && uniqueKey.includes('/') ? uniqueKey : null);
                 const content = this.getTabContentForSave(tabData);
-                if (path && typeof content === 'string' && window.electronAPI?.saveFile) {
+                const isCloudPath = (p) => {
+                    if (window.oicppApp && typeof window.oicppApp.isCloudFilePath === 'function') {
+                        return window.oicppApp.isCloudFilePath(p);
+                    }
+                    return typeof p === 'string' && /^cloud:/i.test(p);
+                };
+                if (path && typeof content === 'string' && window.electronAPI?.saveFile && !isCloudPath(path)) {
                         window.electronAPI.saveFile(path, content)
                             .then(() => {
                                 if (this.markTabAsSavedByUniqueKey) {
@@ -4239,6 +4289,9 @@ class TabManager {
         for (const [uniqueKey, tabData] of modifiedEntries) {
             const filePath = tabData.filePath;
             if (!filePath || typeof filePath !== 'string') {
+                continue;
+            }
+            if ((window.oicppApp && typeof window.oicppApp.isCloudFilePath === 'function' && window.oicppApp.isCloudFilePath(filePath)) || /^cloud:/i.test(filePath)) {
                 continue;
             }
 
