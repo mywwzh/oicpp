@@ -36,6 +36,10 @@ SetCompressor lzma
 !insertmacro MUI_PAGE_INSTFILES
 ; Finish page
 !define MUI_FINISHPAGE_RUN "$INSTDIR\OICPP IDE.exe"
+!define MUI_FINISHPAGE_SHOWREADME
+!define MUI_FINISHPAGE_SHOWREADME_CHECKED
+!define MUI_FINISHPAGE_SHOWREADME_TEXT "创建桌面快捷方式"
+!define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
 ; Custom page to set file association for .cpp (shown before Finish page)
 Page custom MyCppAssocShow MyCppAssocLeave
 !insertmacro MUI_PAGE_FINISH
@@ -71,7 +75,6 @@ Section "OICPP 主程序" SEC01
 
   CreateDirectory "$SMPROGRAMS\OICPP IDE"
   CreateShortCut "$SMPROGRAMS\OICPP IDE\OICPP IDE.lnk" "$INSTDIR\OICPP IDE.exe" "" "$PROFILE\.oicpp\oicpp.ico"
-  CreateShortCut "$DESKTOP\OICPP IDE.lnk" "$INSTDIR\OICPP IDE.exe" "" "$PROFILE\.oicpp\oicpp.ico"
 
   File "dist\win-unpacked\d3dcompiler_47.dll"
   File "dist\win-unpacked\ffmpeg.dll"
@@ -198,6 +201,10 @@ Function MyCppAssocLeave
   ; build the quoted command into a temp variable to avoid parser splitting
   StrCpy $R0 '"$INSTDIR\\OICPP IDE.exe" "%1"'
   WriteRegStr HKCR "OICPPIDE.cpp\\shell\\open\\command" "" $R0
+FunctionEnd
+
+Function CreateDesktopShortcut
+  CreateShortCut "$DESKTOP\OICPP IDE.lnk" "$INSTDIR\OICPP IDE.exe" "" "$PROFILE\.oicpp\oicpp.ico"
 FunctionEnd
 
 Function un.onUninstSuccess
