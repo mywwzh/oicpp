@@ -450,7 +450,7 @@ class EditorSettings {
 
             if (allSettings) {
                 const rawMode = typeof allSettings.markdownMode === 'string' ? allSettings.markdownMode.trim().toLowerCase() : '';
-                const markdownMode = ['code', 'wysiwyg', 'split'].includes(rawMode) ? rawMode : 'split';
+                const markdownMode = ['code', 'split'].includes(rawMode) ? rawMode : 'split';
                 this.settings = {
                     font: allSettings.font || 'Consolas',
                     fontSize: allSettings.fontSize || 14,
@@ -611,8 +611,6 @@ class EditorSettings {
         if (foldingCheckbox) newSettings.foldingEnabled = !!foldingCheckbox.checked;
         const stickyScrollCheckbox = document.getElementById('editor-sticky-scroll');
         if (stickyScrollCheckbox) newSettings.stickyScrollEnabled = !!stickyScrollCheckbox.checked;
-        const markdownModeSelect = document.getElementById('markdown-mode');
-        if (markdownModeSelect) newSettings.markdownMode = markdownModeSelect.value;
         const ligaturesCheckbox = document.getElementById('editor-font-ligatures');
         if (ligaturesCheckbox) newSettings.fontLigaturesEnabled = !!ligaturesCheckbox.checked;
         const tabSizeInput = document.getElementById('editor-tab-size');
@@ -844,10 +842,6 @@ class EditorSettings {
         }
         if (stickyScrollCheckbox) {
             stickyScrollCheckbox.checked = this.settings.stickyScrollEnabled !== false;
-        }
-        const markdownModeSelect = document.getElementById('markdown-mode');
-        if (markdownModeSelect) {
-            markdownModeSelect.value = this.settings.markdownMode || 'split';
         }
         if (ligaturesCheckbox) {
             ligaturesCheckbox.checked = this.settings.fontLigaturesEnabled !== false;
