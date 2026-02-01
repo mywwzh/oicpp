@@ -5,7 +5,8 @@ class SidebarManager {
             files: new FileExplorer(),
             samples: new SampleTester(),
             compare: new CodeComparer(),
-            debug: new DebugPanel()
+            debug: new DebugPanel(),
+            cloud: new CloudSyncPanel()
         };
 
         this._pendingResizeRaf = null;
@@ -18,6 +19,21 @@ class SidebarManager {
         this.setupEventListeners();
         this.setupResizer();
         this.showPanel('files');
+        this.bootstrapCloudVisibility();
+    }
+
+    async bootstrapCloudVisibility() {
+        try {
+            if (!window.electronAPI?.getIdeLoginStatus) return;
+            const status = await window.electronAPI.getIdeLoginStatus();
+            logInfo('[CloudSpace] 启动时登录状态:', {
+                loggedIn: !!status?.loggedIn,
+                user: status?.user?.username || ''
+            });
+            this.setCloudPanelVisible(!!status?.loggedIn);
+        } catch (error) {
+            logWarn('初始化云空间面板可见性失败:', error);
+        }
     }
 
     setupEventListeners() {
@@ -357,6 +373,13 @@ class SidebarManager {
 
     showPanel(panelName) {
         logInfo('showPanel called, panelName:', panelName, 'isCollapsed:', this.isCollapsed);
+        this.updateCloudPanelLocks();
+        if (this.isCloudFileActive() && ['debug', 'samples', 'compare'].includes(panelName)) {
+            if (window.oicppApp?.showMessage) {
+                window.oicppApp.showMessage('云文件仅支持基础编辑与手动保存，请下载到本地再使用该面板。', 'warning');
+            }
+            return;
+        }
         if (this.isCollapsed) {
             logInfo('侧边栏处于折叠状态，正在展开...');
             this.expandSidebar();
@@ -419,6 +442,61 @@ class SidebarManager {
                 btn.style.cursor = hasWorkspace ? 'pointer' : 'not-allowed';
             }
         });
+    }
+
+    isCloudFileActive() {
+        try {
+            const filePath = window.oicppApp?.getActiveFilePath?.();
+            if (!filePath) return false;
+            if (window.oicppApp?.isCloudFilePath) {
+                return window.oicppApp.isCloudFilePath(filePath);
+            }
+            return typeof filePath === 'string' && /^cloud:/i.test(filePath);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    updateCloudPanelLocks() {
+        const locked = this.isCloudFileActive();
+        const lockTargets = ['debug', 'samples', 'compare'];
+        lockTargets.forEach(panel => {
+            const icon = document.querySelector(`.sidebar-icon[data-panel="${panel}"]`);
+            if (!icon) return;
+            if (locked) {
+                icon.classList.add('disabled');
+                icon.setAttribute('title', '云文件仅支持基础编辑与手动保存');
+            } else {
+                icon.classList.remove('disabled');
+                if (panel === 'debug') icon.setAttribute('title', '调试');
+                if (panel === 'samples') icon.setAttribute('title', '样例测试器');
+                if (panel === 'compare') icon.setAttribute('title', '代码对拍器');
+            }
+        });
+    }
+
+    setCloudPanelVisible(visible) {
+        const show = !!visible;
+        const icon = document.querySelector('.sidebar-icon.cloud-sync-icon');
+        const panel = document.getElementById('cloud-panel');
+        if (icon) {
+            icon.style.display = show ? 'flex' : 'none';
+            icon.style.visibility = show ? 'visible' : 'hidden';
+        } else {
+            logWarn('未找到云空间侧边栏图标');
+        }
+        if (panel) {
+            panel.style.display = show ? 'flex' : 'none';
+            panel.style.visibility = show ? 'visible' : 'hidden';
+        } else {
+            logWarn('未找到云空间面板容器');
+        }
+        if (!show && this.currentPanel === 'cloud') {
+            this.showPanel('files');
+        }
+        if (this.panels.cloud && typeof this.panels.cloud.setLoggedInState === 'function') {
+            this.panels.cloud.setLoggedInState(show);
+        }
     }
 }
 
