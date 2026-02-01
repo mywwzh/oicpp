@@ -11,6 +11,9 @@ class OICPPApp {
         };
         this.editorManager = null;
         this.initialized = false;
+        this.accountLoggedIn = false;
+        this.accountInfo = null;
+        this._accountIpcBound = false;
     this.isDebugging = false;
     this._autoContinueOnStart = false;
     this._debugSessionId = 0;
@@ -57,6 +60,7 @@ class OICPPApp {
             this.setupEventListeners();
             this.updatePlatformSpecificMenu();
             this.setupIPC();
+            await this.initAccountMenu();
             await this.loadSettings();
             this.configureAutoSave();
             this.loadDefaultFiles();
@@ -209,8 +213,129 @@ class OICPPApp {
             case 'check-update':
                 this.checkForUpdates();
                 break;
+            case 'ide-login':
+                await this.startIdeLogin();
+                break;
+            case 'ide-account':
+                this.openIdeAccount();
+                break;
+            case 'ide-logout':
+                await this.logoutIdeAccount();
+                break;
             default:
                 logInfo('未知的菜单动作:', action);
+        }
+    }
+
+    async initAccountMenu() {
+        await this.refreshAccountState();
+
+        if (!window.electronAPI || this._accountIpcBound) {
+            return;
+        }
+
+        this._accountIpcBound = true;
+
+        if (typeof window.electronAPI.onIdeLoginUpdated === 'function') {
+            window.electronAPI.onIdeLoginUpdated((payload) => {
+                this.accountLoggedIn = !!payload?.loggedIn;
+                this.accountInfo = payload?.user || null;
+                this.updateAccountMenu();
+                if (payload?.message) {
+                    this.showMessage(payload.message, payload.loggedIn ? 'success' : 'info');
+                }
+            });
+        }
+
+        if (typeof window.electronAPI.onIdeLoginError === 'function') {
+            window.electronAPI.onIdeLoginError((payload) => {
+                const msg = payload?.message || '登录失败';
+                this.showMessage(msg, 'error');
+            });
+        }
+    }
+
+    async refreshAccountState() {
+        if (!window.electronAPI || typeof window.electronAPI.getIdeLoginStatus !== 'function') {
+            this.updateAccountMenu();
+            return;
+        }
+        try {
+            const status = await window.electronAPI.getIdeLoginStatus();
+            this.accountLoggedIn = !!status?.loggedIn;
+            this.accountInfo = status?.user || null;
+        } catch (error) {
+            logWarn('获取登录状态失败:', error?.message || error);
+        }
+        this.updateAccountMenu();
+    }
+
+    updateAccountMenu() {
+        const loginItem = document.querySelector('.menu-dropdown-item[data-action="ide-login"]');
+        const accountItem = document.querySelector('.menu-dropdown-item[data-action="ide-account"]');
+        const logoutItem = document.querySelector('.menu-dropdown-item[data-action="ide-logout"]');
+
+        if (!loginItem || !accountItem || !logoutItem) return;
+
+        const accountLabel = accountItem.querySelector('span') || accountItem;
+        const username = this.accountInfo?.username || '';
+
+        if (this.accountLoggedIn) {
+            loginItem.style.display = 'none';
+            accountItem.style.display = '';
+            logoutItem.style.display = '';
+            if (accountLabel) {
+                accountLabel.textContent = username ? `我的账户(${username})` : '我的账户';
+            }
+        } else {
+            loginItem.style.display = '';
+            accountItem.style.display = 'none';
+            logoutItem.style.display = 'none';
+            if (accountLabel) {
+                accountLabel.textContent = '我的账户';
+            }
+        }
+    }
+
+    async startIdeLogin() {
+        if (!window.electronAPI || typeof window.electronAPI.startIdeLogin !== 'function') {
+            this.showMessage('登录功能不可用', 'error');
+            return;
+        }
+        try {
+            const result = await window.electronAPI.startIdeLogin();
+            if (result && result.ok === false && result.message) {
+                this.showMessage(result.message, 'warning');
+            } else {
+                this.showMessage('已打开浏览器，请完成登录', 'info');
+            }
+        } catch (error) {
+            this.showMessage('启动登录失败: ' + (error?.message || error), 'error');
+        }
+    }
+
+    openIdeAccount() {
+        if (!this.accountLoggedIn) {
+            this.showMessage('请先登录账户', 'warning');
+            return;
+        }
+        if (window.electronAPI && typeof window.electronAPI.openExternal === 'function') {
+            window.electronAPI.openExternal('https://auth.mywwzh.top/account');
+        }
+    }
+
+    async logoutIdeAccount() {
+        if (!window.electronAPI || typeof window.electronAPI.logoutIdeAccount !== 'function') {
+            this.showMessage('退出登录不可用', 'error');
+            return;
+        }
+        try {
+            const result = await window.electronAPI.logoutIdeAccount();
+            if (result && result.ok) {
+                this.showMessage('已退出登录', 'success');
+            }
+        } catch (error) {
+            this.showMessage('退出登录失败: ' + (error?.message || error), 'error');
         }
     }
 
