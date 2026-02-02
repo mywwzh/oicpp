@@ -218,12 +218,27 @@ async function handleIdeLoginCallback(req, res) {
             return;
         }
 
+        const resolvedToken = accessToken
+            || verifyResult?.access_token
+            || verifyResult?.login_token
+            || verifyResult?.token
+            || '';
+        if (!resolvedToken) {
+            sendLoginHtml(res, '登录失败', '未获取到登录凭证。');
+            broadcastIdeLoginError('未获取到登录凭证');
+            clearIdeLoginServer();
+            return;
+        }
+
         settings.account = {
             user: verifyResult.user,
-            loginToken: accessToken || '',
+            loginToken: resolvedToken,
             loggedInAt: Date.now()
         };
         saveSettings();
+        try {
+            logInfo('[登录] 登录信息已保存:', settings?.account?.user?.username || 'unknown');
+        } catch (_) { }
 
         try {
             sendHeartbeat('start', verifyResult.user?.username || '');
@@ -1397,7 +1412,7 @@ function setupIPC() {
     ipcMain.handle('ide-login-status', () => {
         const user = getLoggedInUser();
         const loginToken = getLoginToken();
-        return { loggedIn: !!user, user, loginToken };
+        return { loggedIn: !!user && !!loginToken, user, loginToken };
     });
 
     ipcMain.handle('cloud-sync-request', async (_event, payload) => {
@@ -5903,9 +5918,12 @@ async function callCloudSyncApi(options = {}) {
     const pathPart = pathRaw.startsWith('/') ? pathRaw : `/${pathRaw}`;
     const url = new URL(`${CLOUD_SYNC_BASE}${pathPart}`);
     if (options.query && typeof options.query === 'object') {
-        for (const [key, value] of Object.entries(options.query)) {
-            if (value === undefined || value === null) continue;
-            url.searchParams.set(key, String(value));
+        const entries = Object.entries(options.query)
+            .filter(([, value]) => value !== undefined && value !== null)
+            .map(([key, value]) => [String(key), String(value)]);
+        entries.sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+        for (const [key, value] of entries) {
+            url.searchParams.append(key, value);
         }
     }
 
@@ -5922,17 +5940,18 @@ async function callCloudSyncApi(options = {}) {
 
     const timestamp = Date.now().toString();
     const nonce = crypto.randomBytes(16).toString('hex');
+    const canonicalPath = `/api${pathPart}`;
     const signature = buildCloudSyncSignature({
         loginToken,
         method,
-        path: `/api${pathPart}`,
+        path: canonicalPath,
         timestamp,
         nonce,
         bodyString
     });
 
     const headers = {
-        'Authorization': loginToken,
+        'Authorization': `Bearer ${loginToken}`,
         'X-OICPP-Token': generateEncodedToken(getLoggedInUsername()),
         'X-OICPP-Timestamp': timestamp,
         'X-OICPP-Nonce': nonce,
