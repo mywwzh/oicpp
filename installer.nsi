@@ -17,6 +17,7 @@
 Unicode true
 
 Var CPP_ASSOC_CHECKBOX
+Var DESKTOP_SHORTCUT_CHECKBOX
 
 SetCompressor lzma
 
@@ -36,10 +37,6 @@ SetCompressor lzma
 !insertmacro MUI_PAGE_INSTFILES
 ; Finish page
 !define MUI_FINISHPAGE_RUN "$INSTDIR\OICPP IDE.exe"
-!define MUI_FINISHPAGE_SHOWREADME
-!define MUI_FINISHPAGE_SHOWREADME_CHECKED
-!define MUI_FINISHPAGE_SHOWREADME_TEXT "创建桌面快捷方式"
-!define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
 ; Custom page to set file association for .cpp (shown before Finish page)
 Page custom MyCppAssocShow MyCppAssocLeave
 !insertmacro MUI_PAGE_FINISH
@@ -188,6 +185,13 @@ Function MyCppAssocShow
   ${NSD_CreateCheckBox} 0 18u 100% 12u "将 OICPP IDE 设为 .cpp 默认打开程序"
   Pop $CPP_ASSOC_CHECKBOX
 
+  ${NSD_CreateLabel} 0 40u 100% 12u "其他选项："
+  Pop $2
+
+  ${NSD_CreateCheckBox} 0 58u 100% 12u "创建桌面快捷方式"
+  Pop $DESKTOP_SHORTCUT_CHECKBOX
+  ${NSD_Check} $DESKTOP_SHORTCUT_CHECKBOX
+
   nsDialogs::Show
 FunctionEnd
 
@@ -201,6 +205,10 @@ Function MyCppAssocLeave
   ; build the quoted command into a temp variable to avoid parser splitting
   StrCpy $R0 '"$INSTDIR\\OICPP IDE.exe" "%1"'
   WriteRegStr HKCR "OICPPIDE.cpp\\shell\\open\\command" "" $R0
+
+  ${NSD_GetState} $DESKTOP_SHORTCUT_CHECKBOX $1
+  StrCmp $1 1 0 +2
+    Call CreateDesktopShortcut
 FunctionEnd
 
 Function CreateDesktopShortcut
