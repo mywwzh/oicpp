@@ -879,9 +879,12 @@ class CloudSyncPanel {
         };
         const response = await window.electronAPI.cloudSyncRequest(payload);
         if (!response?.ok) {
-            const msg = response?.status === 401
-                ? '登录已过期，请重新登录'
-                : (response?.data?.msg || response?.error || '请求失败');
+            if (response?.status === 401) {
+                try { await window.electronAPI.logoutIdeAccount?.(); } catch (_) { }
+                this.setLoggedInState(false);
+                throw new Error('登录已过期，请重新登录');
+            }
+            const msg = response?.data?.msg || response?.error || '请求失败';
             throw new Error(msg);
         }
         const data = response?.data;
