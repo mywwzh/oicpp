@@ -4395,7 +4395,7 @@ class TabManager {
         return `
             <div class="welcome-page">
                 <div class="welcome-header">
-                    <img class="welcome-logo-image" src="../../build/icons/png/128x128.png" alt="OICPP Logo">
+                    <img class="welcome-logo-image" alt="OICPP Logo">
                     <div class="welcome-logo">OICPP IDE</div>
                     <div class="welcome-subtitle">为 OIer 优化的 C++ 编程环境</div>
                     <div class="welcome-version">版本 1.2.1 (v25)</div>
@@ -4480,6 +4480,30 @@ class TabManager {
         });
 
         this.loadRecentFiles(container);
+        this.updateWelcomeLogo(container);
+    }
+
+    async updateWelcomeLogo(container) {
+        const img = container.querySelector('.welcome-logo-image');
+        if (!img) return;
+
+        let logoPath = '';
+        if (window.electronAPI && typeof window.electronAPI.getUserIconPath === 'function') {
+            try {
+                logoPath = await window.electronAPI.getUserIconPath();
+            } catch (_) {
+                logoPath = '';
+            }
+        }
+
+        if (logoPath) {
+            const normalized = String(logoPath).replace(/\\/g, '/');
+            const encoded = encodeURI(normalized);
+            const prefix = encoded.startsWith('/') ? 'file://' : 'file:///';
+            img.src = `${prefix}${encoded}`;
+        } else {
+            img.src = '../../build/icons/png/128x128.png';
+        }
     }
 
     async loadRecentFiles(container) {
@@ -4792,7 +4816,7 @@ void hello() {
         return `
             <div class="welcome-page">
                 <div class="welcome-header">
-                    <img class="welcome-logo-image" src="../../build/icons/png/128x128.png" alt="OICPP Logo">
+                    <img class="welcome-logo-image" alt="OICPP Logo">
                     <div class="welcome-logo">OICPP IDE</div>
                     <div class="welcome-subtitle">为 OIer 优化的 C++ 编程环境</div>
                     <div class="welcome-version">版本 1.2.1 (v25)</div>
