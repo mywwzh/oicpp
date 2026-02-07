@@ -18,6 +18,9 @@ class CloudSyncPanel {
         this.treeEl = document.getElementById('cloud-tree');
         this.summaryEl = document.getElementById('cloud-summary');
         this.remainingEl = document.getElementById('cloud-remaining');
+        this.uploadProgressEl = document.getElementById('cloud-upload-progress');
+        this.uploadProgressTextEl = document.getElementById('cloud-upload-progress-text');
+        this.uploadProgressFillEl = document.getElementById('cloud-upload-progress-fill');
         this.bindHeaderActions();
         this.setupTreeEvents();
         this.setupKeyboardShortcuts();
@@ -40,6 +43,9 @@ class CloudSyncPanel {
                         break;
                     case 'cloud-upload':
                         this.uploadLocalFile();
+                        break;
+                    case 'cloud-upload-folder':
+                        this.uploadLocalFolder();
                         break;
                     case 'cloud-refresh':
                         this.refresh();
@@ -616,6 +622,118 @@ class CloudSyncPanel {
         }
     }
 
+    async uploadLocalFolder() {
+        if (!this._lastLoggedIn) {
+            this.showMessage('请先登录账户', 'warning');
+            return;
+        }
+        if (!window.electronAPI?.showOpenDialog || !window.electronAPI?.walkDirectory) {
+            this.showMessage('上传功能不可用', 'error');
+            return;
+        }
+        try {
+            const result = await window.electronAPI.showOpenDialog({
+                title: '选择要上传的文件夹',
+                properties: ['openDirectory']
+            });
+            const folderPath = result?.filePaths?.[0];
+            if (!folderPath) return;
+
+            const info = await window.electronAPI.getPathInfo(folderPath);
+            const folderName = info?.basename || folderPath.split(/[\\/]/).pop() || 'folder';
+            const targetDir = this.getActionTargetFolder();
+            const cloudRoot = this.joinPath(targetDir, folderName);
+
+            const walkResult = await window.electronAPI.walkDirectory(folderPath, {
+                includeExts: Array.from(this.allowedExtensions)
+            });
+            if (!walkResult?.success) {
+                throw new Error(walkResult?.error || '读取文件夹失败');
+            }
+            const rawFiles = Array.isArray(walkResult.files) ? walkResult.files : [];
+            if (rawFiles.length === 0) {
+                this.showMessage('文件夹内没有可上传的文件', 'warning');
+                return;
+            }
+
+            const rootNorm = this.normalizeLocalPath(folderPath);
+            const entries = [];
+            for (const file of rawFiles) {
+                const ext = (file.ext || this.getExtension(file.name)).toLowerCase();
+                if (!this.allowedExtensions.has(ext)) {
+                    continue;
+                }
+                const rel = this.getRelativeLocalPath(file.path, rootNorm);
+                if (!rel) continue;
+                entries.push({ path: file.path, rel });
+            }
+
+            if (entries.length === 0) {
+                this.showMessage('文件夹内没有可上传的文件', 'warning');
+                return;
+            }
+
+            if (typeof this.remainingFiles === 'number' && entries.length > this.remainingFiles) {
+                this.showMessage(`待上传文件 ${entries.length} 个，超过云端剩余数量 ${this.remainingFiles}`, 'warning');
+                return;
+            }
+
+            await this.tryCreateCloudFolder(cloudRoot);
+            const folders = new Set();
+            for (const entry of entries) {
+                const relDir = this.getRelativeDir(entry.rel);
+                if (!relDir) continue;
+                const parts = relDir.split('/').filter(Boolean);
+                for (let i = 1; i <= parts.length; i++) {
+                    folders.add(parts.slice(0, i).join('/'));
+                }
+            }
+            const folderList = Array.from(folders).sort((a, b) => a.split('/').length - b.split('/').length);
+            for (const relDir of folderList) {
+                const cloudPath = this.joinPath(cloudRoot, relDir);
+                await this.tryCreateCloudFolder(cloudPath);
+            }
+
+            let uploaded = 0;
+            let skippedSize = 0;
+            let processed = 0;
+            this.showUploadProgress(0, entries.length, `上传中: 0/${entries.length}`);
+            for (const entry of entries) {
+                const content = await window.electronAPI.readFileContent(entry.path);
+                const bytes = new TextEncoder().encode(content || '').length;
+                if (bytes > this.maxFileSize) {
+                    skippedSize += 1;
+                    processed += 1;
+                    this.updateUploadProgress(processed, entries.length);
+                    continue;
+                }
+                const cloudPath = this.joinPath(cloudRoot, entry.rel);
+                await this.request('POST', '/cloudSync/upload', { path: cloudPath, content: content || '' });
+                uploaded += 1;
+                processed += 1;
+                this.updateUploadProgress(processed, entries.length);
+            }
+
+            await this.loadDirectory(targetDir);
+            if (cloudRoot !== targetDir) {
+                await this.loadDirectory(cloudRoot);
+            }
+            this.expandedFolders.add(cloudRoot);
+            this.renderTree();
+
+            let message = `上传完成：${uploaded} 个文件`;
+            if (skippedSize > 0) {
+                message += `，跳过 ${skippedSize} 个超出 20KB 的文件`;
+            }
+            this.showUploadProgress(entries.length, entries.length, message);
+            this.hideUploadProgress(2000);
+            this.showMessage(message, uploaded > 0 ? 'success' : 'warning');
+        } catch (error) {
+            this.hideUploadProgress();
+            this.showMessage(error?.message || '上传失败', 'error');
+        }
+    }
+
     async downloadFile(file) {
         if (!window.electronAPI?.showSaveDialog) {
             this.showMessage('下载功能不可用', 'error');
@@ -701,6 +819,7 @@ class CloudSyncPanel {
         items.push({ label: '新建文件', action: () => this.createNewFile() });
         items.push({ label: '新建文件夹', action: () => this.createNewFolder() });
         items.push({ label: '上传文件', action: () => this.uploadLocalFile() });
+        items.push({ label: '上传文件夹', action: () => this.uploadLocalFolder() });
         items.push({ label: '刷新', action: () => this.refresh() });
         this.showContextMenu(items, e.clientX, e.clientY);
     }
@@ -710,6 +829,7 @@ class CloudSyncPanel {
             { label: '新建文件', action: () => this.createNewFile() },
             { label: '新建文件夹', action: () => this.createNewFolder() },
             { label: '上传文件', action: () => this.uploadLocalFile() },
+            { label: '上传文件夹', action: () => this.uploadLocalFolder() },
             { separator: true },
             { label: '刷新', action: () => this.refresh() }
         ];
@@ -800,6 +920,37 @@ class CloudSyncPanel {
         }
     }
 
+    showUploadProgress(current, total, text) {
+        if (!this.uploadProgressEl) return;
+        this.uploadProgressEl.style.display = 'block';
+        this.updateUploadProgress(current, total, true, text);
+    }
+
+    updateUploadProgress(current, total, force = false, text) {
+        if (!this.uploadProgressEl || !this.uploadProgressFillEl) return;
+        if (!force && current > 0 && current < total && current % 3 !== 0) return;
+        const safeTotal = total > 0 ? total : 1;
+        const percent = Math.min(100, Math.round((current / safeTotal) * 100));
+        this.uploadProgressFillEl.style.width = `${percent}%`;
+        if (this.uploadProgressTextEl) {
+            this.uploadProgressTextEl.textContent = text || `上传中: ${current}/${total}`;
+        }
+    }
+
+    hideUploadProgress(delayMs = 0) {
+        if (!this.uploadProgressEl) return;
+        const hide = () => {
+            if (!this.uploadProgressEl) return;
+            this.uploadProgressEl.style.display = 'none';
+            if (this.uploadProgressFillEl) this.uploadProgressFillEl.style.width = '0%';
+        };
+        if (delayMs > 0) {
+            setTimeout(hide, delayMs);
+        } else {
+            hide();
+        }
+    }
+
     checkRemainingCapacity() {
         if (typeof this.remainingFiles !== 'number') return true;
         if (this.remainingFiles <= 0) {
@@ -845,6 +996,28 @@ class CloudSyncPanel {
         return out;
     }
 
+    normalizeLocalPath(p) {
+        if (!p) return '';
+        return String(p).replace(/\\/g, '/').replace(/\/+$/g, '');
+    }
+
+    getRelativeLocalPath(filePath, rootPath) {
+        const fileNorm = this.normalizeLocalPath(filePath);
+        const rootNorm = this.normalizeLocalPath(rootPath);
+        if (!fileNorm.startsWith(rootNorm)) return '';
+        let rel = fileNorm.slice(rootNorm.length);
+        if (rel.startsWith('/')) rel = rel.slice(1);
+        return rel;
+    }
+
+    getRelativeDir(relPath) {
+        if (!relPath) return '';
+        const parts = relPath.split('/').filter(Boolean);
+        if (parts.length <= 1) return '';
+        parts.pop();
+        return parts.join('/');
+    }
+
     joinPath(parent, name) {
         const base = this.normalizePath(parent);
         if (base === '/') return `/${name}`;
@@ -857,6 +1030,16 @@ class CloudSyncPanel {
         const parts = norm.split('/').filter(Boolean);
         parts.pop();
         return '/' + parts.join('/');
+    }
+
+    async tryCreateCloudFolder(path) {
+        try {
+            await this.request('POST', '/cloudSync/createFolder', { path });
+        } catch (error) {
+            const msg = error?.message || '';
+            if (/已存在|exists/i.test(msg)) return;
+            throw error;
+        }
     }
 
     showMessage(message, type = 'info') {
