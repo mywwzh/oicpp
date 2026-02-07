@@ -178,6 +178,32 @@
     opacity: 0.8;
 }
 
+.cloud-upload-progress {
+    margin-top: 6px;
+    display: none;
+}
+
+.cloud-upload-progress-text {
+    font-size: 11px;
+    color: var(--text-color, #cccccc);
+    margin-bottom: 4px;
+}
+
+.cloud-upload-progress-bar {
+    width: 100%;
+    height: 6px;
+    background-color: var(--border-color, #464647);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.cloud-upload-progress-fill {
+    height: 100%;
+    width: 0%;
+    background-color: var(--accent-color, #4caf50);
+    transition: width 0.2s ease;
+}
+
 .tree-item {
     position: relative;
     -webkit-user-select: none;
