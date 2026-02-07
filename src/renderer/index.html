@@ -462,6 +462,11 @@
                                     <path d="M8 2l3 3H9v4H7V5H5l3-3zm-4 9h8v2H4v-2z"/>
                                 </svg>
                             </button>
+                            <button class="icon-btn" data-action="cloud-upload-folder" title="上传文件夹" tabindex="-1">
+                                <svg width="16" height="16" viewBox="0 0 16 16">
+                                    <path d="M14.5 3H7.71l-.85-.85A1.5 1.5 0 0 0 5.79 2H1.5A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 14.5 3zM8 6l2.5 2.5H9v3H7v-3H5.5L8 6z"/>
+                                </svg>
+                            </button>
                             <button class="icon-btn" data-action="cloud-refresh" title="刷新" tabindex="-1">
                                 <svg width="16" height="16" viewBox="0 0 16 16">
                                     <path d="M13.65 2.35a8 8 0 0 0-11.3 0 8 8 0 0 0 0 11.3 8 8 0 0 0 11.3 0 8 8 0 0 0 0-11.3zm-1.41 9.9a6 6 0 0 1-8.48 0 6 6 0 0 1 0-8.48 6 6 0 0 1 8.48 0 6 6 0 0 1 0 8.48z"/>
@@ -472,6 +477,12 @@
                     <div class="cloud-summary" id="cloud-summary">
                         <div class="cloud-summary-text" id="cloud-remaining">剩余文件数量: --</div>
                         <div class="cloud-summary-hint">仅支持 .ans .in .out .cpp .py .txt .md，单文件 ≤ 20KB</div>
+                        <div class="cloud-upload-progress" id="cloud-upload-progress" style="display: none;">
+                            <div class="cloud-upload-progress-text" id="cloud-upload-progress-text">准备上传...</div>
+                            <div class="cloud-upload-progress-bar">
+                                <div class="cloud-upload-progress-fill" id="cloud-upload-progress-fill"></div>
+                            </div>
+                        </div>
                     </div>
                     <div class="file-tree cloud-tree" id="cloud-tree"></div>
                 </div>
