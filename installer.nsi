@@ -18,6 +18,7 @@ Unicode true
 
 Var CPP_ASSOC_CHECKBOX
 Var DESKTOP_SHORTCUT_CHECKBOX
+Var CONTEXT_MENU_CHECKBOX
 
 SetCompressor lzma
 
@@ -188,7 +189,11 @@ Function MyCppAssocShow
   ${NSD_CreateLabel} 0 40u 100% 12u "其他选项："
   Pop $2
 
-  ${NSD_CreateCheckBox} 0 58u 100% 12u "创建桌面快捷方式"
+  ${NSD_CreateCheckBox} 0 58u 100% 12u "在资源管理器右键菜单加入 OICPP 操作"
+  Pop $CONTEXT_MENU_CHECKBOX
+  ${NSD_Check} $CONTEXT_MENU_CHECKBOX
+
+  ${NSD_CreateCheckBox} 0 78u 100% 12u "创建桌面快捷方式"
   Pop $DESKTOP_SHORTCUT_CHECKBOX
   ${NSD_Check} $DESKTOP_SHORTCUT_CHECKBOX
 
@@ -205,6 +210,24 @@ Function MyCppAssocLeave
   ; build the quoted command into a temp variable to avoid parser splitting
   StrCpy $R0 '"$INSTDIR\\OICPP IDE.exe" "%1"'
   WriteRegStr HKCR "OICPPIDE.cpp\\shell\\open\\command" "" $R0
+
+  ${NSD_GetState} $CONTEXT_MENU_CHECKBOX $2
+  StrCmp $2 1 0 +14
+    ; File context menu
+    WriteRegStr HKCR "*\\shell\\OICPP_OpenFile" "" "在 OICPP 中打开文件"
+    WriteRegStr HKCR "*\\shell\\OICPP_OpenFile" "Icon" "$INSTDIR\\OICPP IDE.exe,0"
+    StrCpy $R1 '"$INSTDIR\\OICPP IDE.exe" "%1"'
+    WriteRegStr HKCR "*\\shell\\OICPP_OpenFile\\command" "" $R1
+    ; Folder context menu
+    WriteRegStr HKCR "Directory\\shell\\OICPP_OpenFolder" "" "在 OICPP 中打开文件夹"
+    WriteRegStr HKCR "Directory\\shell\\OICPP_OpenFolder" "Icon" "$INSTDIR\\OICPP IDE.exe,0"
+    StrCpy $R2 '"$INSTDIR\\OICPP IDE.exe" "%1"'
+    WriteRegStr HKCR "Directory\\shell\\OICPP_OpenFolder\\command" "" $R2
+    ; Background context menu
+    WriteRegStr HKCR "Directory\\Background\\shell\\OICPP_OpenFolder" "" "在 OICPP 中打开文件夹"
+    WriteRegStr HKCR "Directory\\Background\\shell\\OICPP_OpenFolder" "Icon" "$INSTDIR\\OICPP IDE.exe,0"
+    StrCpy $R3 '"$INSTDIR\\OICPP IDE.exe" "%V"'
+    WriteRegStr HKCR "Directory\\Background\\shell\\OICPP_OpenFolder\\command" "" $R3
 
   ${NSD_GetState} $DESKTOP_SHORTCUT_CHECKBOX $1
   StrCmp $1 1 0 +2
@@ -226,6 +249,9 @@ Function un.onInit
 FunctionEnd
 
 Section Uninstall
+  DeleteRegKey HKCR "*\\shell\\OICPP_OpenFile"
+  DeleteRegKey HKCR "Directory\\shell\\OICPP_OpenFolder"
+  DeleteRegKey HKCR "Directory\\Background\\shell\\OICPP_OpenFolder"
   Delete "$INSTDIR\${PRODUCT_NAME}.url"
   Delete "$INSTDIR\uninst.exe"
   Delete "$INSTDIR\vulkan-1.dll"
