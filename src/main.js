@@ -175,6 +175,7 @@ async function handleIdeLoginCallback(req, res) {
     if (!req || !res) return;
 
     if (!isLocalAddress(req.socket?.remoteAddress)) {
+        logWarn('[登录] 回调来源非法:', { remoteAddress: req.socket?.remoteAddress || '' });
         sendLoginHtml(res, '登录失败', '非法回调来源。', 403);
         clearIdeLoginServer();
         return;
@@ -182,6 +183,7 @@ async function handleIdeLoginCallback(req, res) {
 
     const reqUrl = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
     if (reqUrl.pathname !== '/callback') {
+        logWarn('[登录] 回调路径无效:', { path: reqUrl.pathname || '' });
         sendLoginHtml(res, '未找到', '回调路径无效。', 404);
         return;
     }
@@ -196,6 +198,7 @@ async function handleIdeLoginCallback(req, res) {
     const state = params.get('state');
 
     if (!state || state !== ideLoginState) {
+        logWarn('[登录] 状态校验失败:', { hasState: !!state, match: state === ideLoginState });
         sendLoginHtml(res, '登录失败', '状态校验失败。');
         broadcastIdeLoginError('状态校验失败');
         clearIdeLoginServer();
@@ -203,6 +206,13 @@ async function handleIdeLoginCallback(req, res) {
     }
 
     if (!uid || !username || !timestamp || !token || service !== AUTH_SERVICE) {
+        logWarn('[登录] 回调参数校验失败:', {
+            hasUid: !!uid,
+            hasUsername: !!username,
+            hasTimestamp: !!timestamp,
+            hasToken: !!token,
+            service: service || ''
+        });
         sendLoginHtml(res, '登录失败', '回调参数不完整或服务标识不匹配。');
         broadcastIdeLoginError('回调参数不完整');
         clearIdeLoginServer();
@@ -212,6 +222,11 @@ async function handleIdeLoginCallback(req, res) {
     try {
         const verifyResult = await verifyIdeLoginToken({ uid, username, timestamp, token, service });
         if (!verifyResult || verifyResult.success !== true || !verifyResult.user) {
+            logWarn('[登录] 验证失败:', {
+                success: verifyResult?.success,
+                code: verifyResult?.code,
+                error: verifyResult?.error || verifyResult?.message || ''
+            });
             sendLoginHtml(res, '登录失败', verifyResult?.error || '验证失败。');
             broadcastIdeLoginError(verifyResult?.error || '验证失败');
             clearIdeLoginServer();
@@ -224,6 +239,12 @@ async function handleIdeLoginCallback(req, res) {
             || verifyResult?.token
             || '';
         if (!resolvedToken) {
+            logWarn('[登录] 未获取到登录凭证:', {
+                hasAccessToken: !!accessToken,
+                hasVerifyAccessToken: !!verifyResult?.access_token,
+                hasVerifyLoginToken: !!verifyResult?.login_token,
+                hasVerifyToken: !!verifyResult?.token
+            });
             sendLoginHtml(res, '登录失败', '未获取到登录凭证。');
             broadcastIdeLoginError('未获取到登录凭证');
             clearIdeLoginServer();
@@ -248,6 +269,7 @@ async function handleIdeLoginCallback(req, res) {
         broadcastIdeLoginState({ loggedIn: true, user: verifyResult.user, message: '登录成功' });
         clearIdeLoginServer();
     } catch (err) {
+        logError('[登录] 验证请求失败:', err?.message || err);
         sendLoginHtml(res, '登录失败', '验证请求失败。');
         broadcastIdeLoginError('验证请求失败');
         clearIdeLoginServer();
