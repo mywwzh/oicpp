@@ -497,6 +497,7 @@ function getDefaultSettings() {
         enableAutoCompletion: true,
         autoSave: true,
         autoSaveInterval: 60000,
+        autoBackupSettings: false,
         markdownMode: 'split',
         lastUpdateCheck: '1970-01-01',
         pendingUpdate: null, // 待安装的更新信息
@@ -1382,6 +1383,7 @@ function setupIPC() {
             }
 
             await saveSettings(); // 确保保存完成
+            scheduleAutoSettingsBackup('update-settings');
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('settings-applied', settings);
             }
@@ -1417,6 +1419,18 @@ function setupIPC() {
 
     ipcMain.handle('cloud-sync-request', async (_event, payload) => {
         return callCloudSyncApi(payload || {});
+    });
+
+    ipcMain.handle('backup-settings-to-cloud', async () => {
+        return backupSettingsToCloud({ manual: true });
+    });
+
+    ipcMain.handle('get-settings-backup-info', async () => {
+        return getLatestSettingsBackupInfo();
+    });
+
+    ipcMain.handle('sync-settings-from-cloud', async () => {
+        return syncSettingsFromCloud();
     });
 
     ipcMain.handle('ide-logout', () => {
@@ -2859,6 +2873,11 @@ function setupIPC() {
         return { success: true };
     });
 
+    ipcMain.handle('open-backup-settings', async () => {
+        openBackupSettings();
+        return { success: true };
+    });
+
     ipcMain.on('open-template-settings', () => {
         openCodeTemplates();
     });
@@ -4122,6 +4141,7 @@ async function saveAsFile() {
 let compilerSettingsWindow = null;
 let editorSettingsWindow = null;
 let codeTemplatesWindow = null;
+let backupSettingsWindow = null;
 
 function openCompilerSettings() {
     if (compilerSettingsWindow) {
@@ -4225,6 +4245,37 @@ function openCodeTemplates() {
 
     codeTemplatesWindow.on('closed', () => {
         codeTemplatesWindow = null;
+    });
+}
+
+function openBackupSettings() {
+    if (backupSettingsWindow) {
+        backupSettingsWindow.focus();
+        return;
+    }
+
+    backupSettingsWindow = new BrowserWindow({
+        width: 780,
+        height: 560,
+        parent: mainWindow,
+        modal: true,
+        resizable: false,
+        autoHideMenuBar: true,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: false,
+            webSecurity: false
+        },
+        title: '设置备份设置',
+        icon: getUserIconPath()
+    });
+
+    backupSettingsWindow.loadFile('src/renderer/settings/backup.html', { query: { theme: settings.theme } });
+
+    backupSettingsWindow.on('closed', () => {
+        backupSettingsWindow = null;
     });
 }
 
@@ -4717,7 +4768,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+            const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
 
             for (const key of validKeys) {
                 if (savedSettings[key] !== undefined) {
@@ -4755,7 +4806,7 @@ function loadSettings() {
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+    const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -4814,7 +4865,7 @@ function updateSettings(settingsType, newSettings) {
         const validKeys = [
             'compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme',
             'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'autoSave', 'autoSaveInterval',
-            'codeSnippets', 'windowOpacity', 'backgroundImage', 'markdownMode', 'keybindings', 'autoOpenLastWorkspace'
+            'codeSnippets', 'windowOpacity', 'backgroundImage', 'markdownMode', 'keybindings', 'autoOpenLastWorkspace', 'autoBackupSettings'
         ];
 
         for (const key in newSettings) {
@@ -4827,6 +4878,7 @@ function updateSettings(settingsType, newSettings) {
         }
 
         saveSettings();
+        scheduleAutoSettingsBackup('update-top-level-settings');
 
         if (mainWindow) {
             mainWindow.webContents.send('settings-changed', null, settings);
@@ -4841,6 +4893,9 @@ function updateSettings(settingsType, newSettings) {
             }
             if (codeTemplatesWindow) {
                 codeTemplatesWindow.webContents.send('theme-changed', newSettings.theme);
+            }
+            if (backupSettingsWindow) {
+                backupSettingsWindow.webContents.send('theme-changed', newSettings.theme);
             }
         }
 
@@ -4900,7 +4955,7 @@ function importSettings(filePath) {
             throw new Error('无效的设置文件格式');
         }
 
-        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings'];
+        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings'];
         const defaultSettings = getDefaultSettings();
 
         for (const key of validKeys) {
@@ -5894,6 +5949,13 @@ function generateEncodedToken(username = '') {
 }
 
 const CLOUD_SYNC_BASE = 'https://oicpp.mywwzh.top/api';
+const SETTINGS_BACKUP_PATTERN = /^OICPP_user_(\d{8}_\d{6})_(.+?)_settings\.cpp$/i;
+const SETTINGS_BACKUP_DIR = '';
+const AUTO_BACKUP_COOLDOWN_MS = 15000;
+
+let autoBackupInFlight = false;
+let lastAutoBackupAt = 0;
+let suppressAutoBackup = false;
 
 function buildCloudSyncSignature({ loginToken, method, path, timestamp, nonce, bodyString }) {
     const bodyHash = bodyString ? crypto.createHash('sha256').update(bodyString).digest('hex') : '';
@@ -5986,6 +6048,333 @@ async function callCloudSyncApi(options = {}) {
     } finally {
         clearTimeout(timeout);
     }
+}
+
+function padNumber(value) {
+    return String(value).padStart(2, '0');
+}
+
+function formatBackupTimestamp(date) {
+    const d = date instanceof Date ? date : new Date();
+    const year = d.getFullYear();
+    const month = padNumber(d.getMonth() + 1);
+    const day = padNumber(d.getDate());
+    const hour = padNumber(d.getHours());
+    const minute = padNumber(d.getMinutes());
+    const second = padNumber(d.getSeconds());
+    return `${year}${month}${day}_${hour}${minute}${second}`;
+}
+
+function formatBackupDisplayTime(rawTimestamp) {
+    const input = String(rawTimestamp || '');
+    const match = input.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
+    if (!match) return input;
+    return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6]}`;
+}
+
+function sanitizeBackupDeviceName(name) {
+    const raw = String(name || '').trim() || 'Unknown-Device';
+    let safe = raw.replace(/[^A-Za-z0-9._-]+/g, '-');
+    safe = safe.replace(/-{2,}/g, '-').replace(/^[.-]+|[.-]+$/g, '');
+    return safe || 'Unknown-Device';
+}
+
+function parseSettingsBackupName(name) {
+    const raw = String(name || '').trim();
+    const base = raw.split('/').filter(Boolean).pop() || raw;
+    const match = String(base || '').match(SETTINGS_BACKUP_PATTERN);
+    if (!match) return null;
+    const timestampRaw = match[1];
+    const deviceName = match[2];
+    return {
+        timestampRaw,
+        deviceName,
+        displayTime: formatBackupDisplayTime(timestampRaw)
+    };
+}
+
+function parseBackupTimeToMillis(rawTimestamp) {
+    const match = String(rawTimestamp || '').match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
+    if (!match) return 0;
+    const iso = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}Z`;
+    const parsed = Date.parse(iso);
+    return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+async function listCloudSyncDir(dirPath) {
+    const response = await callCloudSyncApi({
+        method: 'GET',
+        path: '/cloudSync/list',
+        query: { path: dirPath }
+    });
+
+    const normalized = normalizeCloudSyncResponse(response);
+    if (!normalized.ok) {
+        const status = normalized.status || 0;
+        const error = normalized.error || 'LIST_FAILED';
+        logWarn('[设置备份] 列表请求失败:', { path: dirPath, status, error });
+        return { success: false, error };
+    }
+
+    const payload = normalized.data || {};
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    return { success: true, items };
+}
+
+async function listSettingsBackupFiles() {
+    const dirPath = '/';
+    const dirResult = await listCloudSyncDir(dirPath);
+    if (!dirResult.success) {
+        return { success: false, error: dirResult.error };
+    }
+
+    const items = dirResult.items;
+    const files = [];
+    for (const item of items) {
+        const type = String(item?.type || '').toLowerCase();
+        if (type && type !== 'file') continue;
+        const candidateName = item?.name || item?.path || '';
+        const info = parseSettingsBackupName(candidateName);
+        if (!info) {
+            continue;
+        }
+        files.push({
+            name: item.name || (String(candidateName || '').split('/').pop() || ''),
+            path: item.path || `/${item.name}`,
+            updatedAt: item.updated_at || item.updatedAt || null,
+            ...info
+        });
+    }
+
+    logInfo('[设置备份] 匹配到备份数量:', files.length, 'path:', dirPath);
+
+    return { success: true, files };
+}
+
+async function deleteSettingsBackupFiles(files) {
+    const list = Array.isArray(files) ? files : [];
+    for (const file of list) {
+        if (!file?.path) continue;
+        try {
+            await callCloudSyncApi({
+                method: 'POST',
+                path: '/cloudSync/delete',
+                body: { path: file.path }
+            });
+        } catch (error) {
+            logWarn('[设置备份] 删除旧备份失败:', error?.message || error);
+        }
+    }
+}
+
+async function backupSettingsToCloud(options = {}) {
+    if (!getLoginToken()) {
+        return { success: false, error: 'NOT_LOGGED_IN' };
+    }
+
+    try {
+        const settingsPath = getSettingsPath();
+        if (!fs.existsSync(settingsPath)) {
+            saveSettings();
+        }
+
+        const content = fs.readFileSync(settingsPath, 'utf8');
+        if (!content) {
+            return { success: false, error: 'NO_SETTINGS' };
+        }
+
+        const listResult = await listSettingsBackupFiles();
+        if (!listResult.success) {
+            return { success: false, error: listResult.error || 'LIST_FAILED' };
+        }
+
+        if (Array.isArray(listResult.files) && listResult.files.length > 0) {
+            await deleteSettingsBackupFiles(listResult.files);
+        }
+
+        const timestampRaw = formatBackupTimestamp(new Date());
+        const deviceName = sanitizeBackupDeviceName(getDeviceInfo().deviceName);
+        const fileName = `OICPP_user_${timestampRaw}_${deviceName}_settings.cpp`;
+        const cloudPath = `/${fileName}`;
+
+        logInfo('[设置备份] 准备上传:', { fileName, cloudPath, bytes: Buffer.byteLength(content, 'utf8') });
+
+        const uploadResult = await callCloudSyncApi({
+            method: 'POST',
+            path: '/cloudSync/upload',
+            body: {
+                path: cloudPath,
+                content: content
+            }
+        });
+
+        const normalized = normalizeCloudSyncResponse(uploadResult);
+        if (!normalized.ok) {
+            logWarn('[设置备份] 上传失败:', { status: normalized.status, error: normalized.error });
+            return { success: false, error: normalized.error || 'UPLOAD_FAILED' };
+        }
+
+        logInfo('[设置备份] 上传成功:', { fileName, cloudPath });
+
+        return {
+            success: true,
+            info: {
+                fileName,
+                path: cloudPath,
+                timestampRaw,
+                displayTime: formatBackupDisplayTime(timestampRaw),
+                deviceName
+            }
+        };
+    } catch (error) {
+        logError('[设置备份] 备份失败:', error);
+        return { success: false, error: error?.message || String(error) };
+    }
+}
+
+async function getLatestSettingsBackupInfo() {
+    if (!getLoginToken()) {
+        return { success: false, error: 'NOT_LOGGED_IN' };
+    }
+
+    const listResult = await listSettingsBackupFiles();
+    if (!listResult.success) {
+        return listResult;
+    }
+
+    const files = Array.isArray(listResult.files) ? listResult.files : [];
+    if (files.length === 0) {
+        return { success: false, error: 'NO_BACKUP' };
+    }
+
+    files.sort((a, b) => {
+        const timeA = parseBackupTimeToMillis(a.timestampRaw) || Date.parse(a.updatedAt || '') || 0;
+        const timeB = parseBackupTimeToMillis(b.timestampRaw) || Date.parse(b.updatedAt || '') || 0;
+        return timeB - timeA;
+    });
+
+    const selected = files[0];
+    return {
+        success: true,
+        info: {
+            fileName: selected.name,
+            path: selected.path,
+            timestampRaw: selected.timestampRaw,
+            displayTime: selected.displayTime,
+            deviceName: selected.deviceName
+        }
+    };
+}
+
+function normalizeCloudSyncResponse(response) {
+    const status = response?.status || 0;
+    const payload = response?.data;
+    if (!response?.ok) {
+        const error = status === 401
+            ? 'NOT_LOGGED_IN'
+            : (response?.error || payload?.msg || payload?.error || 'REQUEST_FAILED');
+        return { ok: false, status, error, data: payload };
+    }
+    const code = payload?.code;
+    if (code && code !== 200) {
+        const error = payload?.msg || payload?.error || `CODE_${code}`;
+        return { ok: false, status, error, data: payload };
+    }
+    return { ok: true, status, data: payload?.data ?? payload };
+}
+
+function broadcastSettingsRefresh() {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('settings-imported', settings);
+    }
+    if (compilerSettingsWindow && !compilerSettingsWindow.isDestroyed()) {
+        compilerSettingsWindow.webContents.send('settings-imported', settings);
+    }
+    if (editorSettingsWindow && !editorSettingsWindow.isDestroyed()) {
+        editorSettingsWindow.webContents.send('settings-imported', settings);
+    }
+    if (codeTemplatesWindow && !codeTemplatesWindow.isDestroyed()) {
+        codeTemplatesWindow.webContents.send('settings-imported', settings);
+    }
+    if (backupSettingsWindow && !backupSettingsWindow.isDestroyed()) {
+        backupSettingsWindow.webContents.send('settings-imported', settings);
+    }
+}
+
+async function syncSettingsFromCloud() {
+    if (!getLoginToken()) {
+        return { success: false, error: 'NOT_LOGGED_IN' };
+    }
+
+    const infoResult = await getLatestSettingsBackupInfo();
+    if (!infoResult.success) {
+        return infoResult;
+    }
+
+    const info = infoResult.info;
+    const downloadResult = await callCloudSyncApi({
+        method: 'GET',
+        path: '/cloudSync/download',
+        query: { path: info.path }
+    });
+
+    const normalized = normalizeCloudSyncResponse(downloadResult);
+    if (!normalized.ok) {
+        return { success: false, error: normalized.error || 'DOWNLOAD_FAILED' };
+    }
+
+    const payload = normalized.data || {};
+    const content = typeof payload.content === 'string' ? payload.content : '';
+    if (!content) {
+        return { success: false, error: 'EMPTY_BACKUP' };
+    }
+
+    let parsed = null;
+    try {
+        parsed = JSON.parse(content);
+    } catch (error) {
+        return { success: false, error: 'INVALID_BACKUP' };
+    }
+
+    const prevSuppress = suppressAutoBackup;
+    suppressAutoBackup = true;
+    try {
+        const defaults = getDefaultSettings();
+        settings = mergeSettings(defaults, parsed);
+        saveSettings();
+        if (mainWindow && !mainWindow.isDestroyed() && typeof settings.windowOpacity === 'number') {
+            mainWindow.setOpacity(settings.windowOpacity);
+        }
+        broadcastSettingsRefresh();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('settings-applied', settings);
+        }
+    } finally {
+        suppressAutoBackup = prevSuppress;
+    }
+
+    return { success: true, info };
+}
+
+function scheduleAutoSettingsBackup(reason = 'auto') {
+    if (suppressAutoBackup) return;
+    if (!settings?.autoBackupSettings) return;
+    const now = Date.now();
+    if (autoBackupInFlight) return;
+    if (now - lastAutoBackupAt < AUTO_BACKUP_COOLDOWN_MS) return;
+    autoBackupInFlight = true;
+    backupSettingsToCloud({ reason })
+        .then((result) => {
+            if (result?.success) {
+                lastAutoBackupAt = Date.now();
+                logInfo('[设置备份] 自动备份成功:', { fileName: result?.info?.fileName || '', path: result?.info?.path || '' });
+            } else if (result?.error && result.error !== 'NOT_LOGGED_IN') {
+                logWarn('[设置备份] 自动备份失败:', result.error);
+            }
+        })
+        .finally(() => {
+            autoBackupInFlight = false;
+        });
 }
 
 async function sendHeartbeat(type = 'heartbeat', username = '') {
