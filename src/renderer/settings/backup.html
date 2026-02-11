@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设置备份设置</title>
+    <link rel="stylesheet" href="../css/settings.css">
+    <link rel="stylesheet" href="../css/dialog.css">
+</head>
+<body>
+    <div class="settings-container">
+        <div class="settings-layout">
+            <div class="settings-sidebar">
+                <div class="sidebar-item active" data-target="backup-section">设置备份</div>
+            </div>
+
+            <div class="settings-main">
+                <div id="backup-section" class="settings-section active">
+                    <div class="section-title">设置备份</div>
+
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="auto-backup-settings">
+                            <span class="checkmark"></span>
+                            启用自动备份设置到云空间
+                        </label>
+                        <div class="hint" style="margin-left: 28px;">开启后会自动备份 settings.json</div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label>备份设置</label>
+                        <div class="input-group">
+                            <button id="backup-now" class="btn btn-secondary">立即备份到云空间</button>
+                        </div>
+                        <div class="hint">会覆盖云端已有的设置备份</div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label>从云空间同步设置</label>
+                        <div class="input-group">
+                            <button id="sync-settings" class="btn btn-secondary">从云空间同步设置</button>
+                        </div>
+                        <div class="hint">将云端最近备份覆盖当前设置</div>
+                        <div class="hint" id="latest-backup-info">最近备份：--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-footer">
+            <button id="save-settings" class="btn btn-primary">保存设置</button>
+            <button id="cancel-settings" class="btn btn-secondary">取消</button>
+        </div>
+    </div>
+
+    <div id="message-container"></div>
+
+    <script src="../js/dialog.js"></script>
+    <script src="backup.js"></script>
+</body>
+</html>
