@@ -2,7 +2,7 @@
 
 ; HM NIS Edit Wizard helper defines
 !define PRODUCT_NAME "OICPP IDE"
-!define PRODUCT_VERSION "1.3.0"
+!define PRODUCT_VERSION "1.3.1"
 !define PRODUCT_PUBLISHER "mywwzh"
 !define PRODUCT_WEB_SITE "https://oicpp.mywwzh.top"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\OICPP IDE.exe"
