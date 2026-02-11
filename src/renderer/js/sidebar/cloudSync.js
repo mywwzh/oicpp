@@ -254,7 +254,8 @@ class CloudSyncPanel {
             size: item.size || 0,
             updatedAt: item.updated_at || item.updatedAt || null
         }));
-        this.itemsCache.set(this.normalizePath(dirPath), normalized);
+        const filtered = normalized.filter(item => !this.isHiddenSettingsBackupName(item.name));
+        this.itemsCache.set(this.normalizePath(dirPath), filtered);
         if (typeof data.remainingFiles === 'number') {
             this.updateRemaining(data.remainingFiles);
         }
@@ -434,6 +435,12 @@ class CloudSyncPanel {
             default:
                 return 'file';
         }
+    }
+
+    isHiddenSettingsBackupName(name) {
+        const raw = String(name || '').trim();
+        const base = raw.split('/').filter(Boolean).pop() || raw;
+        return /^OICPP_user_\d{8}_\d{6}_.+_settings\.cpp$/i.test(base);
     }
 
     toggleFolder(node, folder) {

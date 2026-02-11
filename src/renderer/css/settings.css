@@ -25,6 +25,19 @@ body {
     --settings-warning-border: #e88900;
     --settings-card-bg: #252526;
     --settings-hover-bg: #2a2d2e;
+
+    --primary-bg: var(--settings-bg);
+    --card-bg: var(--settings-card-bg);
+    --border-color: var(--settings-border);
+    --text-color: var(--settings-text);
+    --text-color-secondary: var(--settings-text-secondary);
+    --hover-bg: var(--settings-hover-bg);
+    --input-bg: var(--settings-input-bg);
+    --primary-color: var(--settings-button-bg);
+    --primary-color-hover: var(--settings-button-hover);
+    --secondary-bg: #6c757d;
+    --secondary-bg-hover: #5a6268;
+    --secondary-fg: #ffffff;
 }
 
 body.theme-light,
