@@ -496,6 +496,7 @@ function disposeAllFileWatchers() {
 
 const EXTERNAL_OPEN_SUPPORTED_EXTENSIONS = new Set(['.cpp', '.c', '.cc', '.cxx', '.h', '.hpp']);
 const pendingExternalOpenQueue = [];
+const pendingExternalFolderQueue = [];
 let rendererReadyForExternalOpens = false;
 let processingExternalOpenQueue = false;
 let skipAutoOpenWorkspace = false;
@@ -580,12 +581,17 @@ if (!singleInstanceLock) {
 } else {
     app.on('second-instance', (_event, commandLine, workingDirectory) => {
         try {
-            const files = extractSupportedFilesFromArgs(
+            const targets = extractOpenTargetsFromArgs(
                 Array.isArray(commandLine) ? commandLine.slice(1) : [],
                 { workingDirectory }
             );
-            if (files.length > 0) {
-                files.forEach(queueExternalFileOpen);
+            if (targets.folders.length > 0) {
+                targets.folders.forEach(queueExternalFolderOpen);
+            }
+            if (targets.files.length > 0) {
+                targets.files.forEach(queueExternalFileOpen);
+            }
+            if (targets.folders.length > 0 || targets.files.length > 0) {
                 processExternalOpenQueue();
             }
         } catch (err) {
@@ -5725,9 +5731,14 @@ app.on('web-contents-created', (event, contents) => {
 function handleCommandLineArgs(argv = process.argv) {
     try {
         const args = Array.isArray(argv) ? argv.slice(1) : [];
-        const files = extractSupportedFilesFromArgs(args);
-        if (files.length > 0) {
-            files.forEach(queueExternalFileOpen);
+        const targets = extractOpenTargetsFromArgs(args);
+        if (targets.folders.length > 0) {
+            targets.folders.forEach(queueExternalFolderOpen);
+        }
+        if (targets.files.length > 0) {
+            targets.files.forEach(queueExternalFileOpen);
+        }
+        if (targets.folders.length > 0 || targets.files.length > 0) {
             processExternalOpenQueue();
         }
     } catch (error) {
@@ -5816,6 +5827,88 @@ function extractSupportedFilesFromArgs(args = [], options = {}) {
     return results;
 }
 
+function extractOpenTargetsFromArgs(args = [], options = {}) {
+    const targets = { files: [], folders: [] };
+    if (!Array.isArray(args)) {
+        return targets;
+    }
+
+    const baseDir = (() => {
+        if (options && typeof options.workingDirectory === 'string' && options.workingDirectory.trim()) {
+            return options.workingDirectory;
+        }
+        return process.cwd();
+    })();
+
+    for (const raw of args) {
+        if (!raw || typeof raw !== 'string') {
+            continue;
+        }
+
+        const trimmed = raw.trim();
+        if (!trimmed || trimmed === '.' || trimmed.startsWith('--') || trimmed.startsWith('-psn')) {
+            continue;
+        }
+
+        const cleaned = trimmed.replace(/^['"]|['"]$/g, '');
+        if (!cleaned) {
+            continue;
+        }
+
+        let candidate = cleaned;
+        if (candidate.startsWith('file://')) {
+            try {
+                const fileUrl = new URL(candidate);
+                candidate = fileUrl.pathname || candidate;
+            } catch (_) {
+            }
+        }
+
+        const normalized = normalizeDroppedPath(candidate);
+        if (!normalized) {
+            continue;
+        }
+
+        let resolved = normalized;
+        try {
+            resolved = path.isAbsolute(normalized)
+                ? normalized
+                : path.resolve(baseDir, normalized);
+        } catch (_) {
+            resolved = path.isAbsolute(normalized)
+                ? normalized
+                : path.join(baseDir, normalized);
+        }
+
+        if (!fs.existsSync(resolved)) {
+            continue;
+        }
+
+        let stat = null;
+        try {
+            stat = fs.statSync(resolved);
+        } catch (_) {
+            stat = null;
+        }
+        if (stat?.isDirectory()) {
+            if (!targets.folders.includes(resolved)) {
+                targets.folders.push(resolved);
+            }
+            continue;
+        }
+
+        if (!isSupportedExternalFile(resolved)) {
+            continue;
+        }
+
+        if (!targets.files.includes(resolved)) {
+            targets.files.push(resolved);
+        }
+    }
+
+    return targets;
+}
+
 function queueExternalFileOpen(filePath) {
     try {
         if (!filePath) {
@@ -5851,6 +5944,47 @@ function queueExternalFileOpen(filePath) {
     }
 }
 
+function queueExternalFolderOpen(folderPath) {
+    try {
+        if (!folderPath) {
+            return false;
+        }
+
+        const normalizedPath = normalizeDroppedPath(folderPath);
+        if (!normalizedPath || !fs.existsSync(normalizedPath)) {
+            logWarn('外部文件夹不存在，已忽略:', folderPath);
+            return false;
+        }
+
+        let stat = null;
+        try {
+            stat = fs.statSync(normalizedPath);
+        } catch (_) {
+            stat = null;
+        }
+        if (!stat?.isDirectory()) {
+            logWarn('外部路径不是文件夹，已忽略:', normalizedPath);
+            return false;
+        }
+
+        let resolvedPath = normalizedPath;
+        try {
+            resolvedPath = path.resolve(normalizedPath);
+        } catch (_) { }
+
+        if (!pendingExternalFolderQueue.includes(resolvedPath)) {
+            pendingExternalFolderQueue.push(resolvedPath);
+        }
+
+        skipAutoOpenWorkspace = true;
+        processExternalOpenQueue();
+        return true;
+    } catch (error) {
+        logWarn('队列外部文件夹失败:', error?.message || error);
+        return false;
+    }
+}
+
 async function processExternalOpenQueue() {
     if (processingExternalOpenQueue) {
         return;
@@ -5861,6 +5995,10 @@ async function processExternalOpenQueue() {
 
     processingExternalOpenQueue = true;
     try {
+        while (pendingExternalFolderQueue.length > 0) {
+            const nextFolder = pendingExternalFolderQueue.shift();
+            await openFolderFromExternalQueue(nextFolder);
+        }
         while (pendingExternalOpenQueue.length > 0) {
             const nextFile = pendingExternalOpenQueue.shift();
             await openFileFromExternalQueue(nextFile);
@@ -5914,6 +6052,42 @@ async function openFileFromExternalQueue(filePath) {
                 dialog.showErrorBox('打开文件失败', `${path.basename(filePath)}\n${error?.message || error}`);
             } catch (_) { }
         }
+    }
+}
+
+async function openFolderFromExternalQueue(folderPath) {
+    if (!folderPath) {
+        return;
+    }
+
+    try {
+        if (!fs.existsSync(folderPath)) {
+            logWarn('外部文件夹已不存在，跳过:', folderPath);
+            return;
+        }
+
+        const stat = fs.statSync(folderPath);
+        if (!stat.isDirectory()) {
+            logWarn('外部路径不是文件夹，跳过:', folderPath);
+            return;
+        }
+
+        if (mainWindow) {
+            if (mainWindow.isMinimized()) {
+                mainWindow.restore();
+            }
+            mainWindow.focus();
+        }
+
+        settings.lastOpen = folderPath;
+        updateRecentFiles(folderPath);
+        saveSettings();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('folder-opened', folderPath);
+        }
+        await delay(200);
+    } catch (error) {
+        logError('通过外部请求打开文件夹失败:', error);
     }
 }
 
