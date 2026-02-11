@@ -453,6 +453,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openCompilerSettings: () => ipcRenderer.invoke('open-compiler-settings'),
     openEditorSettings: () => ipcRenderer.invoke('open-editor-settings'),
     openTemplateSettings: () => ipcRenderer.send('open-template-settings'),
+    openBackupSettings: () => ipcRenderer.invoke('open-backup-settings'),
 
     getPlatform: () => ipcRenderer.invoke('get-platform'),
     getUserHome: () => ipcRenderer.invoke('get-user-home'),
@@ -534,6 +535,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getIdeLoginStatus: () => ipcRenderer.invoke('ide-login-status'),
     logoutIdeAccount: () => ipcRenderer.invoke('ide-logout'),
     cloudSyncRequest: (payload) => ipcRenderer.invoke('cloud-sync-request', payload),
+    backupSettingsToCloud: () => ipcRenderer.invoke('backup-settings-to-cloud'),
+    getSettingsBackupInfo: () => ipcRenderer.invoke('get-settings-backup-info'),
+    syncSettingsFromCloud: () => ipcRenderer.invoke('sync-settings-from-cloud'),
     onIdeLoginUpdated: (callback) => ipcRenderer.on('ide-login-updated', (_event, payload) => callback && callback(payload)),
     onIdeLoginError: (callback) => ipcRenderer.on('ide-login-error', (_event, payload) => callback && callback(payload)),
 

@@ -186,6 +186,9 @@ class OICPPApp {
             case 'template-settings':
                 this.openTemplateSettings();
                 break;
+            case 'backup-settings':
+                this.openBackupSettings();
+                break;
             case 'debug':
                 this.startDebug();
                 break;
@@ -1627,6 +1630,19 @@ class OICPPApp {
         } else {
             logWarn('无法打开模板设置：Electron API 不可用');
             this.showSettingsDialog('templates');
+        }
+    }
+
+    openBackupSettings() {
+        if (window.electronAPI && window.electronAPI.openBackupSettings) {
+            window.electronAPI.openBackupSettings();
+        } else if (typeof require !== 'undefined') {
+            const { ipcRenderer } = require('electron');
+            ipcRenderer.invoke('open-backup-settings').catch(error => {
+                logError('打开设置备份设置失败:', error);
+            });
+        } else {
+            logWarn('无法打开设置备份设置：Electron API 不可用');
         }
     }
 

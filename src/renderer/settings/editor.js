@@ -865,6 +865,7 @@ class EditorSettings {
             this.toggleAutoSaveInterval(autoSaveIntervalInput, autoSaveEnabled);
         }
 
+
         if (autoOpenLastWorkspaceCheckbox) {
             autoOpenLastWorkspaceCheckbox.checked = this.settings.autoOpenLastWorkspace !== false;
         }
