@@ -820,11 +820,49 @@ class CloudSyncPanel {
                 new_name: newName
             });
             const parent = this.getParentPath(file.path);
+            const newPath = this.joinPath(parent, newName);
+
+            if (window.tabManager) {
+                if (file.type === 'file') {
+                    window.tabManager.updateTabPathBySource?.(`cloud://${file.path}`, `cloud://${newPath}`, newName);
+                } else if (file.type === 'folder') {
+                    this.updateOpenedCloudTabsForFolderRename(file.path, newPath);
+                }
+            }
+
             await this.loadDirectory(parent);
+            if (file.type === 'folder') {
+                this.itemsCache.delete(this.normalizePath(file.path));
+                this.expandedFolders.delete(this.normalizePath(file.path));
+            }
             this.renderTree();
         } catch (error) {
             this.showMessage(error?.message || '重命名失败', 'error');
         }
+    }
+
+    updateOpenedCloudTabsForFolderRename(oldFolderPath, newFolderPath) {
+        const tabManager = window.tabManager;
+        if (!tabManager || !tabManager.tabs || typeof tabManager.tabs.entries !== 'function') {
+            return;
+        }
+
+        const oldPrefix = `cloud://${this.normalizePath(oldFolderPath)}`;
+        const newPrefix = `cloud://${this.normalizePath(newFolderPath)}`;
+        const updates = [];
+
+        for (const [uniqueKey, tabData] of tabManager.tabs.entries()) {
+            const key = typeof uniqueKey === 'string' ? uniqueKey : '';
+            if (!key.startsWith(oldPrefix)) continue;
+            const suffix = key.slice(oldPrefix.length);
+            const nextPath = `${newPrefix}${suffix}`;
+            const nextName = this.getBaseName(nextPath.replace(/^cloud:\/\//, ''));
+            updates.push({ oldKey: key, newKey: nextPath, newName: nextName });
+        }
+
+        updates.forEach((item) => {
+            tabManager.updateTabPathBySource?.(item.oldKey, item.newKey, item.newName);
+        });
     }
 
     async deleteItem(file) {
