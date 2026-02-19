@@ -1176,6 +1176,53 @@ class CompilerManager {
         }));
     }
 
+    showExternalCompileResult(result = {}, options = {}) {
+        const title = options.title || '样例编译';
+        this.showOutput();
+        this.clearOutput();
+
+        const success = !!result.success;
+        this.setStatus(success ? `${title}成功` : `${title}失败`);
+
+        if (result.stdout) {
+            this.appendOutput('标准输出:\n', 'info');
+            this.appendOutput(`${result.stdout}\n`, 'info');
+        }
+
+        if (result.stderr) {
+            this.appendOutput('标准错误:\n', 'error');
+            this.appendOutput(`${result.stderr}\n`, 'error');
+        }
+
+        if (result.errors && result.errors.length > 0) {
+            this.appendOutput('错误信息:\n', 'error');
+            result.errors.forEach((err) => {
+                this.appendOutput(`${this._stringifyError(err)}\n`, 'error');
+            });
+        }
+
+        if (result.warnings && result.warnings.length > 0) {
+            this.appendOutput('警告信息:\n', 'warning');
+            result.warnings.forEach((warning) => {
+                this.appendOutput(`${warning}\n`, 'warning');
+            });
+        }
+
+        const analysisRendered = this.renderSmartAnalysis({
+            diagnostics: result.diagnostics,
+            errors: result.errors,
+            warnings: result.warnings,
+            stderr: result.stderr,
+            stdout: result.stdout
+        });
+
+        if (!success && analysisRendered && this.analysisAvailable) {
+            this.switchOutputPane('analysis');
+        } else {
+            this.switchOutputPane('raw');
+        }
+    }
+
     handleRunResult(result) {
         this.isRunning = false;
         if (result.success) {
