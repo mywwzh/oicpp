@@ -1367,7 +1367,7 @@ class OICPPApp {
         } else {
             const input = document.createElement('input');
             input.type = 'file';
-            input.accept = '.cpp,.c,.h,.hpp,.cc,.cxx,.txt,.in,.out,.ans';
+            input.accept = '.cpp,.c,.h,.hpp,.cc,.cxx,.txt,.in,.out,.ans,.py';
             input.onchange = (e) => {
                 const file = e.target.files[0];
                 if (file) {
