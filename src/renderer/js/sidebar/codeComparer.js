@@ -32,6 +32,20 @@ class CodeComparer {
         return lower.endsWith('.cpp') || lower.endsWith('.cc') || lower.endsWith('.cxx') || lower.endsWith('.c');
     }
 
+    isPythonGenerator(filePath) {
+        const lower = String(filePath || '').trim().toLowerCase();
+        return lower.endsWith('.py');
+    }
+
+    async promptMissingPythonInterpreter(task) {
+        this.showTaskCompileError(task, 'settings', '请先设置 Python 解释器路径');
+        try {
+            await window.electronAPI?.openCompilerSettings?.();
+        } catch (error) {
+            logWarn('打开编译器设置失败:', error);
+        }
+    }
+
     getOrCreateTask(taskKey) {
         if (!taskKey) return null;
         let task = this.tasks.get(taskKey);
@@ -346,7 +360,7 @@ class CodeComparer {
             const result = await window.electronAPI.showOpenDialog({
                 title: '选择数据生成器文件',
                 filters: [
-                    { name: 'C++ 文件', extensions: ['cpp', 'cc', 'cxx', 'c'] },
+                    { name: '数据生成器文件', extensions: ['cpp', 'cc', 'cxx', 'c', 'py'] },
                     { name: '所有文件', extensions: ['*'] }
                 ],
                 properties: ['openFile']
@@ -487,6 +501,10 @@ class CodeComparer {
                 this.showTaskCompileError(task, 'general', '请先设置编译器路径');
                 return;
             }
+            if (this.isPythonGenerator(task.config.generatorPath) && !String(settings.pythonInterpreterPath || '').trim()) {
+                await this.promptMissingPythonInterpreter(task);
+                return;
+            }
         } catch (error) {
             logError('获取编译器设置失败:', error);
             this.showTaskCompileError(task, 'general', '无法获取编译器设置');
@@ -575,7 +593,8 @@ class CodeComparer {
             const exeSuffix = isWin ? '.exe' : '';
             const stdExe = await window.electronAPI.pathJoin(tempDir, `std_${timestamp}${exeSuffix}`);
             const testExe = await window.electronAPI.pathJoin(tempDir, `test_${timestamp}${exeSuffix}`);
-            const generatorExe = await window.electronAPI.pathJoin(tempDir, `generator_${timestamp}${exeSuffix}`);
+            let generatorExe = null;
+            let generatorRunTarget = null;
 
             this.updateTaskStatus(task, '编译标准程序...');
             const stdResult = await window.electronAPI.compileFile({
@@ -605,18 +624,44 @@ class CodeComparer {
                 return null;
             }
 
-            this.updateTaskStatus(task, '编译数据生成器...');
-            const generatorResult = await window.electronAPI.compileFile({
-                inputFile: task.config.generatorPath,
-                outputFile: generatorExe,
-                compilerPath: compilerPath,
-                compilerArgs: compilerArgs,
-                workingDirectory: await window.electronAPI.pathDirname(task.config.generatorPath)
-            });
+            const generatorIsPython = this.isPythonGenerator(task.config.generatorPath);
+            if (generatorIsPython) {
+                const interpreterPath = String(settings.pythonInterpreterPath || '').trim();
+                if (!interpreterPath) {
+                    await this.promptMissingPythonInterpreter(task);
+                    return null;
+                }
+                const interpreterExists = await window.electronAPI.checkFileExists(interpreterPath);
+                if (!interpreterExists) {
+                    this.showTaskCompileError(task, 'settings', 'Python 解释器路径无效，请重新设置');
+                    try {
+                        await window.electronAPI?.openCompilerSettings?.();
+                    } catch (_) { }
+                    return null;
+                }
 
-            if (!generatorResult.success) {
-                this.showTaskCompileError(task, 'generator', generatorResult.stderr || generatorResult.stdout || '编译失败');
-                return null;
+                this.updateTaskStatus(task, '准备 Python 数据生成器...');
+                generatorRunTarget = {
+                    executablePath: interpreterPath,
+                    args: [task.config.generatorPath],
+                    workingDirectory: await window.electronAPI.pathDirname(task.config.generatorPath)
+                };
+            } else {
+                generatorExe = await window.electronAPI.pathJoin(tempDir, `generator_${timestamp}${exeSuffix}`);
+                this.updateTaskStatus(task, '编译数据生成器...');
+                const generatorResult = await window.electronAPI.compileFile({
+                    inputFile: task.config.generatorPath,
+                    outputFile: generatorExe,
+                    compilerPath: compilerPath,
+                    compilerArgs: compilerArgs,
+                    workingDirectory: await window.electronAPI.pathDirname(task.config.generatorPath)
+                });
+
+                if (!generatorResult.success) {
+                    this.showTaskCompileError(task, 'generator', generatorResult.stderr || generatorResult.stdout || '编译失败');
+                    return null;
+                }
+                generatorRunTarget = generatorExe;
             }
 
             let spjExe = null;
@@ -665,6 +710,7 @@ class CodeComparer {
                 stdExe,
                 testExe,
                 generatorExe,
+                generatorRunTarget,
                 spjExe
             };
 
@@ -676,7 +722,7 @@ class CodeComparer {
     }
 
     async runComparison(task, programs, timeLimit, workerCountFromConfig = 1, maxParallelFromStart = 1) {
-        const { stdExe, testExe, generatorExe, spjExe } = programs;
+        const { stdExe, testExe, generatorExe, generatorRunTarget, spjExe } = programs;
         let failedGenerations = 0;
 
         const maxParallel = Math.max(1, maxParallelFromStart || 1);
@@ -700,7 +746,7 @@ class CodeComparer {
                 }
 
                 try {
-                    const generation = await this.generateTestData(generatorExe, 0);
+                    const generation = await this.generateTestData(generatorRunTarget || generatorExe, 0);
                     if (!generation || generation.success !== true) {
                         const generatorMessage = generation?.message || '数据生成器运行失败';
                         const generatedOutput = generation?.result?.output || '';
@@ -884,9 +930,9 @@ class CodeComparer {
         }
     }
 
-    async generateTestData(generatorExe, timeLimit) {
+    async generateTestData(generatorProgram, timeLimit) {
         try {
-            const result = await this.runProgram(generatorExe, '', timeLimit);
+            const result = await this.runProgram(generatorProgram, '', timeLimit);
 
             if (result.outputLimitExceeded) {
                 const limitBytes = result.outputLimitBytes || (256 * 1024 * 1024);
@@ -1180,6 +1226,7 @@ class CodeComparer {
                         'standard': '标准程序编译失败',
                         'test': '测试程序编译失败',
                         'generator': '数据生成器编译失败',
+                        'settings': '运行环境未设置',
                         'general': '编译失败'
                     };
                     errorTitle.textContent = compileTypeMap[errorResult.compileType] || '编译失败';

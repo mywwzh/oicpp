@@ -33,6 +33,15 @@
                         <input type="text" id="compiler-options" value="-std=c++14 -O2 -static" placeholder="例如: -std=c++14 -O2 -Wall">
                         <div class="hint">常用的编译参数，多个参数用空格分隔</div>
                     </div>
+
+                    <div class="setting-group">
+                        <label for="python-interpreter-path">Python 解释器路径</label>
+                        <div class="input-group">
+                            <input type="text" id="python-interpreter-path" placeholder="请选择 python 解释器路径" readonly>
+                            <button id="browse-python-interpreter" class="btn btn-secondary">浏览本地</button>
+                        </div>
+                        <div class="hint">当对拍器数据生成器为 .py 文件时使用此解释器运行</div>
+                    </div>
                 </div>
 
                 <div id="testlib-section" class="settings-section">

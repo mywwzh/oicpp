@@ -4689,7 +4689,7 @@ class TabManager {
     openFileDialog() {
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.cpp,.h,.txt,.in,.out,.ans';
+        input.accept = '.cpp,.h,.txt,.in,.out,.ans,.py';
         input.style.display = 'none';
 
         document.body.appendChild(input);

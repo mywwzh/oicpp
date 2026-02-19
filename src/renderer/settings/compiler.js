@@ -2,6 +2,7 @@ class CompilerSettings {
     constructor() {
         this.settings = {
             compilerPath: '',
+            pythonInterpreterPath: '',
             compilerArgs: '-std=c++14 -O2 -static'
         }
         
@@ -85,6 +86,14 @@ class CompilerSettings {
             });
         } else {
             logError('[编译器设置] 未找到浏览编译器按钮');
+        }
+
+        const browsePythonBtn = document.getElementById('browse-python-interpreter');
+        if (browsePythonBtn) {
+            browsePythonBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.browsePythonInterpreter();
+            });
         }
         
         const browseTestlibBtn = document.getElementById('browse-testlib');
@@ -204,6 +213,13 @@ class CompilerSettings {
         } else {
             logError('[编译器设置] 未找到编译器路径元素');
         }
+
+        const pythonInterpreterPath = document.getElementById('python-interpreter-path');
+        if (pythonInterpreterPath) {
+            pythonInterpreterPath.addEventListener('input', (e) => {
+                this.settings.pythonInterpreterPath = e.target.value;
+            });
+        }
         
         const testTestlibBtn = document.getElementById('test-testlib');
         if (testTestlibBtn) {
@@ -228,6 +244,7 @@ class CompilerSettings {
             if (allSettings) {
                 this.settings = {
                     compilerPath: allSettings.compilerPath || '',
+                    pythonInterpreterPath: allSettings.pythonInterpreterPath || '',
                     compilerArgs: allSettings.compilerArgs || '-std=c++14 -O2 -static',
                     testlibPath: allSettings.testlibPath || ''
                 };
@@ -240,12 +257,49 @@ class CompilerSettings {
 
     updateUI() {
         const compilerPathInput = document.getElementById('compiler-path');
+        const pythonInterpreterPathInput = document.getElementById('python-interpreter-path');
         const compilerOptionsInput = document.getElementById('compiler-options');
         const testlibPathInput = document.getElementById('testlib-path');
         
         if (compilerPathInput) compilerPathInput.value = this.settings.compilerPath || '';
+        if (pythonInterpreterPathInput) pythonInterpreterPathInput.value = this.settings.pythonInterpreterPath || '';
         if (compilerOptionsInput) compilerOptionsInput.value = this.settings.compilerArgs || '-std=c++14 -O2 -static';
         if (testlibPathInput) testlibPathInput.value = this.settings.testlibPath || '';
+    }
+
+    async browsePythonInterpreter() {
+        try {
+            const platform = await this.getCurrentPlatform();
+            let title = '选择 Python 解释器';
+            let filters = [{ name: '所有文件', extensions: ['*'] }];
+
+            if (platform === 'windows') {
+                title = '选择 Python 解释器 (python.exe)';
+                filters = [
+                    { name: '可执行文件 (*.exe)', extensions: ['exe'] },
+                    { name: '所有文件', extensions: ['*'] }
+                ];
+            }
+
+            const result = await window.electronAPI.showOpenDialog({
+                title,
+                filters,
+                properties: ['openFile']
+            });
+
+            if (!result.canceled && result.filePaths.length > 0) {
+                const selectedPath = result.filePaths[0];
+                this.settings.pythonInterpreterPath = selectedPath;
+                const input = document.getElementById('python-interpreter-path');
+                if (input) {
+                    input.value = selectedPath;
+                }
+                this.showMessage('已选择 Python 解释器', 'success');
+            }
+        } catch (error) {
+            logError('浏览 Python 解释器失败:', error);
+            this.showMessage('浏览 Python 解释器失败：' + error.message, 'error');
+        }
     }
 
     async browseCompiler() {
@@ -414,10 +468,12 @@ class CompilerSettings {
     async saveSettings() {
         try {
             const compilerPath = document.getElementById('compiler-path').value;
+            const pythonInterpreterPath = document.getElementById('python-interpreter-path').value;
             const compilerArgs = document.getElementById('compiler-options').value;
             
             const newSettings = {
                 compilerPath: compilerPath,
+                pythonInterpreterPath: pythonInterpreterPath,
                 compilerArgs: compilerArgs
             };
             
