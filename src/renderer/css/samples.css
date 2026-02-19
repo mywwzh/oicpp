@@ -50,6 +50,13 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.4px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    user-select: none;
+}
+
+.samples-summary .summary-pill.is-active {
+    box-shadow: 0 0 0 1px var(--primary-color, #007acc);
 }
 
 .no-file-message,
@@ -86,6 +93,13 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+}
+
+.samples-filter-empty {
+    padding: 24px 12px;
+    text-align: center;
+    color: var(--text-secondary, #858585);
+    font-size: 12px;
 }
 
 .sample-group {

@@ -6,6 +6,7 @@ class SampleTester {
         this.nextId = 1;
         this.isOperating = false;
         this.editorChangeInterval = null;
+        this.statusFilter = null;
         this.globalSettings = {
             useTestlib: false,
             spjPath: ''
@@ -252,6 +253,16 @@ class SampleTester {
         if (globalSpjPath) {
             globalSpjPath.addEventListener('change', (e) => {
                 this.updateGlobalSetting('spjPath', e.target.value);
+            });
+        }
+
+        const summaryEl = document.getElementById('samples-summary');
+        if (summaryEl) {
+            summaryEl.addEventListener('click', (event) => {
+                const pill = event.target.closest('.summary-pill[data-status]');
+                if (!pill) return;
+                const status = pill.getAttribute('data-status');
+                this.toggleStatusFilter(status);
             });
         }
     }
@@ -558,7 +569,10 @@ class SampleTester {
             .map(status => {
                 const label = status === 'PENDING' ? '未运行' : status;
                 const klass = status === 'PENDING' ? 'status-pending' : `status-${status.toLowerCase()}`;
-                return `<span class="summary-pill ${klass}">${label} ${counts[status]}</span>`;
+                const isActive = this.statusFilter === status;
+                const activeClass = isActive ? ' is-active' : '';
+                const title = isActive ? '点击取消筛选' : '点击筛选该状态';
+                return `<span class="summary-pill ${klass}${activeClass}" data-status="${status}" title="${title}">${label} ${counts[status]}</span>`;
             })
             .join('');
 
@@ -579,7 +593,15 @@ class SampleTester {
         const samplesList = document.getElementById('samples-list');
         samplesList.innerHTML = '';
 
-        this.samples.forEach(sample => {
+        const filteredSamples = this.getFilteredSamples();
+        if (filteredSamples.length === 0) {
+            if (this.statusFilter) {
+                samplesList.innerHTML = '<div class="samples-filter-empty">当前筛选无样例，点击总览状态可取消筛选。</div>';
+            }
+            return;
+        }
+
+        filteredSamples.forEach(sample => {
             const sampleElement = this.createSampleElement(sample);
             samplesList.appendChild(sampleElement);
         });
@@ -688,6 +710,29 @@ class SampleTester {
         `;
 
         return div;
+    }
+
+    getSampleStatusKey(sample) {
+        const status = sample?.result?.status;
+        const knownStatuses = ['AC', 'WA', 'TLE', 'RE', 'CE', 'OLE'];
+        if (status && knownStatuses.includes(status)) {
+            return status;
+        }
+        return 'PENDING';
+    }
+
+    getFilteredSamples() {
+        if (!this.statusFilter) {
+            return this.samples;
+        }
+        return this.samples.filter(sample => this.getSampleStatusKey(sample) === this.statusFilter);
+    }
+
+    toggleStatusFilter(status) {
+        if (!status) return;
+        this.statusFilter = this.statusFilter === status ? null : status;
+        this.renderSamples();
+        this.updateSummary();
     }
 
     getDisplayContent(sample, type) {
