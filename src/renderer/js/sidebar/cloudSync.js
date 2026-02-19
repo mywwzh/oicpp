@@ -552,6 +552,11 @@ class CloudSyncPanel {
         }
         if (!this.checkRemainingCapacity()) return;
         const targetDir = this.getActionTargetFolder();
+        await this.ensureDirectoryLoaded(targetDir);
+        if (this.hasNameInDirectory(targetDir, name)) {
+            this.showMessage('已存在同名文件或文件夹，请更换名称', 'warning');
+            return;
+        }
         const fullPath = this.joinPath(targetDir, name);
         try {
             await this.request('POST', '/cloudSync/upload', { path: fullPath, content: '' });
@@ -577,6 +582,11 @@ class CloudSyncPanel {
         }
         if (!this.checkRemainingCapacity()) return;
         const targetDir = this.getActionTargetFolder();
+        await this.ensureDirectoryLoaded(targetDir);
+        if (this.hasNameInDirectory(targetDir, name)) {
+            this.showMessage('已存在同名文件或文件夹，请更换名称', 'warning');
+            return;
+        }
         const fullPath = this.joinPath(targetDir, name);
         try {
             await this.request('POST', '/cloudSync/createFolder', { path: fullPath });
@@ -619,6 +629,10 @@ class CloudSyncPanel {
             if (!this.checkRemainingCapacity()) return;
             const targetDir = this.getActionTargetFolder();
             const fileName = info?.basename || filePath.split(/[\\/]/).pop();
+            const conflictAction = await this.resolveUploadConflict(targetDir, fileName, 'file');
+            if (conflictAction === 'cancel' || conflictAction === 'skip') {
+                return;
+            }
             const fullPath = this.joinPath(targetDir, fileName);
             await this.request('POST', '/cloudSync/upload', { path: fullPath, content: content || '' });
             await this.loadDirectory(targetDir);
@@ -649,6 +663,10 @@ class CloudSyncPanel {
             const info = await window.electronAPI.getPathInfo(folderPath);
             const folderName = info?.basename || folderPath.split(/[\\/]/).pop() || 'folder';
             const targetDir = this.getActionTargetFolder();
+            const rootConflict = await this.resolveUploadConflict(targetDir, folderName, 'folder');
+            if (rootConflict === 'cancel' || rootConflict === 'skip') {
+                return;
+            }
             const cloudRoot = this.joinPath(targetDir, folderName);
 
             const walkResult = await window.electronAPI.walkDirectory(folderPath, {
@@ -715,6 +733,18 @@ class CloudSyncPanel {
                     continue;
                 }
                 const cloudPath = this.joinPath(cloudRoot, entry.rel);
+                const parentDir = this.getParentPath(cloudPath);
+                const baseName = this.getBaseName(cloudPath);
+                const action = await this.resolveUploadConflict(parentDir, baseName, 'file');
+                if (action === 'cancel') {
+                    this.hideUploadProgress();
+                    return;
+                }
+                if (action === 'skip') {
+                    processed += 1;
+                    this.updateUploadProgress(processed, entries.length);
+                    continue;
+                }
                 await this.request('POST', '/cloudSync/upload', { path: cloudPath, content: content || '' });
                 uploaded += 1;
                 processed += 1;
@@ -972,6 +1002,69 @@ class CloudSyncPanel {
         if (!primary) return '/';
         if (primary.type === 'folder') return primary.path;
         return this.getParentPath(primary.path);
+    }
+
+    async ensureDirectoryLoaded(dirPath) {
+        const norm = this.normalizePath(dirPath);
+        if (this.itemsCache.has(norm)) return;
+        try {
+            await this.loadDirectory(norm);
+        } catch (_) {
+        }
+    }
+
+    hasNameInDirectory(dirPath, name) {
+        const norm = this.normalizePath(dirPath);
+        const items = this.itemsCache.get(norm) || [];
+        return items.some(item => item.name === name);
+    }
+
+    getItemInDirectory(dirPath, name) {
+        const norm = this.normalizePath(dirPath);
+        const items = this.itemsCache.get(norm) || [];
+        return items.find(item => item.name === name) || null;
+    }
+
+    async resolveUploadConflict(dirPath, name, targetKind) {
+        await this.ensureDirectoryLoaded(dirPath);
+        const existing = this.getItemInDirectory(dirPath, name);
+        if (!existing) return 'none';
+
+        const existingKind = existing.type === 'folder' ? '文件夹' : '文件';
+        const targetLabel = targetKind === 'folder' ? '文件夹' : '文件';
+
+        if (existing.type === 'folder' && targetKind === 'file') {
+            const action = await window.dialogManager?.showActionDialog?.(
+                '上传冲突',
+                `云端已存在同名文件夹: ${name}，无法用${targetLabel}覆盖。`,
+                [
+                    { id: 'skip', label: '跳过' },
+                    { id: 'cancel', label: '取消', className: 'dialog-btn-cancel' }
+                ]
+            );
+            return action || 'cancel';
+        }
+
+        const action = await window.dialogManager?.showActionDialog?.(
+            '上传冲突',
+            `云端已存在同名${existingKind}: ${name}，是否覆盖该${existingKind}？`,
+            [
+                { id: 'overwrite', label: '覆盖', className: 'dialog-btn-confirm' },
+                { id: 'skip', label: '跳过' },
+                { id: 'cancel', label: '取消', className: 'dialog-btn-cancel' }
+            ]
+        );
+
+        if (action === 'overwrite' && existing.type === 'file' && targetKind === 'folder') {
+            try {
+                await this.request('POST', '/cloudSync/delete', { path: existing.path });
+                await this.loadDirectory(dirPath);
+            } catch (_) {
+                return 'cancel';
+            }
+        }
+
+        return action || 'cancel';
     }
 
     validateFileName(name) {
