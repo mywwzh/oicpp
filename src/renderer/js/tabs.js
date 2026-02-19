@@ -4944,7 +4944,7 @@ void hello() {
     }
 
 
-    updateTabPathBySource(oldPath, newPath) {
+    updateTabPathBySource(oldPath, newPath, newFileName = null) {
         try {
             if (!oldPath || !newPath) return;
             const norm = (p) => String(p).replace(/\\/g, '/');
@@ -4975,8 +4975,12 @@ void hello() {
 
             this.tabs.delete(actualOldKey);
             const previousPath = tabData.filePath;
+            const previousFileName = tabData.fileName;
             tabData.filePath = newPath;
             tabData.uniqueKey = newKey;
+            if (newFileName && typeof newFileName === 'string') {
+                tabData.fileName = newFileName;
+            }
             this.tabs.set(newKey, tabData);
 
             try {
@@ -4986,9 +4990,22 @@ void hello() {
                 }
                 if (tabEl) {
                     tabEl.dataset.uniqueKey = newKey;
+                    if (newFileName && typeof newFileName === 'string') {
+                        tabEl.dataset.file = newFileName;
+                    }
                     tabData.element = tabEl;
                 }
             } catch (e) { logWarn('更新标签 DOM uniqueKey 失败:', e); }
+
+            if (newFileName && typeof newFileName === 'string') {
+                const tabOrderIndex = this.tabOrder.indexOf(previousFileName);
+                if (tabOrderIndex !== -1) {
+                    this.tabOrder[tabOrderIndex] = newFileName;
+                }
+                if (this.activeTabKey === newKey || this.activeTabKey === actualOldKey) {
+                    this.activeTab = newFileName;
+                }
+            }
 
             try {
                 if (this.monacoEditorManager && tabData.tabId) {
