@@ -1514,6 +1514,10 @@ class SampleTester {
                 window.editorManager.applyDiagnostics(result.diagnostics);
             }
 
+            if (!result.success) {
+                this.showCompileOutputForResult('样例编译', result);
+            }
+
             return result;
         } finally {
             try {
@@ -1895,6 +1899,10 @@ class SampleTester {
                 result.executablePath = executableFile;
             }
 
+            if (!result.success) {
+                this.showCompileOutputForResult('SPJ编译', result);
+            }
+
             return result;
         } finally {
             try {
@@ -1940,6 +1948,35 @@ class SampleTester {
         } catch (error) {
             logError('SPJ判题失败:', error);
             return 'Error';
+        }
+    }
+
+    showCompileOutputForResult(title, result) {
+        const manager = window.compilerManager;
+        if (!manager) return;
+        if (typeof manager.showExternalCompileResult === 'function') {
+            manager.showExternalCompileResult(result, { title });
+            return;
+        }
+
+        try {
+            manager.showOutput?.();
+            manager.clearOutput?.();
+            if (result?.success) {
+                manager.setStatus?.(`${title}成功`);
+            } else {
+                manager.setStatus?.(`${title}失败`);
+            }
+            if (result?.stderr) {
+                manager.appendOutput?.('标准错误:\n', 'error');
+                manager.appendOutput?.(`${result.stderr}\n`, 'error');
+            }
+            if (result?.stdout) {
+                manager.appendOutput?.('标准输出:\n', 'info');
+                manager.appendOutput?.(`${result.stdout}\n`, 'info');
+            }
+        } catch (error) {
+            logWarn('[样例测试器] 推送编译输出失败', error);
         }
     }
 
