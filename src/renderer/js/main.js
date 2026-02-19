@@ -359,6 +359,10 @@ class OICPPApp {
             }
         } catch (error) {
             this.showMessage('退出登录失败: ' + (error?.message || error), 'error');
+        } finally {
+            if (window.electronAPI && typeof window.electronAPI.openExternal === 'function') {
+                try { window.electronAPI.openExternal('https://auth.mywwzh.top/logout'); } catch (_) { }
+            }
         }
     }
 
