@@ -554,7 +554,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     walkDirectory: (dirPath, options) => ipcRenderer.invoke('walk-directory', dirPath, options),
 
     onRequestSaveAll: (callback) => ipcRenderer.on('request-save-all', () => callback && callback()),
-    notifySaveAllComplete: () => ipcRenderer.send('save-all-complete')
+    notifySaveAllComplete: () => ipcRenderer.send('save-all-complete'),
+
+    luoguGetCaptcha: () => ipcRenderer.invoke('luogu-get-captcha'),
+    luoguLogin: (username, password, captcha) => ipcRenderer.invoke('luogu-login', username, password, captcha),
+    luoguUnlock2FA: (code) => ipcRenderer.invoke('luogu-unlock-2fa', code),
+    luoguCheckLogin: () => ipcRenderer.invoke('luogu-check-login'),
+    luoguLogout: () => ipcRenderer.invoke('luogu-logout'),
+    luoguSubmit: (pid, code, languageId, enableO2, contestId) => ipcRenderer.invoke('luogu-submit', pid, code, languageId, enableO2, contestId),
+    luoguGetRecord: (rid) => ipcRenderer.invoke('luogu-get-record', rid),
+    luoguGetRecords: () => ipcRenderer.invoke('luogu-get-records'),
+    luoguGetProblem: (pid, contestId) => ipcRenderer.invoke('luogu-get-problem', pid, contestId),
+    luoguGetUser: (uid) => ipcRenderer.invoke('luogu-get-user', uid)
 });
 
 contextBridge.exposeInMainWorld('electronIPC', {

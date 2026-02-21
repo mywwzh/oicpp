@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self' blob: file:; connect-src 'self' https://oicpp.mywwzh.top;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self' blob: file:; connect-src 'self' https://oicpp.mywwzh.top https://www.luogu.com.cn wss://ws.luogu.com.cn;">
     <meta http-equiv="Permissions-Policy" content="fullscreen=(self)">
     <title>OICPP IDE</title>
     <link rel="stylesheet" href="css/titlebar.css">
@@ -23,6 +23,7 @@
     <link rel="stylesheet" href="css/folder-picker.css">
     <link rel="stylesheet" href="../../node_modules/katex/dist/katex.min.css">
     <link rel="stylesheet" href="css/markdown.css">
+    <link rel="stylesheet" href="css/luogu.css">
 
 </head>
 <body>
@@ -189,6 +190,11 @@
                     </svg>
                 </div>
                 <div class="sidebar-icons-spacer"></div>
+                <div class="sidebar-icon" data-panel="luogu" title="洛谷">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                    </svg>
+                </div>
                 <div class="sidebar-icon cloud-sync-icon" data-panel="cloud" title="云空间" style="display: none;">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M19 18H6a4 4 0 0 1-.88-7.9A6 6 0 0 1 17.5 9c.16 0 .32 0 .48.02A4.5 4.5 0 0 1 19 18zm-7-4v-3H9l3-3 3 3h-3v3h-2zm-2 2h4v2h-4v-2z"/>
@@ -489,6 +495,18 @@
                     </div>
                     <div class="file-tree cloud-tree" id="cloud-tree"></div>
                 </div>
+
+                <div class="panel-content" id="luogu-panel">
+                    <div class="panel-header">
+                        <span class="panel-title">洛谷</span>
+                    </div>
+                    <div id="luogu-content">
+                        <div class="luogu-loading">
+                            <div class="luogu-loading-spinner"></div>
+                            <span>加载中...</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -580,6 +598,7 @@
     <script src="js/sidebar/debugPanel.js"></script>
     <script src="js/sidebar/codeComparer.js"></script>
     <script src="js/sidebar/cloudSync.js"></script>
+    <script src="js/sidebar/luoguPanel.js"></script>
     <script src="js/sidebar.js"></script>
     <script src="js/tabs.js"></script>
     <script src="js/main.js"></script>

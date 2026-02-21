@@ -18,6 +18,7 @@ const logger = require('./utils/logger');
 
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
+const luoguApi = require('./luoguApi');
 
 const APP_VERSION = '1.3.2';
 const SAVE_ALL_TIMEOUT = 4000;
@@ -1467,6 +1468,96 @@ function setupIPC() {
         saveSettings();
         broadcastIdeLoginState({ loggedIn: false, user: null, message: '已退出登录' });
         return { ok: true };
+    });
+
+    ipcMain.handle('luogu-get-captcha', async () => {
+        try {
+            const buffer = await luoguApi.getLoginCaptcha();
+            return { success: true, captcha: buffer.toString('base64') };
+        } catch (e) {
+            return { success: false, errorMessage: e.message || '获取验证码失败' };
+        }
+    });
+
+    ipcMain.handle('luogu-login', async (_event, username, password, captcha) => {
+        try {
+            const result = await luoguApi.login(username, password, captcha);
+            return result;
+        } catch (e) {
+            return { success: false, errorMessage: e.message || '登录失败' };
+        }
+    });
+
+    ipcMain.handle('luogu-unlock-2fa', async (_event, code) => {
+        try {
+            const result = await luoguApi.unlock2FA(code);
+            return result;
+        } catch (e) {
+            return { success: false, errorMessage: e.message || '验证失败' };
+        }
+    });
+
+    ipcMain.handle('luogu-check-login', async () => {
+        try {
+            const result = await luoguApi.checkLoginStatus();
+            return result;
+        } catch (e) {
+            return { loggedIn: false, errorMessage: e.message };
+        }
+    });
+
+    ipcMain.handle('luogu-logout', async () => {
+        try {
+            await luoguApi.logout();
+            return { success: true };
+        } catch (e) {
+            return { success: false, errorMessage: e.message };
+        }
+    });
+
+    ipcMain.handle('luogu-submit', async (_event, pid, code, languageId, enableO2, contestId) => {
+        try {
+            const result = await luoguApi.submitCode(pid, code, languageId, enableO2, contestId);
+            return result;
+        } catch (e) {
+            return { success: false, errorMessage: e.message || '提交失败' };
+        }
+    });
+
+    ipcMain.handle('luogu-get-record', async (_event, rid) => {
+        try {
+            const result = await luoguApi.getRecordStatus(rid);
+            return result;
+        } catch (e) {
+            return { success: false, errorMessage: e.message || '获取记录失败' };
+        }
+    });
+
+    ipcMain.handle('luogu-get-records', async () => {
+        try {
+            const result = await luoguApi.getRecentRecords();
+            return result;
+        } catch (e) {
+            return { success: false, errorMessage: e.message || '获取记录失败' };
+        }
+    });
+
+    ipcMain.handle('luogu-get-problem', async (_event, pid, contestId) => {
+        try {
+            const result = await luoguApi.getProblemData(pid, contestId);
+            return result;
+        } catch (e) {
+            return { success: false, errorMessage: e.message || '获取题目失败' };
+        }
+    });
+
+    ipcMain.handle('luogu-get-user', async (_event, uid) => {
+        try {
+            const result = await luoguApi.getUserInfo(uid);
+            return { success: true, user: result };
+        } catch (e) {
+            return { success: false, errorMessage: e.message || '获取用户信息失败' };
+        }
     });
 
     ipcMain.handle('get-top-level-settings', () => {
