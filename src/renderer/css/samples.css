@@ -386,6 +386,7 @@
 .sample-settings {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 16px;
     padding: 8px 0;
     border-top: 1px solid var(--border-color, #464647);
@@ -732,4 +733,8 @@
 
 .samples-content::-webkit-scrollbar-thumb:hover {
     background: var(--secondary-bg-hover);
+}
+
+.setting-input-wide {
+    width: 140px;
 }
