@@ -430,6 +430,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveAsFile: (content) => ipcRenderer.invoke('save-as-file', content),
     readFileContent: (filePath) => ipcRenderer.invoke('read-file-content', filePath),
     readFileBuffer: (filePath) => ipcRenderer.invoke('read-file-buffer', filePath),
+    readZipTextFiles: (zipPath) => ipcRenderer.invoke('read-zip-text-files', zipPath),
     showItemInFolder: (filePath) => ipcRenderer.invoke('open-path', filePath, { reveal: true }),
     openPath: (targetPath, options = {}) => ipcRenderer.invoke('open-path', targetPath, options),
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),

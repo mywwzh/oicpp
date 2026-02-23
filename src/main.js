@@ -2117,6 +2117,69 @@ function setupIPC() {
         }
     });
 
+    ipcMain.handle('read-zip-text-files', async (event, zipPath) => {
+        let zip = null;
+        try {
+            if (!zipPath || typeof zipPath !== 'string') {
+                return { success: false, error: '无效的压缩包路径' };
+            }
+            if (!fs.existsSync(zipPath)) {
+                return { success: false, error: '压缩包不存在' };
+            }
+
+            zip = new StreamZip.async({ file: zipPath });
+            const entries = await zip.entries();
+            const allowedExts = new Set(['.in', '.out', '.ans', '.txt', '.input', '.output']);
+            const files = [];
+
+            for (const [entryName, entry] of Object.entries(entries)) {
+                if (!entry || entry.isDirectory) continue;
+
+                const normalizedEntryName = String(entryName || '').replace(/\\/g, '/');
+                if (!normalizedEntryName || normalizedEntryName.includes('__MACOSX/')) continue;
+
+                const baseName = path.basename(normalizedEntryName);
+                if (!baseName || baseName.startsWith('.')) continue;
+
+                const ext = path.extname(baseName).toLowerCase();
+                if (!allowedExts.has(ext)) continue;
+
+                let content = '';
+                try {
+                    const buffer = await zip.entryData(entry);
+                    const encoding = detectEncoding(buffer);
+                    if (encoding === 'utf8') {
+                        content = buffer.toString('utf8');
+                    } else {
+                        const iconv = require('iconv-lite');
+                        content = iconv.decode(buffer, 'gbk');
+                    }
+                } catch (decodeError) {
+                    try {
+                        const buffer = await zip.entryData(entry);
+                        content = buffer.toString('utf8');
+                    } catch (_) {
+                        continue;
+                    }
+                }
+
+                files.push({
+                    path: normalizedEntryName,
+                    content
+                });
+            }
+
+            return { success: true, files };
+        } catch (error) {
+            logError('读取压缩包样例失败:', error);
+            return { success: false, error: error.message || '读取压缩包失败' };
+        } finally {
+            if (zip) {
+                try { await zip.close(); } catch (_) { }
+            }
+        }
+    });
+
     ipcMain.handle('watch-file', async (event, filePath) => {
         const normalized = normalizeWatchKey(filePath);
         if (!normalized) {
