@@ -73,7 +73,9 @@ class SampleTester {
                                     showInput: true,
                                     showOutput: true,
                                     inputType: 'userinput',
-                                    outputType: 'userinput'
+                                    outputType: 'userinput',
+                                    freopenInputFile: '',
+                                    freopenOutputFile: ''
                                 }));
                                 this.samples = existing.concat(newSamples);
                                 this.nextId = this.samples.length + 1;
@@ -442,6 +444,12 @@ class SampleTester {
                     if (!sample.outputType) {
                         sample.outputType = 'userinput';
                     }
+                    if (typeof sample.freopenInputFile !== 'string') {
+                        sample.freopenInputFile = '';
+                    }
+                    if (typeof sample.freopenOutputFile !== 'string') {
+                        sample.freopenOutputFile = '';
+                    }
 
                     if (sample.hasOwnProperty('useTestlib')) {
                         delete sample.useTestlib;
@@ -717,6 +725,18 @@ class SampleTester {
                                onchange="sampleTester.updateSampleSetting(${sample.id}, 'timeLimit', this.value)">
                         <span class="setting-unit">ms</span>
                     </div>
+                    <div class="setting-group">
+                        <span class="setting-label">输入文件:</span>
+                        <input type="text" class="setting-input setting-input-wide" value="${sample.freopenInputFile || ''}"
+                               placeholder="如 sample.in"
+                               onchange="sampleTester.updateSampleSetting(${sample.id}, 'freopenInputFile', this.value)">
+                    </div>
+                    <div class="setting-group">
+                        <span class="setting-label">输出文件:</span>
+                        <input type="text" class="setting-input setting-input-wide" value="${sample.freopenOutputFile || ''}"
+                               placeholder="如 sample.out"
+                               onchange="sampleTester.updateSampleSetting(${sample.id}, 'freopenOutputFile', this.value)">
+                    </div>
                 </div>
             </div>
         `;
@@ -812,6 +832,8 @@ class SampleTester {
                 input: '',
                 output: '',
                 timeLimit: 1000,
+                freopenInputFile: '',
+                freopenOutputFile: '',
                 useTestlib: false,
                 spjPath: '',
                 result: null
@@ -888,12 +910,93 @@ class SampleTester {
         if (sample) {
             if (setting === 'timeLimit') {
                 sample[setting] = parseInt(value);
+            } else if (setting === 'freopenInputFile' || setting === 'freopenOutputFile') {
+                sample[setting] = this.normalizeFreopenFileName(value);
             } else if (setting === 'useTestlib') {
                 sample[setting] = value;
             } else {
                 sample[setting] = value;
             }
             this.saveSamples();
+        }
+    }
+
+    normalizeFreopenFileName(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        const normalized = raw.replace(/[\\/]/g, '').replace(/[<>:"|?*]/g, '').trim();
+        return normalized;
+    }
+
+    async prepareFreopenContext(sample, inputData) {
+        const inputFileName = this.normalizeFreopenFileName(sample?.freopenInputFile);
+        const outputFileName = this.normalizeFreopenFileName(sample?.freopenOutputFile);
+
+        if (!inputFileName && !outputFileName) {
+            return {
+                runInput: inputData,
+                workingDirectory: null,
+                outputFilePath: null,
+                cleanupFiles: []
+            };
+        }
+
+        const userHome = await window.electronAPI.getUserHome();
+        const baseDir = await window.electronAPI.pathJoin(userHome, '.oicpp', 'sampleTester', 'freopen_runs');
+        const runDirName = `sample_${sample?.id || 'x'}`;
+        const runDir = await window.electronAPI.pathJoin(baseDir, runDirName);
+
+        await window.electronAPI.ensureDirectory(baseDir);
+        await window.electronAPI.ensureDirectory(runDir);
+
+        const cleanupFiles = [];
+        let outputFilePath = null;
+
+        if (inputFileName) {
+            const inputFilePath = await window.electronAPI.pathJoin(runDir, inputFileName);
+            await window.electronAPI.writeFile(inputFilePath, inputData || '');
+            cleanupFiles.push(inputFilePath);
+        }
+
+        if (outputFileName) {
+            outputFilePath = await window.electronAPI.pathJoin(runDir, outputFileName);
+            cleanupFiles.push(outputFilePath);
+        }
+
+        return {
+            runInput: inputFileName ? '' : inputData,
+            workingDirectory: runDir,
+            outputFilePath,
+            cleanupFiles
+        };
+    }
+
+    async cleanupFreopenContext(context) {
+        if (!context || !Array.isArray(context.cleanupFiles)) return;
+        for (const filePath of context.cleanupFiles) {
+            try {
+                const exists = await window.electronAPI.checkFileExists(filePath);
+                if (exists) {
+                    await window.electronAPI.deleteFile(filePath);
+                }
+            } catch (_) { }
+        }
+    }
+
+    async resolveProgramOutput(runResult, freopenContext) {
+        if (!freopenContext?.outputFilePath) {
+            return runResult.output || '';
+        }
+
+        try {
+            const exists = await window.electronAPI.checkFileExists(freopenContext.outputFilePath);
+            if (!exists) {
+                return runResult.output || '';
+            }
+            return await window.electronAPI.readFileContent(freopenContext.outputFilePath);
+        } catch (error) {
+            try { logWarn('[样例测试器] 读取freopen输出文件失败:', error); } catch (_) { }
+            return runResult.output || '';
         }
     }
 
@@ -1264,7 +1367,18 @@ class SampleTester {
                 expectedOutput = sample.output || '';
             }
 
-            const runResult = await this.runProgram(executablePath, inputData, sample.timeLimit);
+            const freopenContext = await this.prepareFreopenContext(sample, inputData);
+            let runResult;
+            let actualOutput = '';
+            try {
+                const runOptions = freopenContext.workingDirectory
+                    ? { executablePath, workingDirectory: freopenContext.workingDirectory }
+                    : executablePath;
+                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit);
+                actualOutput = await this.resolveProgramOutput(runResult, freopenContext);
+            } finally {
+                await this.cleanupFreopenContext(freopenContext);
+            }
 
             let status;
             let spjUsed = false;
@@ -1287,7 +1401,7 @@ class SampleTester {
                 try { logWarn('[样例测试器][RE]', { sampleId: sample.id, exitCode: runResult.exitCode, stderrBytes: (runResult.stderr || '').length, durationMs: runResult.time }); } catch (_) { }
             } else {
                 if (useTestlib && spjExecutablePath) {
-                    const normalizedActual = runResult.output.trimEnd();
+                    const normalizedActual = actualOutput.trimEnd();
                     const normalizedExpected = expectedOutput.trimEnd();
 
                     const spjExists = await window.electronAPI.checkFileExists(spjExecutablePath);
@@ -1299,14 +1413,14 @@ class SampleTester {
                     }
                     spjUsed = true;
                 } else {
-                    status = this.compareOutput(runResult.output, expectedOutput);
+                    status = this.compareOutput(actualOutput, expectedOutput);
                     if (status === 'WA') {
-                        const diff = this.getDifferenceInfo((runResult.output || '').trimEnd(), (expectedOutput || '').trimEnd());
+                        const diff = this.getDifferenceInfo((actualOutput || '').trimEnd(), (expectedOutput || '').trimEnd());
                         try {
                             const diffText = diff ? `${diff.line}:${diff.char}` : 'none';
                             const inputSource = sample.inputType === 'file' ? `file:${sample.input}` : 'manual';
                             const expectedSource = sample.outputType === 'file' ? `file:${sample.output}` : 'manual';
-                            logInfo(`[样例测试器][WA] sampleId=${sample.id} inputSource=${inputSource} expectedSource=${expectedSource} actualLen=${(runResult.output || '').length} expectedLen=${(expectedOutput || '').length} firstDiff=${diffText}`);
+                            logInfo(`[样例测试器][WA] sampleId=${sample.id} inputSource=${inputSource} expectedSource=${expectedSource} actualLen=${(actualOutput || '').length} expectedLen=${(expectedOutput || '').length} firstDiff=${diffText}`);
                         } catch (_) { }
                     }
                 }
@@ -1314,11 +1428,9 @@ class SampleTester {
 
             return {
                 status: status,
-                output: this.truncateOutput(runResult.output),
-                rawOutput: runResult.output,
-                outputSizeBytes: Number.isFinite(runResult.observedOutputBytes) && runResult.observedOutputBytes > 0
-                    ? runResult.observedOutputBytes
-                    : this.getOutputSizeBytes(runResult.output),
+                output: this.truncateOutput(actualOutput),
+                rawOutput: actualOutput,
+                outputSizeBytes: this.getOutputSizeBytes(actualOutput),
                 outputExpanded: false,
                 time: runResult.time,
                 usedSpj: spjUsed
@@ -1396,7 +1508,18 @@ class SampleTester {
             if (statusCallback) {
                 statusCallback('running');
             }
-            const runResult = await this.runProgram(executablePath, inputData, sample.timeLimit);
+            const freopenContext = await this.prepareFreopenContext(sample, inputData);
+            let runResult;
+            let actualOutput = '';
+            try {
+                const runOptions = freopenContext.workingDirectory
+                    ? { executablePath, workingDirectory: freopenContext.workingDirectory }
+                    : executablePath;
+                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit);
+                actualOutput = await this.resolveProgramOutput(runResult, freopenContext);
+            } finally {
+                await this.cleanupFreopenContext(freopenContext);
+            }
 
             let status;
             let spjUsed = false;
@@ -1420,7 +1543,7 @@ class SampleTester {
                     try { logWarn('[样例测试器][RE]', { sampleId: sample.id, exitCode: runResult.exitCode, stderrBytes: (runResult.stderr || '').length, durationMs: runResult.time }); } catch (_) { }
                 } else {
                     if (useTestlib && spjExecutablePath) {
-                        const normalizedActual = runResult.output.trimEnd();
+                        const normalizedActual = actualOutput.trimEnd();
                         const normalizedExpected = expectedOutput.trimEnd();
 
                         const spjExists = await window.electronAPI.checkFileExists(spjExecutablePath);
@@ -1434,14 +1557,14 @@ class SampleTester {
                         }
                         spjUsed = true;
                     } else {
-                        status = this.compareOutput(runResult.output, expectedOutput);
+                        status = this.compareOutput(actualOutput, expectedOutput);
                         if (status === 'WA') {
-                            const diff = this.getDifferenceInfo((runResult.output || '').trimEnd(), (expectedOutput || '').trimEnd());
+                            const diff = this.getDifferenceInfo((actualOutput || '').trimEnd(), (expectedOutput || '').trimEnd());
                             try {
                                 const diffText = diff ? `${diff.line}:${diff.char}` : 'none';
                                 const inputSource = sample.inputType === 'file' ? `file:${sample.input}` : 'manual';
                                 const expectedSource = sample.outputType === 'file' ? `file:${sample.output}` : 'manual';
-                                logInfo(`[样例测试器][WA] sampleId=${sample.id} inputSource=${inputSource} expectedSource=${expectedSource} actualLen=${(runResult.output || '').length} expectedLen=${(expectedOutput || '').length} firstDiff=${diffText}`);
+                                logInfo(`[样例测试器][WA] sampleId=${sample.id} inputSource=${inputSource} expectedSource=${expectedSource} actualLen=${(actualOutput || '').length} expectedLen=${(expectedOutput || '').length} firstDiff=${diffText}`);
                             } catch (_) { }
                         }
                     }
@@ -1451,11 +1574,9 @@ class SampleTester {
 
             return {
                 status: status,
-                output: this.truncateOutput(runResult.output),
-                rawOutput: runResult.output,
-                outputSizeBytes: Number.isFinite(runResult.observedOutputBytes) && runResult.observedOutputBytes > 0
-                    ? runResult.observedOutputBytes
-                    : this.getOutputSizeBytes(runResult.output),
+                output: this.truncateOutput(actualOutput),
+                rawOutput: actualOutput,
+                outputSizeBytes: this.getOutputSizeBytes(actualOutput),
                 outputExpanded: false,
                 time: runResult.time,
                 usedSpj: spjUsed
