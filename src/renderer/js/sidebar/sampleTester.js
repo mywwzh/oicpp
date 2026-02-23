@@ -466,8 +466,17 @@ class SampleTester {
         if (!this.samplesFilePath) return;
 
         try {
+            const samplesToSave = this.samples.map(sample => {
+                const s = { ...sample };
+                if (s.result) {
+                    const { rawOutput, outputExpanded, outputSizeBytes, ...restResult } = s.result;
+                    s.result = restResult;
+                }
+                return s;
+            });
+
             const data = {
-                samples: this.samples,
+                samples: samplesToSave,
                 globalSettings: this.globalSettings
             };
             await window.electronAPI.saveFile(this.samplesFilePath, JSON.stringify(data, null, 2));
@@ -634,6 +643,8 @@ class SampleTester {
 
         const inputDisplay = this.getDisplayContent(sample, 'input');
         const outputDisplay = this.getDisplayContent(sample, 'output');
+        const outputIsTruncated = sample.result ? this.isOutputTruncated(sample.result) : false;
+        const outputIsExpanded = !!sample.result?.outputExpanded;
 
         div.innerHTML = `
             <div class="sample-header" onclick="sampleTester.toggleSample(${sample.id})">
@@ -683,6 +694,7 @@ class SampleTester {
                             <span class="sample-io-label">程序输出</span>
                             <span class="diff-info" id="diff-info-${sample.id}" style="display: none;"></span>
                             <div class="output-controls" style="display: ${sample.result?.output ? 'flex' : 'none'};">
+                                <button class="export-output-btn expand-output-btn" style="display: ${outputIsTruncated ? 'inline-flex' : 'none'};" onclick="sampleTester.toggleExpandOutput(${sample.id})" title="${outputIsExpanded ? '收起输出' : '展开完整输出'}">${outputIsExpanded ? '收起' : '展开'}</button>
                                 <button class="export-output-btn" onclick="sampleTester.exportSampleOutput(${sample.id})" title="导出输出到文件">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -1291,14 +1303,10 @@ class SampleTester {
                     if (status === 'WA') {
                         const diff = this.getDifferenceInfo((runResult.output || '').trimEnd(), (expectedOutput || '').trimEnd());
                         try {
-                            logWarn('[样例测试器][WA]', {
-                                sampleId: sample.id,
-                                inputSource: sample.inputType === 'file' ? `file:${sample.input}` : 'manual',
-                                expectedSource: sample.outputType === 'file' ? `file:${sample.output}` : 'manual',
-                                actualLen: (runResult.output || '').length,
-                                expectedLen: (expectedOutput || '').length,
-                                firstDiff: diff || null
-                            });
+                            const diffText = diff ? `${diff.line}:${diff.char}` : 'none';
+                            const inputSource = sample.inputType === 'file' ? `file:${sample.input}` : 'manual';
+                            const expectedSource = sample.outputType === 'file' ? `file:${sample.output}` : 'manual';
+                            logInfo(`[样例测试器][WA] sampleId=${sample.id} inputSource=${inputSource} expectedSource=${expectedSource} actualLen=${(runResult.output || '').length} expectedLen=${(expectedOutput || '').length} firstDiff=${diffText}`);
                         } catch (_) { }
                     }
                 }
@@ -1307,6 +1315,11 @@ class SampleTester {
             return {
                 status: status,
                 output: this.truncateOutput(runResult.output),
+                rawOutput: runResult.output,
+                outputSizeBytes: Number.isFinite(runResult.observedOutputBytes) && runResult.observedOutputBytes > 0
+                    ? runResult.observedOutputBytes
+                    : this.getOutputSizeBytes(runResult.output),
+                outputExpanded: false,
                 time: runResult.time,
                 usedSpj: spjUsed
             };
@@ -1425,14 +1438,10 @@ class SampleTester {
                         if (status === 'WA') {
                             const diff = this.getDifferenceInfo((runResult.output || '').trimEnd(), (expectedOutput || '').trimEnd());
                             try {
-                                logWarn('[样例测试器][WA]', {
-                                    sampleId: sample.id,
-                                    inputSource: sample.inputType === 'file' ? `file:${sample.input}` : 'manual',
-                                    expectedSource: sample.outputType === 'file' ? `file:${sample.output}` : 'manual',
-                                    actualLen: (runResult.output || '').length,
-                                    expectedLen: (expectedOutput || '').length,
-                                    firstDiff: diff || null
-                                });
+                                const diffText = diff ? `${diff.line}:${diff.char}` : 'none';
+                                const inputSource = sample.inputType === 'file' ? `file:${sample.input}` : 'manual';
+                                const expectedSource = sample.outputType === 'file' ? `file:${sample.output}` : 'manual';
+                                logInfo(`[样例测试器][WA] sampleId=${sample.id} inputSource=${inputSource} expectedSource=${expectedSource} actualLen=${(runResult.output || '').length} expectedLen=${(expectedOutput || '').length} firstDiff=${diffText}`);
                             } catch (_) { }
                         }
                     }
@@ -1443,6 +1452,11 @@ class SampleTester {
             return {
                 status: status,
                 output: this.truncateOutput(runResult.output),
+                rawOutput: runResult.output,
+                outputSizeBytes: Number.isFinite(runResult.observedOutputBytes) && runResult.observedOutputBytes > 0
+                    ? runResult.observedOutputBytes
+                    : this.getOutputSizeBytes(runResult.output),
+                outputExpanded: false,
                 time: runResult.time,
                 usedSpj: spjUsed
             };
@@ -1556,7 +1570,40 @@ class SampleTester {
         return output;
     }
 
+    getOutputSizeBytes(output) {
+        const safeOutput = output == null ? '' : String(output);
+        try {
+            return new TextEncoder().encode(safeOutput).length;
+        } catch (_) {
+            return safeOutput.length;
+        }
+    }
+
+    getOutputSizeMbText(result) {
+        const fullOutput = result?.rawOutput ?? result?.output ?? '';
+        const bytes = (result && Number.isFinite(result.outputSizeBytes) && result.outputSizeBytes > 0)
+            ? result.outputSizeBytes
+            : this.getOutputSizeBytes(fullOutput);
+        return (bytes / (1024 * 1024)).toFixed(2);
+    }
+
+    isOutputTruncated(result) {
+        if (!result) return false;
+        const compactOutput = result.output || '';
+        const fullOutput = result.rawOutput || compactOutput;
+        if (fullOutput.length > compactOutput.length) {
+            return true;
+        }
+        return compactOutput.split('\n').length > 100;
+    }
+
     processOutputForDisplay(output, result, sampleId) {
+        const fullOutput = result?.rawOutput || output || '';
+
+        if (result?.outputExpanded) {
+            return fullOutput;
+        }
+
         const lines = output.split('\n');
         const maxLines = 100;
 
@@ -1687,13 +1734,22 @@ class SampleTester {
         const outputContainer = element.querySelector('.program-output-container');
         const outputTextarea = element.querySelector('.program-output');
         const diffInfo = element.querySelector('.diff-info');
+        const expandBtn = element.querySelector('.expand-output-btn');
+        const truncated = this.isOutputTruncated(result);
+        const isExpanded = !!result.outputExpanded;
+
+        if (expandBtn) {
+            expandBtn.style.display = truncated ? 'inline-flex' : 'none';
+            expandBtn.textContent = isExpanded ? '收起' : '展开';
+            expandBtn.title = isExpanded ? '收起输出' : '展开完整输出';
+        }
 
         if (outputTextarea && outputContainer) {
             const processedOutput = this.processOutputForDisplay(result.output || '', result, id);
 
             const usedSpj = result.usedSpj || false;
 
-            if (result.status === 'WA' && !usedSpj) {
+            if (result.status === 'WA' && !usedSpj && !isExpanded) {
                 if (!sample) {
                     sample = this.samples.find(s => s.id === id);
                 }
@@ -1775,7 +1831,7 @@ class SampleTester {
             });
 
             if (!result.canceled && result.filePath) {
-                await window.electronAPI.saveFile(result.filePath, sample.result.output);
+                await window.electronAPI.saveFile(result.filePath, sample.result.rawOutput || sample.result.output);
 
                 const statusContainer = document.querySelector(`[data-sample-id="${sampleId}"] .sample-status`);
                 if (statusContainer) {
@@ -1789,6 +1845,54 @@ class SampleTester {
         } catch (error) {
             logError('导出样例输出失败:', error);
         }
+    }
+
+    async toggleExpandOutput(sampleId) {
+        const sample = this.samples.find(s => s.id === sampleId);
+        if (!sample || !sample.result) {
+            return;
+        }
+
+        const result = sample.result;
+        if (!this.isOutputTruncated(result)) {
+            return;
+        }
+
+        if (result.outputExpanded) {
+            result.outputExpanded = false;
+            this.updateSampleResult(sampleId, result, sample);
+            this.saveSamples();
+            return;
+        }
+
+        const sizeMbText = this.getOutputSizeMbText(result);
+        const message = `当前输出大小约 ${sizeMbText} MB。<br><br>过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`;
+
+        let shouldExpand = false;
+        try {
+            if (window.dialogManager?.showActionDialog) {
+                const action = await window.dialogManager.showActionDialog('展开完整输出确认', message, [
+                    { id: 'cancel', label: '取消', className: 'dialog-btn-cancel' },
+                    { id: 'expand', label: '仍要展开', className: 'dialog-btn-confirm' }
+                ]);
+                shouldExpand = action === 'expand';
+            } else if (window.dialogManager?.showConfirmDialog) {
+                shouldExpand = await window.dialogManager.showConfirmDialog('展开完整输出确认', `当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`);
+            } else {
+                shouldExpand = window.confirm(`当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`);
+            }
+        } catch (error) {
+            logWarn('展开输出确认失败，已取消展开:', error);
+            shouldExpand = false;
+        }
+
+        if (!shouldExpand) {
+            return;
+        }
+
+        result.outputExpanded = true;
+        this.updateSampleResult(sampleId, result, sample);
+        this.saveSamples();
     }
 
     async autoSaveCurrentFile() {
