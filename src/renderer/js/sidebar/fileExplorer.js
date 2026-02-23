@@ -1103,7 +1103,7 @@ class FileExplorer {
                 const operation = this.clipboard.operation;
                 window.electronIPC.send('paste-file', file.path, targetPath, operation);
 
-                const handleFilePasted = (event, sourcePath, destPath, operation, error) => {
+                const handleFilePasted = async (event, sourcePath, destPath, operation, error) => {
                     if (sourcePath === file.path) {
                         if (error) {
                             logError(`${operation === 'copy' ? '复制' : '移动'}文件失败:`, file.name, error);
@@ -1113,6 +1113,17 @@ class FileExplorer {
 
                             if (operation === 'cut' && window.tabManager) {
                                 try { window.tabManager.updateTabPathBySource(sourcePath, destPath); } catch (e) { logWarn('更新标签页路径失败:', e); }
+                            }
+
+                            if (operation === 'cut') {
+                                try {
+                                    const samplePanel = window.sidebarManager?.panels?.samples;
+                                    if (samplePanel && typeof samplePanel.handleFileRenamed === 'function') {
+                                        await samplePanel.handleFileRenamed(sourcePath, destPath);
+                                    }
+                                } catch (e) {
+                                    logWarn('[文件管理器] 粘贴移动后同步样例配置失败:', e);
+                                }
                             }
                         }
                         window.electronIPC.ipcRenderer.removeListener('file-pasted', handleFilePasted);
@@ -1362,13 +1373,21 @@ class FileExplorer {
                 await new Promise((resolve, reject) => {
                     let resolved = false;
 
-                    const successHandler = (event, oldPath, movedNewPath) => {
+                    const successHandler = async (event, oldPath, movedNewPath) => {
                         if (oldPath === file.path && movedNewPath === newPath && !resolved) {
                             resolved = true;
                             window.electronIPC.ipcRenderer.removeListener('file-moved', successHandler);
                             window.electronIPC.ipcRenderer.removeListener('file-move-error', errorHandler);
                             logInfo(`文件移动成功: ${oldPath} -> ${movedNewPath}`);
                             try { window.tabManager?.updateTabPathBySource?.(oldPath, movedNewPath); } catch (e) { logWarn('移动后更新标签页路径失败:', e); }
+                            try {
+                                const samplePanel = window.sidebarManager?.panels?.samples;
+                                if (samplePanel && typeof samplePanel.handleFileRenamed === 'function') {
+                                    await samplePanel.handleFileRenamed(oldPath, movedNewPath);
+                                }
+                            } catch (e) {
+                                logWarn('[文件管理器] 拖拽移动后同步样例配置失败:', e);
+                            }
                             resolve();
                         }
                     };
