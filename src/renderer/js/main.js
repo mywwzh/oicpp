@@ -883,8 +883,23 @@ class OICPPApp {
         }
         
         if (e.ctrlKey && e.key === 'z') {
-            logInfo(`全局Ctrl+Z事件被检测到，目标元素:`, e.target);
-            logInfo(`当前活跃编辑器:`, this.editorManager ? this.editorManager.currentEditor : '无');
+            const target = e.target;
+            const currentEditor = this.editorManager ? this.editorManager.currentEditor : null;
+            const targetInfo = {
+                tagName: target?.tagName || null,
+                id: target?.id || null,
+                className: typeof target?.className === 'string' ? target.className : null,
+                role: typeof target?.getAttribute === 'function' ? (target.getAttribute('role') || null) : null,
+                isContentEditable: !!target?.isContentEditable
+            };
+            const currentEditorInfo = {
+                exists: !!currentEditor,
+                hasGetValue: typeof currentEditor?.getValue === 'function',
+                hasGetFilePath: typeof currentEditor?.getFilePath === 'function',
+                filePath: typeof currentEditor?.getFilePath === 'function' ? (currentEditor.getFilePath() || null) : null
+            };
+            logInfo(`全局Ctrl+Z事件被检测到，目标元素:`, targetInfo);
+            logInfo(`当前活跃编辑器:`, currentEditorInfo);
             logInfo(`当前标签页ID:`, this.editorManager ? this.editorManager.currentTabId : '无');
         }
         
