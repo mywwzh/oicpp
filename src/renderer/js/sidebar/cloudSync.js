@@ -6,7 +6,7 @@ class CloudSyncPanel {
         this.expandedFolders = new Set(['/']);
         this.selectedItems = new Map();
         this.remainingFiles = null;
-        this.allowedExtensions = new Set(['.ans', '.in', '.out', '.cpp', '.py', '.txt', '.md']);
+        this.allowedExtensions = new Set(['.ans', '.in', '.out', '.cpp', '.py', '.txt', '.md', '.h', '.hpp']);
         this.maxFileSize = 20 * 1024;
         this.isLoading = false;
         this._lastLoggedIn = false;
@@ -516,7 +516,7 @@ class CloudSyncPanel {
         }
         const ext = this.getExtension(cloudPath);
         if (!this.allowedExtensions.has(ext)) {
-            this.showMessage('仅支持 .ans .in .out .cpp .py .txt .md', 'error');
+            this.showMessage('仅支持 .ans .in .out .cpp .py .txt .md .h .hpp', 'error');
             return false;
         }
         try {
@@ -547,7 +547,7 @@ class CloudSyncPanel {
         }
         const ext = this.getExtension(name);
         if (!this.allowedExtensions.has(ext)) {
-            this.showMessage('仅支持 .ans .in .out .cpp .py .txt .md', 'error');
+            this.showMessage('仅支持 .ans .in .out .cpp .py .txt .md .h .hpp', 'error');
             return;
         }
         if (!this.checkRemainingCapacity()) return;
@@ -616,7 +616,7 @@ class CloudSyncPanel {
             const info = await window.electronAPI.getPathInfo(filePath);
             const ext = (info?.extname || '').toLowerCase();
             if (!this.allowedExtensions.has(ext)) {
-                this.showMessage('仅支持 .ans .in .out .cpp .py .txt .md', 'error');
+                this.showMessage('仅支持 .ans .in .out .cpp .py .txt .md .h .hpp', 'error');
                 return;
             }
             const buffer = await window.electronAPI.readFileBuffer(filePath);
