@@ -15,6 +15,7 @@ try {
     sevenBinPath = null;
 }
 const logger = require('./utils/logger');
+const CONSOLE_PAUSER_SOURCE = require('./utils/consolepauser-source');
 
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
@@ -656,13 +657,150 @@ function isFrameOutsideUserCode(frameFile) {
 }
 
 function findConsolePauser() {
-    const userProfilePath = os.homedir();
-    const consolePauserPath = path.join(userProfilePath, '.oicpp', 'consolePauser.exe');
+    const consolePauserPath = getConsolePauserTargetPath();
 
     if (fs.existsSync(consolePauserPath)) {
         return consolePauserPath;
     }
     return null;
+}
+
+function getConsolePauserTargetPath() {
+    return path.join(os.homedir(), '.oicpp', 'consolepauser.exe');
+}
+
+function getCompilerRuntimeBinPaths(compilerPath) {
+    if (!compilerPath || !fs.existsSync(compilerPath)) {
+        return [];
+    }
+    const compilerDir = path.dirname(compilerPath);
+    const compilerRoot = path.dirname(compilerDir);
+    return [
+        compilerDir,
+        path.join(compilerRoot, 'bin'),
+        path.join(compilerRoot, 'mingw64', 'bin'),
+        path.join(compilerRoot, 'mingw32', 'bin')
+    ].filter(p => fs.existsSync(p));
+}
+
+async function ensureConsolePauserExecutable(compilerPath) {
+    if (process.platform !== 'win32') {
+        return null;
+    }
+
+    const consolePauserPath = getConsolePauserTargetPath();
+    if (fs.existsSync(consolePauserPath)) {
+        return consolePauserPath;
+    }
+
+    if (!compilerPath || !fs.existsSync(compilerPath)) {
+        throw new Error('编译器不可用，无法自动构建consolepauser.exe');
+    }
+
+    const oicppDir = path.dirname(consolePauserPath);
+    fs.mkdirSync(oicppDir, { recursive: true });
+
+    const sourcePath = path.join(oicppDir, 'consolepauser.cpp');
+    const { spawn } = require('child_process');
+
+    const decodeBufferAuto = (buffer) => {
+        if (!buffer || buffer.length === 0) return '';
+        try {
+            const encoding = detectEncoding(buffer);
+            if (encoding === 'utf8') return buffer.toString('utf8');
+        } catch (_) { }
+        try {
+            const iconv = require('iconv-lite');
+            return iconv.decode(buffer, 'gbk');
+        } catch (_) {
+            return buffer.toString('utf8');
+        }
+    };
+
+    const writeSource = (mode) => {
+        if (mode === 'gbk') {
+            const iconv = require('iconv-lite');
+            const gbkBuffer = iconv.encode(CONSOLE_PAUSER_SOURCE, 'gbk');
+            fs.writeFileSync(sourcePath, gbkBuffer);
+            return;
+        }
+        fs.writeFileSync(sourcePath, CONSOLE_PAUSER_SOURCE, 'utf8');
+    };
+
+    const compileOnce = async (extraArgs = []) => {
+        const baseArgs = ['-O2', '-o', consolePauserPath, sourcePath];
+        const args = [...extraArgs, ...baseArgs];
+        const env = {
+            ...process.env,
+            PATH: [...getCompilerRuntimeBinPaths(compilerPath), process.env.PATH || ''].join(path.delimiter)
+        };
+
+        return new Promise((resolve) => {
+            const child = spawn(compilerPath, args, {
+                cwd: oicppDir,
+                stdio: ['ignore', 'pipe', 'pipe'],
+                env,
+                shell: false
+            });
+
+            const stdoutChunks = [];
+            const stderrChunks = [];
+
+            child.stdout.on('data', (data) => {
+                stdoutChunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
+            });
+
+            child.stderr.on('data', (data) => {
+                stderrChunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
+            });
+
+            child.on('close', (code) => {
+                resolve({
+                    code,
+                    stdout: decodeBufferAuto(Buffer.concat(stdoutChunks)),
+                    stderr: decodeBufferAuto(Buffer.concat(stderrChunks))
+                });
+            });
+
+            child.on('error', (error) => {
+                resolve({
+                    code: -1,
+                    stdout: '',
+                    stderr: String(error?.message || error || '')
+                });
+            });
+        });
+    };
+
+    let iconvAvailable = true;
+    try {
+        require('iconv-lite');
+    } catch (_) {
+        iconvAvailable = false;
+    }
+
+    const strategies = [
+        { name: 'utf8', sourceMode: 'utf8', args: [] },
+        { name: 'gbk-finput-charset', sourceMode: 'gbk', args: ['-finput-charset=gbk'] },
+        { name: 'gbk-default', sourceMode: 'gbk', args: [] }
+    ];
+
+    const failures = [];
+    for (const strategy of strategies) {
+        if (strategy.sourceMode === 'gbk' && !iconvAvailable) {
+            continue;
+        }
+        writeSource(strategy.sourceMode);
+        const result = await compileOnce(strategy.args);
+        if (result.code === 0 && fs.existsSync(consolePauserPath)) {
+            logInfo('[ConsolePauser] 自动构建成功:', { strategy: strategy.name, path: consolePauserPath });
+            return consolePauserPath;
+        }
+
+        failures.push(`[${strategy.name}] exit=${result.code} stderr=${(result.stderr || '').trim()}`);
+    }
+
+    throw new Error(`自动构建consolepauser.exe失败。${failures.join(' | ')}`);
 }
 
 function findCompilerExecutable(baseDir) {
@@ -5127,6 +5265,11 @@ async function compileFile(options) {
         if (process.platform === 'win32') {
             if (outputFile) { await killByExePathWindows(outputFile); await killConsolePauserForTargetWindows(outputFile); }
             await killImageWindows('gdb.exe');
+            try {
+                await ensureConsolePauserExecutable(compilerPath);
+            } catch (ensureErr) {
+                logWarn('[ConsolePauser] 自动构建失败，将继续编译当前代码:', ensureErr?.message || ensureErr);
+            }
         }
     } catch (_) { }
 
@@ -5553,11 +5696,10 @@ async function runExecutable(options) {
             const consolePauserPath = findConsolePauser();
 
             if (!consolePauserPath) {
-                logInfo('错误: 未找到ConsolePauser.exe');
-                reject(new Error('未找到ConsolePauser.exe，无法启动程序。请确保ConsolePauser.exe已正确安装。'));
+                logInfo('错误: 未找到consolepauser.exe');
+                reject(new Error('未找到consolepauser.exe，无法启动程序。请确保%userprofile%/.oicpp/consolepauser.exe已正确生成。'));
                 return;
             }
-
             command = 'cmd';
             const absoluteExePath = path.resolve(executablePath);
             const absoluteConsolePauserPath = path.resolve(consolePauserPath);
@@ -6980,7 +7122,7 @@ async function killConsolePauserForTargetWindows(targetExePath) {
     try {
         const { spawn } = require('child_process');
         const escaped = String(targetExePath).replace(/`/g, '``').replace(/'/g, "''");
-        const ps = `Try { Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -match 'ConsolePauser\\.exe$' -and $_.CommandLine -like '*${escaped}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force } } Catch {}`;
+        const ps = `Try { Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -match 'consolepauser\\.exe$' -and $_.CommandLine -like '*${escaped}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force } } Catch {}`;
         await new Promise((resolve) => {
             const p = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { stdio: 'ignore', windowsHide: true });
             const to = setTimeout(resolve, 2000);
