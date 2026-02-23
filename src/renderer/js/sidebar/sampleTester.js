@@ -224,6 +224,17 @@ class SampleTester {
             });
         }
 
+        const importZipBtn = document.getElementById('import-samples-zip-btn');
+        if (importZipBtn) {
+            const newImportZipBtn = importZipBtn.cloneNode(true);
+            importZipBtn.parentNode.replaceChild(newImportZipBtn, importZipBtn);
+
+            newImportZipBtn.addEventListener('click', () => {
+                logInfo('[样例测试器] 压缩包导入按钮被点击');
+                this.importSamplesFromZip();
+            });
+        }
+
         const runAllBtn = document.getElementById('run-all-samples-btn');
         if (runAllBtn) {
             const newRunAllBtn = runAllBtn.cloneNode(true);
@@ -815,6 +826,244 @@ class SampleTester {
 
         const truncatedPath = pathPart.substring(0, availableLength);
         return truncatedPath + '...' + fileName;
+    }
+
+    detectSampleFileRole(filePath) {
+        const normalizedPath = String(filePath || '').replace(/\\/g, '/');
+        const fileName = normalizedPath.split('/').pop() || '';
+        const dot = fileName.lastIndexOf('.');
+        const ext = dot >= 0 ? fileName.substring(dot).toLowerCase() : '';
+        const baseName = dot >= 0 ? fileName.substring(0, dot) : fileName;
+        const lowerBase = baseName.toLowerCase();
+
+        if (ext === '.in' || ext === '.input') {
+            return 'input';
+        }
+        if (ext === '.out' || ext === '.ans' || ext === '.output') {
+            return 'output';
+        }
+        if (ext === '.txt') {
+            if (/(^|[_.\-\s])(out|ans|answer|output|stdout|std)($|[_.\-\s])/i.test(lowerBase) || /(out|ans|answer|output|stdout)$/i.test(lowerBase)) {
+                return 'output';
+            }
+            if (/(^|[_.\-\s])(in|input|stdin)($|[_.\-\s])/i.test(lowerBase) || /(in|input|stdin)$/i.test(lowerBase)) {
+                return 'input';
+            }
+        }
+
+        return null;
+    }
+
+    buildSamplePairKey(filePath, role) {
+        const normalizedPath = String(filePath || '').replace(/\\/g, '/');
+        const lastSlash = normalizedPath.lastIndexOf('/');
+        const dirPart = lastSlash >= 0 ? normalizedPath.substring(0, lastSlash).toLowerCase() : '';
+        const fileName = lastSlash >= 0 ? normalizedPath.substring(lastSlash + 1) : normalizedPath;
+        const dot = fileName.lastIndexOf('.');
+        let stem = (dot >= 0 ? fileName.substring(0, dot) : fileName).toLowerCase();
+
+        stem = stem
+            .replace(/(sample|test|case)/g, '')
+            .replace(/[\s._\-()\[\]{}]+/g, '');
+
+        if (role === 'input') {
+            stem = stem.replace(/(input|stdin|in)$/g, '');
+        } else if (role === 'output') {
+            stem = stem.replace(/(output|stdout|answer|ans|out)$/g, '');
+        }
+
+        if (!stem) {
+            stem = (dot >= 0 ? fileName.substring(0, dot) : fileName).toLowerCase().replace(/[\s._\-()\[\]{}]+/g, '');
+        }
+
+        return `${dirPart}::${stem}`;
+    }
+
+    pairSamplesFromZipFiles(files) {
+        const grouped = new Map();
+        let recognizedCount = 0;
+
+        for (const file of files || []) {
+            const filePath = file?.path;
+            const role = this.detectSampleFileRole(filePath);
+            if (!filePath || !role) continue;
+            recognizedCount += 1;
+
+            const key = this.buildSamplePairKey(filePath, role);
+            if (!grouped.has(key)) {
+                grouped.set(key, { inputs: [], outputs: [] });
+            }
+            const group = grouped.get(key);
+            if (role === 'input') {
+                group.inputs.push(file);
+            } else {
+                group.outputs.push(file);
+            }
+        }
+
+        const pairs = [];
+        for (const group of grouped.values()) {
+            if (!group.inputs.length || !group.outputs.length) continue;
+            group.inputs.sort((a, b) => String(a.path).localeCompare(String(b.path)));
+            group.outputs.sort((a, b) => String(a.path).localeCompare(String(b.path)));
+            const pairCount = Math.min(group.inputs.length, group.outputs.length);
+            for (let i = 0; i < pairCount; i++) {
+                pairs.push({ input: group.inputs[i], output: group.outputs[i] });
+            }
+        }
+
+        pairs.sort((a, b) => String(a.input.path).localeCompare(String(b.input.path)));
+        return {
+            pairs,
+            recognizedCount,
+            unmatchedCount: Math.max(0, recognizedCount - pairs.length * 2)
+        };
+    }
+
+    async askFreopenOptionsForZipImport() {
+        let enableFreopen = false;
+        try {
+            if (window.dialogManager?.showActionDialog) {
+                const action = await window.dialogManager.showActionDialog(
+                    '导入设置',
+                    '是否为本次导入样例启用文件读写（freopen）？',
+                    [
+                        { id: 'skip', label: '不启用', className: 'dialog-btn-cancel' },
+                        { id: 'enable', label: '启用并设置', className: 'dialog-btn-confirm' }
+                    ]
+                );
+                enableFreopen = action === 'enable';
+            } else if (window.dialogManager?.showConfirmDialog) {
+                enableFreopen = await window.dialogManager.showConfirmDialog('导入设置', '是否为本次导入样例启用文件读写（freopen）？');
+            } else {
+                enableFreopen = window.confirm('是否为本次导入样例启用文件读写（freopen）？');
+            }
+        } catch (_) {
+            enableFreopen = false;
+        }
+
+        if (!enableFreopen) {
+            return { canceled: false, freopenInputFile: '', freopenOutputFile: '' };
+        }
+
+        let inputName = '';
+        let outputName = '';
+
+        if (window.dialogManager?.showInputDialog) {
+            const inputResult = await window.dialogManager.showInputDialog(
+                'freopen 输入文件名',
+                '',
+                '留空表示不启用输入文件'
+            );
+            if (inputResult === null) {
+                return { canceled: true };
+            }
+            inputName = this.normalizeFreopenFileName(inputResult);
+
+            const outputResult = await window.dialogManager.showInputDialog(
+                'freopen 输出文件名',
+                '',
+                '留空表示不启用输出文件'
+            );
+            if (outputResult === null) {
+                return { canceled: true };
+            }
+            outputName = this.normalizeFreopenFileName(outputResult);
+        } else {
+            const inputRaw = window.prompt('请输入 freopen 输入文件名（留空不启用）', '') || '';
+            const outputRaw = window.prompt('请输入 freopen 输出文件名（留空不启用）', '') || '';
+            inputName = this.normalizeFreopenFileName(inputRaw);
+            outputName = this.normalizeFreopenFileName(outputRaw);
+        }
+
+        return {
+            canceled: false,
+            freopenInputFile: inputName,
+            freopenOutputFile: outputName
+        };
+    }
+
+    async importSamplesFromZip() {
+        if (!this.currentFile) {
+            logWarn('[样例测试器] 无活动文件，无法导入压缩包样例');
+            return;
+        }
+
+        try {
+            const result = await window.electronAPI.showOpenDialog({
+                title: '选择样例压缩包',
+                filters: [
+                    { name: '压缩包', extensions: ['zip'] },
+                    { name: '所有文件', extensions: ['*'] }
+                ],
+                properties: ['openFile']
+            });
+
+            if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+                return;
+            }
+
+            const zipPath = result.filePaths[0];
+            const zipReadResult = await window.electronAPI.readZipTextFiles(zipPath);
+            if (!zipReadResult || !zipReadResult.success) {
+                throw new Error(zipReadResult?.error || '读取压缩包失败');
+            }
+
+            const importPlan = this.pairSamplesFromZipFiles(zipReadResult.files || []);
+            const pairs = importPlan.pairs || [];
+            if (pairs.length === 0) {
+                logWarn('[样例测试器] 压缩包中未识别到可配对的样例输入输出文件');
+                return;
+            }
+
+            const previewMessage = `识别到 ${pairs.length} 组可导入样例。<br>识别文件数：${importPlan.recognizedCount}，未配对文件：${importPlan.unmatchedCount}。<br><br>是否继续导入？`;
+            let shouldImport = true;
+            if (window.dialogManager?.showActionDialog) {
+                const action = await window.dialogManager.showActionDialog('导入样例预览', previewMessage, [
+                    { id: 'cancel', label: '取消', className: 'dialog-btn-cancel' },
+                    { id: 'import', label: '继续导入', className: 'dialog-btn-confirm' }
+                ]);
+                shouldImport = action === 'import';
+            } else if (window.dialogManager?.showConfirmDialog) {
+                shouldImport = await window.dialogManager.showConfirmDialog('导入样例预览', `识别到 ${pairs.length} 组可导入样例。识别文件数：${importPlan.recognizedCount}，未配对文件：${importPlan.unmatchedCount}。是否继续导入？`);
+            }
+            if (!shouldImport) {
+                return;
+            }
+
+            const freopenOptions = await this.askFreopenOptionsForZipImport();
+            if (freopenOptions?.canceled) {
+                return;
+            }
+
+            let maxId = this.samples.length > 0 ? Math.max(...this.samples.map(s => s.id)) : 0;
+            for (const pair of pairs) {
+                maxId += 1;
+                this.samples.push({
+                    id: maxId,
+                    inputType: 'userinput',
+                    outputType: 'userinput',
+                    input: pair.input?.content || '',
+                    output: pair.output?.content || '',
+                    timeLimit: 1000,
+                    freopenInputFile: freopenOptions.freopenInputFile || '',
+                    freopenOutputFile: freopenOptions.freopenOutputFile || '',
+                    useTestlib: false,
+                    spjPath: '',
+                    result: null
+                });
+            }
+
+            this.nextId = maxId + 1;
+            await this.saveSamples();
+            this.statusFilter = null;
+            this.updateUI();
+            setTimeout(() => this.expandAllSamples(), 100);
+
+            logInfo(`[样例测试器] 从压缩包导入样例成功，共 ${pairs.length} 组`);
+        } catch (error) {
+            logError('[样例测试器] 导入压缩包样例失败:', error);
+        }
     }
 
     async addSample() {
