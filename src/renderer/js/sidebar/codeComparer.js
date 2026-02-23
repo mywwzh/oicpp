@@ -229,6 +229,8 @@ class CodeComparer {
         const stopBtn = document.getElementById('compare-stop-btn');
         const resetBtn = document.getElementById('compare-reset-btn');
         const exportBtn = document.getElementById('export-btn');
+        const stdOutputExpandBtn = document.getElementById('std-output-expand-btn');
+        const testOutputExpandBtn = document.getElementById('test-output-expand-btn');
 
         if (startBtn) {
             startBtn.addEventListener('click', () => this.startComparison());
@@ -241,6 +243,12 @@ class CodeComparer {
         }
         if (exportBtn) {
             exportBtn.addEventListener('click', () => this.exportResults());
+        }
+        if (stdOutputExpandBtn) {
+            stdOutputExpandBtn.addEventListener('click', () => this.toggleErrorOutputExpand('std'));
+        }
+        if (testOutputExpandBtn) {
+            testOutputExpandBtn.addEventListener('click', () => this.toggleErrorOutputExpand('test'));
         }
 
         const useTestlibCheckbox = document.getElementById('compare-use-testlib');
@@ -862,12 +870,8 @@ class CodeComparer {
                         if (!outputsMatch) {
                             try {
                                 const diff = this.getDifferenceInfo((testOutput.output || '').trimEnd(), (stdOutput.output || '').trimEnd());
-                                logWarn('[对拍器][WA]', {
-                                    test: i,
-                                    actualLen: (testOutput.output || '').length,
-                                    expectedLen: (stdOutput.output || '').length,
-                                    firstDiff: diff || null
-                                });
+                                const diffText = diff ? `${diff.line}:${diff.char}` : 'none';
+                                logInfo(`[对拍器][WA] test=${i} actualLen=${(testOutput.output || '').length} expectedLen=${(stdOutput.output || '').length} firstDiff=${diffText}`);
                             } catch (_) { }
                             task.state.errorResult = {
                                 testNumber: i,
@@ -1202,6 +1206,11 @@ class CodeComparer {
         const testOutputDiff = document.getElementById('test-output-diff');
         const stdOutputDiffLabel = document.getElementById('std-output-diff-label');
         const testOutputDiffLabel = document.getElementById('test-output-diff-label');
+        const stdOutputExpandBtn = document.getElementById('std-output-expand-btn');
+        const testOutputExpandBtn = document.getElementById('test-output-expand-btn');
+
+        this.updateErrorOutputExpandButton(stdOutputExpandBtn, errorResult, 'std');
+        this.updateErrorOutputExpandButton(testOutputExpandBtn, errorResult, 'test');
 
         if (errorResult && errorSection) {
             errorSection.style.display = 'block';
@@ -1251,12 +1260,14 @@ class CodeComparer {
                         stdOutputDiffLabel.textContent = '标准程序输出';
                     }
                 } else if (errType === 'generator_program_error') {
-                    stdOutputDiff.textContent = this.limitOutputLines(errorResult.stdOutput || '', 100);
+                    const stdFullOutput = errorResult.stdOutput || '';
+                    stdOutputDiff.textContent = errorResult.stdOutputExpanded ? stdFullOutput : this.limitOutputLines(stdFullOutput, 100);
                     if (stdOutputDiffLabel) {
                         stdOutputDiffLabel.textContent = '数据生成器输出/错误';
                     }
                 } else if (errType === 'standard_program_error' || errType === 'test_program_error') {
-                    stdOutputDiff.textContent = this.limitOutputLines(errorResult.stdOutput || '', 100);
+                    const stdFullOutput = errorResult.stdOutput || '';
+                    stdOutputDiff.textContent = errorResult.stdOutputExpanded ? stdFullOutput : this.limitOutputLines(stdFullOutput, 100);
                     if (stdOutputDiffLabel) {
                         stdOutputDiffLabel.textContent = '标准程序输出';
                     }
@@ -1265,7 +1276,8 @@ class CodeComparer {
                         if (stdOutputDiffLabel) {
                             stdOutputDiffLabel.textContent = '标准程序输出';
                         }
-                        stdOutputDiff.textContent = this.limitOutputLines(errorResult.stdOutput, 100);
+                        const stdFullOutput = errorResult.stdOutput || '';
+                        stdOutputDiff.textContent = errorResult.stdOutputExpanded ? stdFullOutput : this.limitOutputLines(stdFullOutput, 100);
                     } else {
                         const diffPosition = this.getDifferenceInfo(errorResult.stdOutput, errorResult.testOutput);
                         if (stdOutputDiffLabel) {
@@ -1275,7 +1287,11 @@ class CodeComparer {
                                 stdOutputDiffLabel.textContent = '标准程序输出';
                             }
                         }
-                        stdOutputDiff.innerHTML = this.formatCompareOutput(errorResult.stdOutput, errorResult.testOutput, 'standard');
+                        if (errorResult.stdOutputExpanded) {
+                            this.renderExpandedOutput(stdOutputDiff, errorResult.stdOutput);
+                        } else {
+                            stdOutputDiff.innerHTML = this.formatCompareOutput(errorResult.stdOutput, errorResult.testOutput, 'standard');
+                        }
                     }
                 }
             }
@@ -1288,12 +1304,14 @@ class CodeComparer {
                         testOutputDiffLabel.textContent = '测试程序输出';
                     }
                 } else if (errType === 'generator_program_error') {
-                    testOutputDiff.textContent = this.limitOutputLines(errorResult.testOutput || '', 100);
+                    const testFullOutput = errorResult.testOutput || '';
+                    testOutputDiff.textContent = errorResult.testOutputExpanded ? testFullOutput : this.limitOutputLines(testFullOutput, 100);
                     if (testOutputDiffLabel) {
                         testOutputDiffLabel.textContent = '标准/测试程序输出';
                     }
                 } else if (errType === 'standard_program_error' || errType === 'test_program_error') {
-                    testOutputDiff.textContent = this.limitOutputLines(errorResult.testOutput || '', 100);
+                    const testFullOutput = errorResult.testOutput || '';
+                    testOutputDiff.textContent = errorResult.testOutputExpanded ? testFullOutput : this.limitOutputLines(testFullOutput, 100);
                     if (testOutputDiffLabel) {
                         testOutputDiffLabel.textContent = '测试程序输出';
                     }
@@ -1302,7 +1320,8 @@ class CodeComparer {
                         if (testOutputDiffLabel) {
                             testOutputDiffLabel.textContent = '测试程序输出';
                         }
-                        testOutputDiff.textContent = this.limitOutputLines(errorResult.testOutput, 100);
+                        const testFullOutput = errorResult.testOutput || '';
+                        testOutputDiff.textContent = errorResult.testOutputExpanded ? testFullOutput : this.limitOutputLines(testFullOutput, 100);
                     } else {
                         const diffPosition = this.getDifferenceInfo(errorResult.testOutput, errorResult.stdOutput);
                         if (testOutputDiffLabel) {
@@ -1312,10 +1331,17 @@ class CodeComparer {
                                 testOutputDiffLabel.textContent = '测试程序输出';
                             }
                         }
-                        testOutputDiff.innerHTML = this.formatCompareOutput(errorResult.testOutput, errorResult.stdOutput, 'test');
+                        if (errorResult.testOutputExpanded) {
+                            this.renderExpandedOutput(testOutputDiff, errorResult.testOutput);
+                        } else {
+                            testOutputDiff.innerHTML = this.formatCompareOutput(errorResult.testOutput, errorResult.stdOutput, 'test');
+                        }
                     }
                 }
             }
+
+            this.updateErrorOutputExpandButton(stdOutputExpandBtn, errorResult, 'std');
+            this.updateErrorOutputExpandButton(testOutputExpandBtn, errorResult, 'test');
         }
 
         this.hideStatus();
@@ -1431,6 +1457,144 @@ class CodeComparer {
 
     showSuccessMessage(message) {
         this.showComplete(message);
+    }
+
+    renderExpandedOutput(element, output) {
+        if (!element) {
+            return;
+        }
+        element.textContent = output == null ? '' : String(output);
+    }
+
+    getOutputSizeBytes(output) {
+        const safeOutput = output == null ? '' : String(output);
+        try {
+            return new TextEncoder().encode(safeOutput).length;
+        } catch (_) {
+            return safeOutput.length;
+        }
+    }
+
+    getOutputSizeMbText(output) {
+        const bytes = this.getOutputSizeBytes(output);
+        return (bytes / (1024 * 1024)).toFixed(2);
+    }
+
+    isLineLimitedOutputTruncated(output, maxLines = 100) {
+        const safeOutput = output == null ? '' : String(output);
+        return safeOutput.split('\n').length > maxLines;
+    }
+
+    isCompareOutputTruncated(currentOutput, otherOutput) {
+        const currentLines = (currentOutput || '').split('\n');
+        const otherLines = (otherOutput || '').split('\n');
+        const maxLines = 100;
+        const contextLines = 10;
+
+        let firstDiffLine = -1;
+        const maxCompareLines = Math.max(currentLines.length, otherLines.length);
+        for (let i = 0; i < maxCompareLines; i++) {
+            const currentLine = currentLines[i] || '';
+            const otherLine = otherLines[i] || '';
+            if (currentLine.trimEnd() !== otherLine.trimEnd()) {
+                firstDiffLine = i;
+                break;
+            }
+        }
+
+        if (firstDiffLine === -1) {
+            return currentLines.length > maxLines;
+        }
+
+        const startLine = Math.max(0, firstDiffLine - contextLines);
+        const endLine = Math.min(currentLines.length, firstDiffLine + contextLines + 1);
+        const displayLines = Math.min(maxLines, endLine - startLine);
+        const actualEndLine = startLine + displayLines;
+
+        return startLine > 0 || actualEndLine < currentLines.length;
+    }
+
+    isErrorOutputTruncated(errorResult, outputType) {
+        if (!errorResult) return false;
+
+        const output = outputType === 'std'
+            ? (errorResult.stdOutput || '')
+            : (errorResult.testOutput || '');
+        const errType = errorResult.errorType;
+
+        if (errType === 'compile_error') {
+            return false;
+        }
+
+        if (errType === 'generator_program_error' || errType === 'standard_program_error' || errType === 'test_program_error' || errorResult.usedSpj) {
+            return this.isLineLimitedOutputTruncated(output, 100);
+        }
+
+        const otherOutput = outputType === 'std'
+            ? (errorResult.testOutput || '')
+            : (errorResult.stdOutput || '');
+        return this.isCompareOutputTruncated(output, otherOutput);
+    }
+
+    updateErrorOutputExpandButton(button, errorResult, outputType) {
+        if (!button) return;
+        const truncated = this.isErrorOutputTruncated(errorResult, outputType);
+        if (!truncated) {
+            button.style.display = 'none';
+            return;
+        }
+        const expanded = outputType === 'std' ? !!errorResult?.stdOutputExpanded : !!errorResult?.testOutputExpanded;
+        button.style.display = 'inline-flex';
+        button.textContent = expanded ? '收起' : '展开';
+        button.title = expanded ? '收起输出' : '展开完整输出';
+    }
+
+    async toggleErrorOutputExpand(outputType) {
+        const task = this.getActiveTask();
+        const errorResult = task?.state?.errorResult;
+        if (!task || !errorResult) {
+            return;
+        }
+
+        const key = outputType === 'std' ? 'stdOutputExpanded' : 'testOutputExpanded';
+        if (!this.isErrorOutputTruncated(errorResult, outputType)) {
+            return;
+        }
+
+        if (errorResult[key]) {
+            errorResult[key] = false;
+            this.renderIfActive(task);
+            return;
+        }
+
+        const output = outputType === 'std' ? (errorResult.stdOutput || '') : (errorResult.testOutput || '');
+        const sizeMbText = this.getOutputSizeMbText(output);
+        const message = `当前输出大小约 ${sizeMbText} MB。<br><br>过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`;
+
+        let shouldExpand = false;
+        try {
+            if (window.dialogManager?.showActionDialog) {
+                const action = await window.dialogManager.showActionDialog('展开完整输出确认', message, [
+                    { id: 'cancel', label: '取消', className: 'dialog-btn-cancel' },
+                    { id: 'expand', label: '仍要展开', className: 'dialog-btn-confirm' }
+                ]);
+                shouldExpand = action === 'expand';
+            } else if (window.dialogManager?.showConfirmDialog) {
+                shouldExpand = await window.dialogManager.showConfirmDialog('展开完整输出确认', `当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`);
+            } else {
+                shouldExpand = window.confirm(`当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`);
+            }
+        } catch (error) {
+            logWarn('展开输出确认失败，已取消展开:', error);
+            shouldExpand = false;
+        }
+
+        if (!shouldExpand) {
+            return;
+        }
+
+        errorResult[key] = true;
+        this.renderIfActive(task);
     }
 
     limitOutputLines(output, maxLines) {
