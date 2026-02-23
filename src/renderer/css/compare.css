@@ -414,6 +414,25 @@
     border-bottom: 1px solid var(--border-color);
 }
 
+.diff-header-with-action {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.diff-expand-btn {
+    height: 20px;
+    min-width: 44px;
+    padding: 0 8px;
+    flex-shrink: 0;
+}
+
+#std-output-expand-btn,
+#test-output-expand-btn {
+    display: none;
+}
+
 .diff-content {
     padding: 8px;
     margin: 0;
