@@ -91,6 +91,16 @@ jobs:
           $version = $version.Substring(1)
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build ConsolePauser
+        run: |
+          cd consolepauser
+          go build -ldflags "-s -w" -o ../ConsolePauser.exe .
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
