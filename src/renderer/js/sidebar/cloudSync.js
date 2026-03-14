@@ -18,13 +18,29 @@ class CloudSyncPanel {
         this.treeEl = document.getElementById('cloud-tree');
         this.summaryEl = document.getElementById('cloud-summary');
         this.remainingEl = document.getElementById('cloud-remaining');
+        this.quotaHelpBtn = document.getElementById('cloud-quota-help-btn');
         this.uploadProgressEl = document.getElementById('cloud-upload-progress');
         this.uploadProgressTextEl = document.getElementById('cloud-upload-progress-text');
         this.uploadProgressFillEl = document.getElementById('cloud-upload-progress-fill');
+        this.bindQuotaHelpAction();
         this.bindHeaderActions();
         this.setupTreeEvents();
         this.setupKeyboardShortcuts();
         this.renderEmptyState('请先登录账户');
+    }
+
+    bindQuotaHelpAction() {
+        if (!this.quotaHelpBtn) return;
+        this.quotaHelpBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const faqUrl = 'https://oicpp.mywwzh.top/faqs.html';
+            try {
+                await window.electronAPI?.openExternal?.(faqUrl);
+            } catch (_) {
+                try { window.open(faqUrl, '_blank'); } catch (_) { }
+            }
+        });
     }
 
     bindHeaderActions() {

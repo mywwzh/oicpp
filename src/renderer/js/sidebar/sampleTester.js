@@ -4,6 +4,14 @@ class SampleTester {
         this.currentFile = null;
         this.samplesFilePath = null;
         this.nextId = 1;
+        this.mainCompileCache = {
+            key: null,
+            executablePath: null
+        };
+        this.spjCompileCache = {
+            key: null,
+            executablePath: null
+        };
         this.isOperating = false;
         this.editorChangeInterval = null;
         this.statusFilter = null;
@@ -468,6 +476,15 @@ class SampleTester {
                     if (sample.hasOwnProperty('spjPath')) {
                         delete sample.spjPath;
                     }
+
+                    if (sample.result && typeof sample.result === 'object') {
+                        if (typeof sample.result.outputExpanded !== 'boolean') {
+                            sample.result.outputExpanded = false;
+                        }
+                        if (!Number.isFinite(sample.result.outputSizeBytes) || sample.result.outputSizeBytes <= 0) {
+                            sample.result.outputSizeBytes = this.getOutputSizeBytes(sample.result.rawOutput ?? sample.result.output ?? '');
+                        }
+                    }
                 });
                 const maxId = this.samples.length > 0 ? Math.max(...this.samples.map(s => s.id)) : 0;
                 this.nextId = maxId + 1;
@@ -488,8 +505,16 @@ class SampleTester {
             const samplesToSave = this.samples.map(sample => {
                 const s = { ...sample };
                 if (s.result) {
-                    const { rawOutput, outputExpanded, outputSizeBytes, ...restResult } = s.result;
-                    s.result = restResult;
+                    const fullOutput = s.result.rawOutput ?? s.result.output ?? '';
+                    const { rawOutput, ...restResult } = s.result;
+                    s.result = {
+                        ...restResult,
+                        output: fullOutput,
+                        outputExpanded: !!s.result.outputExpanded,
+                        outputSizeBytes: Number.isFinite(s.result.outputSizeBytes) && s.result.outputSizeBytes > 0
+                            ? s.result.outputSizeBytes
+                            : this.getOutputSizeBytes(fullOutput)
+                    };
                 }
                 return s;
             });
@@ -664,6 +689,9 @@ class SampleTester {
         const outputDisplay = this.getDisplayContent(sample, 'output');
         const outputIsTruncated = sample.result ? this.isOutputTruncated(sample.result) : false;
         const outputIsExpanded = !!sample.result?.outputExpanded;
+        const processedProgramOutput = sample.result
+            ? this.processOutputForDisplay(sample.result.output || '', sample.result, sample.id)
+            : '';
 
         div.innerHTML = `
             <div class="sample-header" onclick="sampleTester.toggleSample(${sample.id})">
@@ -725,7 +753,7 @@ class SampleTester {
                             </div>
                         </div>
             <div class="program-output-container" id="output-container-${sample.id}">
-              <textarea class="program-output" readonly spellcheck="false" placeholder="运行程序后显示输出..." id="output-${sample.id}">${sample.result?.output || ''}</textarea>
+                            <textarea class="program-output" readonly spellcheck="false" placeholder="运行程序后显示输出..." id="output-${sample.id}">${processedProgramOutput}</textarea>
                         </div>
                     </div>
                 </div>
@@ -1429,6 +1457,10 @@ class SampleTester {
             const result = await this.executeSample(sample, (status) => {
                 if (status === 'compiling') {
                     button.textContent = '编译中';
+                } else if (status === 'cached-main') {
+                    button.textContent = '复用编译';
+                } else if (status === 'cached-spj') {
+                    button.textContent = '复用SPJ';
                 } else if (status === 'running') {
                     button.textContent = '运行中';
                 }
@@ -1498,6 +1530,16 @@ class SampleTester {
                 return;
             }
 
+            if (compileResult.cached) {
+                this.notifyCompileCacheHit('样例程序');
+                this.samples.forEach(sample => {
+                    const button = document.getElementById(`run-btn-${sample.id}`);
+                    if (button) {
+                        button.textContent = '复用编译';
+                    }
+                });
+            }
+
             executablePath = compileResult.executablePath;
 
             if (useTestlib && spjPath) {
@@ -1513,6 +1555,16 @@ class SampleTester {
                     }
                     this.saveSamples();
                     return;
+                }
+
+                if (spjCompileResult.cached) {
+                    this.notifyCompileCacheHit('SPJ程序');
+                    this.samples.forEach(sample => {
+                        const button = document.getElementById(`run-btn-${sample.id}`);
+                        if (button) {
+                            button.textContent = '复用SPJ';
+                        }
+                    });
                 }
                 spjExecutablePath = spjCompileResult.executablePath;
             }
@@ -1559,19 +1611,8 @@ class SampleTester {
             this.saveSamples();
 
         } finally {
-            if (executablePath) {
-                try {
-                    await window.electronAPI.deleteTempFile(executablePath);
-                } catch (e) {
-                }
-            }
-
-            if (spjExecutablePath) {
-                try {
-                    await window.electronAPI.deleteTempFile(spjExecutablePath);
-                } catch (e) {
-                }
-            }
+            // 主程序编译结果会被缓存复用，这里不删除可执行文件。
+            // SPJ 编译结果同样会被缓存复用，这里不删除可执行文件。
 
             if (runAllBtn) {
                 runAllBtn.disabled = false;
@@ -1710,6 +1751,10 @@ class SampleTester {
                 time: 0
             };
         }
+        if (compileResult.cached) {
+            this.notifyCompileCacheHit('样例程序');
+            if (statusCallback) statusCallback('cached-main');
+        }
 
         let executablePath = compileResult.executablePath;
         let spjExecutablePath = null;
@@ -1725,6 +1770,10 @@ class SampleTester {
                         output: `SPJ编译失败: ${spjCompileResult.stderr || spjCompileResult.stdout || '编译失败'}`,
                         time: 0
                     };
+                }
+                if (spjCompileResult.cached) {
+                    this.notifyCompileCacheHit('SPJ程序');
+                    if (statusCallback) statusCallback('cached-spj');
                 }
                 spjExecutablePath = spjCompileResult.executablePath;
 
@@ -1831,14 +1880,71 @@ class SampleTester {
                 usedSpj: spjUsed
             };
         } finally {
-            try {
-                if (executablePath) {
-                    await window.electronAPI.deleteTempFile(executablePath);
-
-                }
-            } catch (e) {
-            }
+            // 主程序编译结果会被缓存复用，这里不删除可执行文件。
         }
+    }
+
+    computeStableHash(text) {
+        const str = String(text || '');
+        let hash = 2166136261;
+        for (let i = 0; i < str.length; i++) {
+            hash ^= str.charCodeAt(i);
+            hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+        }
+        return (hash >>> 0).toString(16).padStart(8, '0');
+    }
+
+    buildMainCompileCacheKey({
+        content,
+        currentFile,
+        compilerPath,
+        compilerArgs,
+        useTestlib,
+        testlibIncludePath
+    }) {
+        const payload = [
+            currentFile || '',
+            compilerPath || '',
+            compilerArgs || '',
+            useTestlib ? '1' : '0',
+            testlibIncludePath || '',
+            content || ''
+        ].join('\n<oicpp-sample-cache>\n');
+        return this.computeStableHash(payload);
+    }
+
+    buildSpjCompileCacheKey({
+        spjPath,
+        spjContent,
+        compilerPath,
+        compilerArgs,
+        testlibIncludePath
+    }) {
+        const payload = [
+            spjPath || '',
+            compilerPath || '',
+            compilerArgs || '',
+            testlibIncludePath || '',
+            spjContent || ''
+        ].join('\n<oicpp-spj-cache>\n');
+        return this.computeStableHash(payload);
+    }
+
+    notifyCompileCacheHit(targetName) {
+        const brief = `${targetName}已复用上次的编译结果`;
+        const msg = `[样例测试器] ${brief}`;
+        try { logInfo(msg); } catch (_) { }
+
+        try {
+            window.oicppApp?.showMessage?.(brief, 'info');
+        } catch (_) { }
+
+        const manager = window.compilerManager;
+        if (!manager) return;
+        try {
+            manager.setStatus?.(brief);
+            manager.appendOutput?.(`${msg}\n`, 'info');
+        } catch (_) { }
     }
 
     async compileCurrentFile(useTestlib = false) {
@@ -1855,13 +1961,13 @@ class SampleTester {
         const settings = await window.electronAPI.getAllSettings();
         const compilerPath = settings.compilerPath;
         let compilerArgs = settings.compilerArgs || '-std=c++14 -O2';
+        let testlibIncludePath = '';
 
         if (!compilerPath) {
             throw new Error('请先设置编译器路径');
         }
 
         if (useTestlib) {
-            let testlibIncludePath;
             if (settings.testlibPath) {
                 const pathInfo = await window.electronAPI.getPathInfo(settings.testlibPath);
                 testlibIncludePath = pathInfo.dirname;
@@ -1872,14 +1978,43 @@ class SampleTester {
             compilerArgs += ` -I"${testlibIncludePath}"`;
         }
 
-        const timestamp = Date.now();
-        const tempFileName = `sample_${timestamp}.cpp`;
-        const tempFile = await window.electronAPI.saveTempFile(tempFileName, content);
+        const cacheKey = this.buildMainCompileCacheKey({
+            content,
+            currentFile: this.currentFile,
+            compilerPath,
+            compilerArgs,
+            useTestlib,
+            testlibIncludePath
+        });
+
         const isWin = (typeof window !== 'undefined' && window.process && window.process.platform === 'win32');
-        const executableFile = tempFile.replace(/\.(cpp|cc|cxx|c)$/i, isWin ? '.exe' : '');
+        const cachedExeName = `sample_${cacheKey}${isWin ? '.exe' : ''}`;
+        const cachedSourceName = `sample_${cacheKey}.cpp`;
+
+        if (
+            this.mainCompileCache.key === cacheKey &&
+            this.mainCompileCache.executablePath &&
+            await window.electronAPI.checkFileExists(this.mainCompileCache.executablePath)
+        ) {
+            logInfo('[样例测试器] 命中编译缓存，跳过编译');
+            return {
+                success: true,
+                cached: true,
+                executablePath: this.mainCompileCache.executablePath,
+                stdout: '',
+                stderr: '',
+                warnings: [],
+                errors: [],
+                diagnostics: []
+            };
+        }
+
+        const tempFileName = cachedSourceName;
+        const tempFile = await window.electronAPI.saveTempFile(tempFileName, content);
+        const pathInfo = await window.electronAPI.getPathInfo(tempFile);
+        const executableFile = await window.electronAPI.pathJoin(pathInfo.dirname, cachedExeName);
 
         try {
-            const pathInfo = await window.electronAPI.getPathInfo(tempFile);
             const result = await window.electronAPI.compileFile({
                 inputFile: tempFile,
                 outputFile: executableFile,
@@ -1889,10 +2024,28 @@ class SampleTester {
             });
 
             if (result.success) {
+                if (
+                    this.mainCompileCache.executablePath &&
+                    this.mainCompileCache.executablePath !== executableFile
+                ) {
+                    try {
+                        await window.electronAPI.deleteTempFile(this.mainCompileCache.executablePath);
+                    } catch (_) { }
+                }
+
+                this.mainCompileCache = {
+                    key: cacheKey,
+                    executablePath: executableFile
+                };
                 result.executablePath = executableFile;
                 if (window.editorManager && window.editorManager.clearDiagnostics) {
                     window.editorManager.clearDiagnostics();
                 }
+            } else {
+                this.mainCompileCache = {
+                    key: null,
+                    executablePath: null
+                };
             }
             if (!result.success && result.diagnostics && window.editorManager && window.editorManager.applyDiagnostics) {
                 window.editorManager.applyDiagnostics(result.diagnostics);
@@ -1961,10 +2114,13 @@ class SampleTester {
         if (!result) return false;
         const compactOutput = result.output || '';
         const fullOutput = result.rawOutput || compactOutput;
+        if (fullOutput.length > 1000) {
+            return true;
+        }
         if (fullOutput.length > compactOutput.length) {
             return true;
         }
-        return compactOutput.split('\n').length > 100;
+        return fullOutput.split('\n').length > 100;
     }
 
     processOutputForDisplay(output, result, sampleId) {
@@ -1974,14 +2130,17 @@ class SampleTester {
             return fullOutput;
         }
 
-        const lines = output.split('\n');
+        const charLimitedOutput = this.truncateOutput(fullOutput);
+        const displayBase = charLimitedOutput || fullOutput;
+
+        const lines = displayBase.split('\n');
         const maxLines = 100;
 
         if (lines.length > maxLines) {
             const truncatedOutput = lines.slice(0, maxLines).join('\n');
             return truncatedOutput + '\n[输出过大，已省略]';
         }
-        return output;
+        return displayBase;
     }
 
     getDifferenceInfo(actual, expected) {
@@ -2043,7 +2202,8 @@ class SampleTester {
     }
 
     createHighlightedOutput(actual, expected) {
-        const actualLines = actual.split('\n');
+        const safeActual = this.truncateOutput(actual || '');
+        const actualLines = safeActual.split('\n');
         const expectedLines = expected.split('\n');
         const maxLines = 100;
 
@@ -2137,7 +2297,7 @@ class SampleTester {
                         diffInfo.style.display = 'inline';
                     }
 
-                    const highlightedOutput = this.createHighlightedOutput(result.output || '', expectedOutput);
+                    const highlightedOutput = this.createHighlightedOutput(processedOutput, expectedOutput);
 
                     outputTextarea.style.display = 'none';
 
@@ -2169,7 +2329,8 @@ class SampleTester {
 
         const outputControls = element.querySelector('.output-controls');
         if (outputControls) {
-            outputControls.style.display = result.output ? 'flex' : 'none';
+            const hasOutput = !!(result.rawOutput || result.output);
+            outputControls.style.display = hasOutput ? 'flex' : 'none';
         }
 
         element.classList.remove('success', 'error');
@@ -2336,6 +2497,7 @@ class SampleTester {
         const settings = await window.electronAPI.getAllSettings();
         const compilerPath = settings.compilerPath;
         let compilerArgs = settings.compilerArgs || '-std=c++14 -O2';
+        let testlibIncludePath = '';
 
         if (!compilerPath) {
             throw new Error('请先设置编译器路径');
@@ -2343,24 +2505,46 @@ class SampleTester {
 
         if (settings.testlibPath) {
             const testlibPathInfo = await window.electronAPI.getPathInfo(settings.testlibPath);
-            const testlibIncludePath = testlibPathInfo.dirname;
+            testlibIncludePath = testlibPathInfo.dirname;
             compilerArgs += ` -I"${testlibIncludePath}"`;
         } else {
             const pathInfo = await window.electronAPI.getPathInfo(compilerPath);
-            const testlibIncludePath = await window.electronAPI.pathJoin(pathInfo.dirname, '..', 'include');
+            testlibIncludePath = await window.electronAPI.pathJoin(pathInfo.dirname, '..', 'include');
             compilerArgs += ` -I"${testlibIncludePath}"`;
         }
 
+        const cacheKey = this.buildSpjCompileCacheKey({
+            spjPath,
+            spjContent,
+            compilerPath,
+            compilerArgs,
+            testlibIncludePath
+        });
 
+        if (
+            this.spjCompileCache.key === cacheKey &&
+            this.spjCompileCache.executablePath &&
+            await window.electronAPI.checkFileExists(this.spjCompileCache.executablePath)
+        ) {
+            return {
+                success: true,
+                cached: true,
+                executablePath: this.spjCompileCache.executablePath,
+                stdout: '',
+                stderr: '',
+                warnings: [],
+                errors: [],
+                diagnostics: []
+            };
+        }
 
-        const timestamp = Date.now();
-        const tempFileName = `spj_${timestamp}.cpp`;
-        const tempFile = await window.electronAPI.saveTempFile(tempFileName, spjContent);
         const isWin2 = (typeof window !== 'undefined' && window.process && window.process.platform === 'win32');
-        const executableFile = tempFile.replace(/\.(cpp|cc|cxx|c)$/i, isWin2 ? '.exe' : '');
+        const tempFileName = `spj_${cacheKey}.cpp`;
+        const tempFile = await window.electronAPI.saveTempFile(tempFileName, spjContent);
+        const pathInfo = await window.electronAPI.getPathInfo(tempFile);
+        const executableFile = await window.electronAPI.pathJoin(pathInfo.dirname, `spj_${cacheKey}${isWin2 ? '.exe' : ''}`);
 
         try {
-            const pathInfo = await window.electronAPI.getPathInfo(tempFile);
             const result = await window.electronAPI.compileFile({
                 inputFile: tempFile,
                 outputFile: executableFile,
@@ -2370,7 +2554,25 @@ class SampleTester {
             });
 
             if (result.success) {
+                if (
+                    this.spjCompileCache.executablePath &&
+                    this.spjCompileCache.executablePath !== executableFile
+                ) {
+                    try {
+                        await window.electronAPI.deleteTempFile(this.spjCompileCache.executablePath);
+                    } catch (_) { }
+                }
+
+                this.spjCompileCache = {
+                    key: cacheKey,
+                    executablePath: executableFile
+                };
                 result.executablePath = executableFile;
+            } else {
+                this.spjCompileCache = {
+                    key: null,
+                    executablePath: null
+                };
             }
 
             if (!result.success) {
