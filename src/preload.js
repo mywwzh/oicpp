@@ -500,6 +500,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onMenuCompile: (callback) => ipcRenderer.on('menu-compile', callback),
     onMenuCompileRun: (callback) => ipcRenderer.on('menu-compile-run', callback),
     onMenuDebug: (callback) => ipcRenderer.on('menu-debug', callback),
+    onMenuNewTempFile: (callback) => ipcRenderer.on('menu-new-temp-file', callback),
     onMenuOpenFile: (callback) => ipcRenderer.on('menu-open-file', callback),
     onMenuOpenFolder: (callback) => ipcRenderer.on('menu-open-folder', callback),
     onMenuSaveAs: (callback) => ipcRenderer.on('menu-save-as', callback),
