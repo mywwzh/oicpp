@@ -1092,6 +1092,13 @@ function createMenuBar() {
                     }
                 },
                 {
+                    label: '新建临时文件',
+                    accelerator: 'CmdOrCtrl+Shift+N',
+                    click: () => {
+                        mainWindow.webContents.send('menu-new-temp-file');
+                    }
+                },
+                {
                     label: '打开文件',
                     accelerator: 'CmdOrCtrl+O',
                     click: () => {
@@ -5924,6 +5931,13 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
     stopHeartbeatService();
     disposeAllFileWatchers();
+    try {
+        const tempDir = path.join(os.homedir(), '.oicpp', 'codeTemp');
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        logInfo('[退出] 已清理临时目录及编译产物:', tempDir);
+    } catch (error) {
+        logWarn('[退出] 清理临时目录失败:', error?.message || error);
+    }
 });
 
 app.on('web-contents-created', (event, contents) => {
