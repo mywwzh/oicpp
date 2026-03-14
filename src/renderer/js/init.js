@@ -95,6 +95,13 @@ async function initializeApp() {
 function setupDefaultContent() {
     setTimeout(function() {
         try {
+            const fileExplorer = window.sidebarManager?.getPanelManager?.('files');
+            const hasWorkspace = !!(fileExplorer && fileExplorer.hasWorkspace);
+            if (hasWorkspace) {
+                logInfo('检测到已打开工作区，跳过欢迎页面');
+                return;
+            }
+
             if (window.tabManager && typeof window.tabManager.getTabCount === 'function' && window.tabManager.getTabCount() === 0) {
                 logInfo('显示欢迎页面...');
                 if (typeof window.tabManager.showWelcomePage === 'function') {
