@@ -5227,6 +5227,64 @@ function importSettings(filePath) {
     }
 }
 
+let compilerSystemPathCache = {
+    value: process.env.PATH || '',
+    loadedAt: 0
+};
+
+function getCompilerSystemPathCached() {
+    if (process.platform !== 'win32') {
+        return process.env.PATH || '';
+    }
+
+    const now = Date.now();
+    if (compilerSystemPathCache.value && (now - compilerSystemPathCache.loadedAt) < 5 * 60 * 1000) {
+        return compilerSystemPathCache.value;
+    }
+
+    try {
+        const { execSync } = require('child_process');
+        const systemPathCmd = 'reg query "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" /v PATH';
+        const userPathCmd = 'reg query "HKEY_CURRENT_USER\\Environment" /v PATH';
+
+        const systemPathOutput = execSync(systemPathCmd, {
+            encoding: 'utf8',
+            timeout: 3000
+        });
+
+        let userPathOutput = '';
+        try {
+            userPathOutput = execSync(userPathCmd, {
+                encoding: 'utf8',
+                timeout: 3000
+            });
+        } catch (_) { }
+
+        const systemMatch = systemPathOutput.match(/PATH\s+REG_EXPAND_SZ\s+(.+)/i);
+        const userMatch = userPathOutput.match(/PATH\s+REG_EXPAND_SZ\s+(.+)/i);
+        const systemPathValue = systemMatch ? systemMatch[1].trim() : '';
+        const userPathValue = userMatch ? userMatch[1].trim() : '';
+
+        const merged = systemPathValue
+            ? (userPathValue ? `${userPathValue};${systemPathValue}` : systemPathValue)
+            : (process.env.PATH || '');
+
+        compilerSystemPathCache = {
+            value: merged,
+            loadedAt: now
+        };
+        return merged;
+    } catch (_) {
+        const fallback = process.env.PATH || '';
+        compilerSystemPathCache = {
+            value: fallback,
+            loadedAt: now
+        };
+        logInfo('[编译环境] 读取系统PATH失败，回退到当前进程PATH');
+        return fallback;
+    }
+}
+
 async function compileFile(options) {
     const { spawn } = require('child_process');
     const path = require('path');
@@ -5363,52 +5421,7 @@ async function compileFile(options) {
 
         mingwBinPaths = mingwBinPaths.filter(p => fs.existsSync(p));
 
-        const { execSync } = require('child_process');
-        let systemPath = process.env.PATH;
-
-        try {
-            if (process.platform === 'win32') {
-                try {
-                    const systemPathCmd = 'reg query "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" /v PATH';
-                    const systemPathOutput = execSync(systemPathCmd, {
-                        encoding: 'utf8',
-                        timeout: 5000
-                    });
-
-                    const userPathCmd = 'reg query "HKEY_CURRENT_USER\\Environment" /v PATH';
-                    let userPathOutput = '';
-                    try {
-                        userPathOutput = execSync(userPathCmd, {
-                            encoding: 'utf8',
-                            timeout: 5000
-                        });
-                    } catch (userError) {
-                    }
-
-                    let systemPathValue = '';
-                    let userPathValue = '';
-
-                    const systemMatch = systemPathOutput.match(/PATH\s+REG_EXPAND_SZ\s+(.+)/i);
-                    if (systemMatch) {
-                        systemPathValue = systemMatch[1].trim();
-                    }
-
-                    const userMatch = userPathOutput.match(/PATH\s+REG_EXPAND_SZ\s+(.+)/i);
-                    if (userMatch) {
-                        userPathValue = userMatch[1].trim();
-                    }
-
-                    if (systemPathValue) {
-                        systemPath = userPathValue ? `${userPathValue};${systemPathValue}` : systemPathValue;
-                    }
-
-                } catch (regError) {
-                    logInfo('[编译环境] 无法从注册表获取PATH，使用当前进程PATH');
-                }
-            }
-        } catch (error) {
-            logInfo('[编译环境] 获取系统PATH失败，使用当前进程PATH');
-        }
+        const systemPath = getCompilerSystemPathCached();
 
         const envPath = [...mingwBinPaths, systemPath].join(path.delimiter);
 
