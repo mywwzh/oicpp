@@ -14,6 +14,13 @@ class CodeComparer {
         this.setupActiveFileListener();
     }
 
+    normalizeTaskKey(taskKey) {
+        if (!taskKey || typeof taskKey !== 'string') return '';
+        const normalized = String(taskKey).trim().replace(/\//g, '\\');
+        const isWin = typeof window !== 'undefined' && window.process?.platform === 'win32';
+        return isWin ? normalized.toLowerCase() : normalized;
+    }
+
     setupActiveFileListener() {
         try {
             window.addEventListener('oicpp:active-file-changed', (e) => {
@@ -47,11 +54,12 @@ class CodeComparer {
     }
 
     getOrCreateTask(taskKey) {
-        if (!taskKey) return null;
-        let task = this.tasks.get(taskKey);
+        const normalizedKey = this.normalizeTaskKey(taskKey);
+        if (!normalizedKey) return null;
+        let task = this.tasks.get(normalizedKey);
         if (!task) {
             task = {
-                key: taskKey,
+                key: normalizedKey,
                 config: {
                     standardCodePath: '',
                     testCodePath: taskKey,
@@ -74,7 +82,7 @@ class CodeComparer {
                 },
                 compiledExecutables: null
             };
-            this.tasks.set(taskKey, task);
+            this.tasks.set(normalizedKey, task);
         }
         return task;
     }
@@ -87,15 +95,17 @@ class CodeComparer {
 
     setActiveTaskKey(taskKey, options = {}) {
         if (!taskKey || typeof taskKey !== 'string') return;
+        const normalizedKey = this.normalizeTaskKey(taskKey);
+        if (!normalizedKey) return;
 
         const task = this.getOrCreateTask(taskKey);
         if (!task) return;
 
-        this.activeTaskKey = taskKey;
+        this.activeTaskKey = normalizedKey;
 
         if (options.syncTestCodePath) {
             task.config.testCodePath = taskKey;
-            this.testCodePath = taskKey;
+            this.testCodePath = task.config.testCodePath;
         }
 
         this.applyTaskConfigToInstance(task);
