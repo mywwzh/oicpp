@@ -516,6 +516,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onFileSaved: (callback) => ipcRenderer.on('file-saved', (event, filePath, error) => callback(filePath, error)),
     onFolderOpened: (callback) => ipcRenderer.on('folder-opened', (event, folderPath) => callback(folderPath)),
     onFileOpenedFromArgs: (callback) => ipcRenderer.on('file-opened-from-args', (event, data) => callback(data)),
+    consumeStartupWorkspaceToOpen: () => ipcRenderer.invoke('consume-startup-workspace-to-open'),
     onExternalFileChange: (callback) => {
         if (typeof callback !== 'function') return () => { };
         const listener = (_event, payload) => callback(payload);
