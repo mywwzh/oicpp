@@ -1989,7 +1989,6 @@ class SampleTester {
 
         const isWin = (typeof window !== 'undefined' && window.process && window.process.platform === 'win32');
         const cachedExeName = `sample_${cacheKey}${isWin ? '.exe' : ''}`;
-        const cachedSourceName = `sample_${cacheKey}.cpp`;
 
         if (
             this.mainCompileCache.key === cacheKey &&
@@ -2009,19 +2008,18 @@ class SampleTester {
             };
         }
 
-        const tempFileName = cachedSourceName;
-        const tempFile = await window.electronAPI.saveTempFile(tempFileName, content);
-        const pathInfo = await window.electronAPI.getPathInfo(tempFile);
-        const executableFile = await window.electronAPI.pathJoin(pathInfo.dirname, cachedExeName);
+        const currentFilePathInfo = await window.electronAPI.getPathInfo(this.currentFile);
+        const tempDir = await window.electronAPI.pathJoin(await window.electronAPI.getUserHome(), '.oicpp', 'codeTemp');
+        await window.electronAPI.ensureDirectory(tempDir);
+        const executableFile = await window.electronAPI.pathJoin(tempDir, cachedExeName);
 
-        try {
-            const result = await window.electronAPI.compileFile({
-                inputFile: tempFile,
-                outputFile: executableFile,
-                compilerPath: compilerPath,
-                compilerArgs: compilerArgs + ' -g',
-                workingDirectory: pathInfo.dirname
-            });
+        const result = await window.electronAPI.compileFile({
+            inputFile: this.currentFile,
+            outputFile: executableFile,
+            compilerPath: compilerPath,
+            compilerArgs,
+            workingDirectory: currentFilePathInfo?.dirname || tempDir
+        });
 
             if (result.success) {
                 if (
@@ -2055,13 +2053,7 @@ class SampleTester {
                 this.showCompileOutputForResult('样例编译', result);
             }
 
-            return result;
-        } finally {
-            try {
-                await window.electronAPI.deleteTempFile(tempFile);
-            } catch (e) {
-            }
-        }
+        return result;
     }
 
     async runProgram(executablePath, input, timeLimit) {
@@ -2539,19 +2531,18 @@ class SampleTester {
         }
 
         const isWin2 = (typeof window !== 'undefined' && window.process && window.process.platform === 'win32');
-        const tempFileName = `spj_${cacheKey}.cpp`;
-        const tempFile = await window.electronAPI.saveTempFile(tempFileName, spjContent);
-        const pathInfo = await window.electronAPI.getPathInfo(tempFile);
-        const executableFile = await window.electronAPI.pathJoin(pathInfo.dirname, `spj_${cacheKey}${isWin2 ? '.exe' : ''}`);
+        const tempDir = await window.electronAPI.pathJoin(await window.electronAPI.getUserHome(), '.oicpp', 'codeTemp');
+        await window.electronAPI.ensureDirectory(tempDir);
+        const executableFile = await window.electronAPI.pathJoin(tempDir, `spj_${cacheKey}${isWin2 ? '.exe' : ''}`);
+        const spjPathInfo = await window.electronAPI.getPathInfo(spjPath);
 
-        try {
-            const result = await window.electronAPI.compileFile({
-                inputFile: tempFile,
-                outputFile: executableFile,
-                compilerPath: compilerPath,
-                compilerArgs: compilerArgs + ' -g',
-                workingDirectory: pathInfo.dirname
-            });
+        const result = await window.electronAPI.compileFile({
+            inputFile: spjPath,
+            outputFile: executableFile,
+            compilerPath: compilerPath,
+            compilerArgs,
+            workingDirectory: spjPathInfo?.dirname || tempDir
+        });
 
             if (result.success) {
                 if (
@@ -2579,13 +2570,7 @@ class SampleTester {
                 this.showCompileOutputForResult('SPJ编译', result);
             }
 
-            return result;
-        } finally {
-            try {
-                await window.electronAPI.deleteTempFile(tempFile);
-            } catch (e) {
-            }
-        }
+        return result;
     }
 
     async judgeWithSpj(spjExecutablePath, inputData, actualOutput, expectedOutput) {
