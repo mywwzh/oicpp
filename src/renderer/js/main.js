@@ -62,6 +62,7 @@ class OICPPApp {
             this.setupIPC();
             await this.initAccountMenu();
             await this.loadSettings();
+            await this.restoreStartupWorkspaceIfNeeded();
             this.configureAutoSave();
             this.loadDefaultFiles();
             this.updateStatusBar();
@@ -528,6 +529,22 @@ class OICPPApp {
             logInfo('IPC 事件监听器已设置');
         } catch (error) {
             logError('设置IPC失败:', error);
+        }
+    }
+
+    async restoreStartupWorkspaceIfNeeded() {
+        try {
+            if (!window.electronAPI || typeof window.electronAPI.consumeStartupWorkspaceToOpen !== 'function') {
+                return;
+            }
+            const folderPath = await window.electronAPI.consumeStartupWorkspaceToOpen();
+            if (!folderPath || typeof folderPath !== 'string') {
+                return;
+            }
+            logInfo('[启动] 渲染进程拉取自动恢复工作区:', folderPath);
+            this.onFolderOpened(folderPath);
+        } catch (error) {
+            logWarn('启动时恢复工作区失败:', error?.message || error);
         }
     }
 
@@ -3227,7 +3244,7 @@ ${data.message || '程序已加载，等待开始执行'}
     onFolderOpened(folderPath) {
         logInfo('文件夹已打开:', folderPath);
         
-        if (window.tabManager && window.tabManager.tabs.has('Welcome')) {
+        if (window.tabManager && typeof window.tabManager.closeWelcomePage === 'function') {
             logInfo('自动关闭欢迎页面');
             window.tabManager.closeWelcomePage();
         }
