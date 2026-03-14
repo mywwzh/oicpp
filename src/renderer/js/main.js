@@ -163,6 +163,9 @@ class OICPPApp {
             case 'new-file':
                 this.createNewCppFile();
                 break;
+            case 'new-temp-file':
+                await this.createNewTempFile();
+                break;
             case 'open-file':
                 this.openFile();
                 break;
@@ -395,6 +398,12 @@ class OICPPApp {
             window.electronAPI.onMenuSaveFile(() => {
                 this.saveCurrentFile();
             });
+
+            if (typeof window.electronAPI.onMenuNewTempFile === 'function') {
+                window.electronAPI.onMenuNewTempFile(() => {
+                    this.createNewTempFile();
+                });
+            }
 
             window.electronAPI.onMenuFormatCode(() => {
                 this.formatCode();
@@ -863,6 +872,11 @@ class OICPPApp {
         
         if (isInEditor) {
             if (e.ctrlKey || e.metaKey) {
+                if (e.shiftKey && (e.key === 'N' || e.key === 'n')) {
+                    e.preventDefault();
+                    this.createNewTempFile();
+                    return;
+                }
                 switch (e.key) {
                     case 'n':
                         e.preventDefault();
@@ -921,6 +935,11 @@ class OICPPApp {
         }
         
         if (e.ctrlKey || e.metaKey) {
+            if (e.shiftKey && (e.key === 'N' || e.key === 'n')) {
+                e.preventDefault();
+                this.createNewTempFile();
+                return;
+            }
             switch (e.key) {
                 case 'n':
                     e.preventDefault();
@@ -1381,6 +1400,53 @@ class OICPPApp {
             if (window.dialogManager) {
                 window.dialogManager.showError('文件管理器不可用，无法创建新文件');
             }
+        }
+    }
+
+    generateTempCppFileName() {
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const datePart = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+        const timePart = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        return `temp_${datePart}_${timePart}_${Date.now().toString().slice(-4)}.cpp`;
+    }
+
+    async createNewTempFile() {
+        if (!window.electronAPI?.saveTempFile) {
+            this.showMessage('临时文件功能不可用', 'error');
+            return;
+        }
+
+        try {
+            let content = '';
+            if (window.electronAPI?.getAllSettings) {
+                const allSettings = await window.electronAPI.getAllSettings();
+                if (allSettings?.cppTemplate && typeof allSettings.cppTemplate === 'string') {
+                    content = allSettings.cppTemplate.endsWith('\n')
+                        ? allSettings.cppTemplate
+                        : `${allSettings.cppTemplate}\n`;
+                }
+            }
+
+            const fileName = this.generateTempCppFileName();
+            const tempPath = await window.electronAPI.saveTempFile(fileName, content);
+            if (!tempPath || typeof tempPath !== 'string') {
+                throw new Error('主进程未返回临时文件路径');
+            }
+
+            if (window.tabManager && typeof window.tabManager.openFile === 'function') {
+                await window.tabManager.openFile(fileName, content, false, {
+                    filePath: tempPath,
+                    isTempFile: true
+                });
+            } else if (this.editorManager && typeof this.editorManager.openFile === 'function') {
+                this.editorManager.openFile(fileName, content);
+            }
+
+            this.showMessage('已新建临时文件（退出 IDE 后自动清理）', 'success');
+        } catch (error) {
+            logError('新建临时文件失败:', error);
+            this.showMessage(`新建临时文件失败: ${error?.message || error}`, 'error');
         }
     }
 
