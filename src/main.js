@@ -501,6 +501,7 @@ const pendingExternalFolderQueue = [];
 let rendererReadyForExternalOpens = false;
 let processingExternalOpenQueue = false;
 let skipAutoOpenWorkspace = false;
+let pendingStartupWorkspaceToOpen = null;
 
 function getDefaultSettings() {
     let compilerArgs = '-std=c++14 -O2 -static';
@@ -937,6 +938,7 @@ function requestCloseWithoutSave(context = '关闭窗口') {
 
 function createWindow() {
     loadSettings();
+    pendingStartupWorkspaceToOpen = null;
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
@@ -1011,10 +1013,8 @@ function createWindow() {
                 }
             }
             if (target) {
-                setTimeout(() => {
-                    logInfo('[启动] 自动打开工作区:', target);
-                    mainWindow.webContents.send('folder-opened', target);
-                }, 1200);
+                pendingStartupWorkspaceToOpen = target;
+                logInfo('[启动] 已准备自动恢复工作区:', target);
             }
         })();
 
@@ -1516,6 +1516,16 @@ function setupIPC() {
             logInfo('接收到预览设置并转发给主窗口:', previewSettings);
             mainWindow.webContents.send('apply-settings-preview', previewSettings);
         }
+    });
+
+    ipcMain.handle('consume-startup-workspace-to-open', () => {
+        if (!pendingStartupWorkspaceToOpen) {
+            return null;
+        }
+        const target = pendingStartupWorkspaceToOpen;
+        pendingStartupWorkspaceToOpen = null;
+        logInfo('[启动] 渲染进程请求自动恢复工作区:', target);
+        return target;
     });
 
     ipcMain.on('logger-log', (event, payload) => {
@@ -5977,6 +5987,20 @@ function extractSupportedFilesFromArgs(args = [], options = {}) {
         return process.cwd();
     })();
 
+    const normalizeArgPath = (p) => {
+        try {
+            return path.resolve(p).replace(/\\/g, '/').toLowerCase();
+        } catch (_) {
+            return String(p || '').replace(/\\/g, '/').toLowerCase();
+        }
+    };
+
+    const intrinsicLaunchPaths = new Set([
+        normalizeArgPath(process.execPath),
+        normalizeArgPath(app.getAppPath()),
+        normalizeArgPath(process.cwd())
+    ]);
+
     for (const raw of args) {
         if (!raw || typeof raw !== 'string') {
             continue;
@@ -6015,6 +6039,11 @@ function extractSupportedFilesFromArgs(args = [], options = {}) {
             resolved = path.isAbsolute(normalized)
                 ? normalized
                 : path.join(baseDir, normalized);
+        }
+
+        const resolvedNorm = normalizeArgPath(resolved);
+        if (intrinsicLaunchPaths.has(resolvedNorm)) {
+            continue;
         }
 
         if (!fs.existsSync(resolved)) {
@@ -6046,6 +6075,20 @@ function extractOpenTargetsFromArgs(args = [], options = {}) {
         return process.cwd();
     })();
 
+    const normalizeArgPath = (p) => {
+        try {
+            return path.resolve(p).replace(/\\/g, '/').toLowerCase();
+        } catch (_) {
+            return String(p || '').replace(/\\/g, '/').toLowerCase();
+        }
+    };
+
+    const intrinsicLaunchPaths = new Set([
+        normalizeArgPath(process.execPath),
+        normalizeArgPath(app.getAppPath()),
+        normalizeArgPath(process.cwd())
+    ]);
+
     for (const raw of args) {
         if (!raw || typeof raw !== 'string') {
             continue;
@@ -6084,6 +6127,11 @@ function extractOpenTargetsFromArgs(args = [], options = {}) {
             resolved = path.isAbsolute(normalized)
                 ? normalized
                 : path.join(baseDir, normalized);
+        }
+
+        const resolvedNorm = normalizeArgPath(resolved);
+        if (intrinsicLaunchPaths.has(resolvedNorm)) {
+            continue;
         }
 
         if (!fs.existsSync(resolved)) {
