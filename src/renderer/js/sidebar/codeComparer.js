@@ -6,6 +6,8 @@ class CodeComparer {
         this.generatorPath = '';
         this.useTestlib = false;
         this.spjPath = '';
+        this.freopenInputFile = '';
+        this.freopenOutputFile = '';
         this.maxParallelThreads = 1;
         this.tasks = new Map();
         this.eventsbound = false;
@@ -66,6 +68,8 @@ class CodeComparer {
                     generatorPath: '',
                     useTestlib: false,
                     spjPath: '',
+                    freopenInputFile: '',
+                    freopenOutputFile: '',
                     threadCount: 1,
                     compareCount: 100,
                     timeLimit: 1000
@@ -120,6 +124,8 @@ class CodeComparer {
         this.generatorPath = cfg.generatorPath || '';
         this.useTestlib = !!cfg.useTestlib;
         this.spjPath = cfg.spjPath || '';
+        this.freopenInputFile = cfg.freopenInputFile || '';
+        this.freopenOutputFile = cfg.freopenOutputFile || '';
     }
 
     syncInstanceConfigToTask(task) {
@@ -129,6 +135,10 @@ class CodeComparer {
         task.config.generatorPath = this.generatorPath || '';
         task.config.useTestlib = !!this.useTestlib;
         task.config.spjPath = this.spjPath || '';
+        const freopenInputEl = document.getElementById('compare-freopen-input-file');
+        const freopenOutputEl = document.getElementById('compare-freopen-output-file');
+        task.config.freopenInputFile = this.normalizeFreopenFileName(freopenInputEl?.value || this.freopenInputFile || '');
+        task.config.freopenOutputFile = this.normalizeFreopenFileName(freopenOutputEl?.value || this.freopenOutputFile || '');
 
         const compareCountEl = document.getElementById('compare-count');
         const timeLimitEl = document.getElementById('time-limit');
@@ -153,6 +163,8 @@ class CodeComparer {
         if (!t.standardCodePath && s.standardCodePath) t.standardCodePath = s.standardCodePath;
         if (!t.generatorPath && s.generatorPath) t.generatorPath = s.generatorPath;
         if (!t.spjPath && s.spjPath) t.spjPath = s.spjPath;
+        if (!t.freopenInputFile && s.freopenInputFile) t.freopenInputFile = s.freopenInputFile;
+        if (!t.freopenOutputFile && s.freopenOutputFile) t.freopenOutputFile = s.freopenOutputFile;
 
         if (!t.useTestlib && s.useTestlib) t.useTestlib = !!s.useTestlib;
 
@@ -266,6 +278,8 @@ class CodeComparer {
         const compareCountInput = document.getElementById('compare-count');
         const threadCountInput = document.getElementById('compare-threads');
         const timeLimitInput = document.getElementById('time-limit');
+        const freopenInputInput = document.getElementById('compare-freopen-input-file');
+        const freopenOutputInput = document.getElementById('compare-freopen-output-file');
 
         if (useTestlibCheckbox) {
             useTestlibCheckbox.addEventListener('change', (e) => {
@@ -301,6 +315,28 @@ class CodeComparer {
                 const task = this.getActiveTask();
                 if (!task) return;
                 this.syncInstanceConfigToTask(task);
+            });
+        }
+
+        if (freopenInputInput) {
+            freopenInputInput.addEventListener('change', (e) => {
+                const normalized = this.normalizeFreopenFileName(e.target.value);
+                e.target.value = normalized;
+                this.freopenInputFile = normalized;
+                const task = this.getActiveTask();
+                if (!task) return;
+                task.config.freopenInputFile = normalized;
+            });
+        }
+
+        if (freopenOutputInput) {
+            freopenOutputInput.addEventListener('change', (e) => {
+                const normalized = this.normalizeFreopenFileName(e.target.value);
+                e.target.value = normalized;
+                this.freopenOutputFile = normalized;
+                const task = this.getActiveTask();
+                if (!task) return;
+                task.config.freopenOutputFile = normalized;
             });
         }
     }
@@ -355,6 +391,8 @@ class CodeComparer {
                     generatorPath: this.generatorPath,
                     useTestlib: this.useTestlib,
                     spjPath: this.spjPath,
+                    freopenInputFile: this.freopenInputFile,
+                    freopenOutputFile: this.freopenOutputFile,
                     compareCount: parseInt(document.getElementById('compare-count')?.value) || 100,
                     timeLimit: parseInt(document.getElementById('time-limit')?.value) || 1000
                 };
@@ -465,6 +503,14 @@ class CodeComparer {
         const spjPathInput = document.getElementById('compare-spj-path');
         if (spjPathInput) {
             spjPathInput.value = task.config.spjPath || '';
+        }
+        const freopenInputInput = document.getElementById('compare-freopen-input-file');
+        if (freopenInputInput) {
+            freopenInputInput.value = task.config.freopenInputFile || '';
+        }
+        const freopenOutputInput = document.getElementById('compare-freopen-output-file');
+        if (freopenOutputInput) {
+            freopenOutputInput.value = task.config.freopenOutputFile || '';
         }
 
         this.updateUIForTask(task);
@@ -789,7 +835,17 @@ class CodeComparer {
 
                     const inputData = generation.input;
 
-                    const stdOutput = await this.runProgram(stdExe, inputData, 0);
+                    const stdFreopenContext = await this.prepareFreopenContext(task, 'std', i, inputData);
+                    let stdOutput;
+                    try {
+                        const stdRunOptions = stdFreopenContext.workingDirectory
+                            ? { executablePath: stdExe, workingDirectory: stdFreopenContext.workingDirectory }
+                            : stdExe;
+                        stdOutput = await this.runProgram(stdRunOptions, stdFreopenContext.runInput, 0);
+                        stdOutput.output = await this.resolveProgramOutput(stdOutput.output, stdFreopenContext);
+                    } finally {
+                        await this.cleanupFreopenContext(stdFreopenContext);
+                    }
                     if (stdOutput.outputLimitExceeded || stdOutput.timeout || stdOutput.error || stdOutput.exitCode !== 0) {
                         const limitMbStd = Math.max(1, Math.floor((stdOutput.outputLimitBytes || 0) / (1024 * 1024)));
                         const errorMsg = stdOutput.outputLimitExceeded ? `标准程序输出超过限制 (${limitMbStd} MB)` :
@@ -824,7 +880,17 @@ class CodeComparer {
                         return;
                     }
 
-                    const testOutput = await this.runProgram(testExe, inputData, timeLimit);
+                    const testFreopenContext = await this.prepareFreopenContext(task, 'test', i, inputData);
+                    let testOutput;
+                    try {
+                        const testRunOptions = testFreopenContext.workingDirectory
+                            ? { executablePath: testExe, workingDirectory: testFreopenContext.workingDirectory }
+                            : testExe;
+                        testOutput = await this.runProgram(testRunOptions, testFreopenContext.runInput, timeLimit);
+                        testOutput.output = await this.resolveProgramOutput(testOutput.output, testFreopenContext);
+                    } finally {
+                        await this.cleanupFreopenContext(testFreopenContext);
+                    }
                     if (testOutput.outputLimitExceeded || testOutput.timeout || testOutput.error || testOutput.exitCode !== 0) {
                         const limitMbTest = Math.max(1, Math.floor((testOutput.outputLimitBytes || 0) / (1024 * 1024)));
                         const errorMsg = testOutput.outputLimitExceeded ? `测试程序输出超过限制 (${limitMbTest} MB)` :
@@ -1031,6 +1097,90 @@ class CodeComparer {
             capturedOutputBytes: result.capturedOutputBytes,
             observedOutputBytes: result.observedOutputBytes
         };
+    }
+
+    normalizeFreopenFileName(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        return raw.replace(/[\\/]/g, '').replace(/[<>:"|?*]/g, '').trim();
+    }
+
+    buildFreopenTaskDirName(taskKey) {
+        const normalized = String(taskKey || 'task').replace(/[\\/]/g, '_');
+        return normalized.replace(/[<>:"|?*]/g, '_').slice(0, 120);
+    }
+
+    async prepareFreopenContext(task, role, caseIndex, inputData) {
+        const inputFileName = this.normalizeFreopenFileName(task?.config?.freopenInputFile || '');
+        const outputFileName = this.normalizeFreopenFileName(task?.config?.freopenOutputFile || '');
+
+        if (!inputFileName && !outputFileName) {
+            return {
+                runInput: inputData,
+                workingDirectory: null,
+                outputFilePath: null,
+                cleanupFiles: []
+            };
+        }
+
+        const homeDir = await window.electronAPI.getHomeDir();
+        const taskDirName = this.buildFreopenTaskDirName(task?.key || 'task');
+        const baseDir = await window.electronAPI.pathJoin(homeDir, '.oicpp', 'compare', 'freopen_runs', taskDirName);
+        const runDirName = `${role || 'program'}_${caseIndex || 0}`;
+        const runDir = await window.electronAPI.pathJoin(baseDir, runDirName);
+
+        await window.electronAPI.ensureDir(baseDir);
+        await window.electronAPI.ensureDir(runDir);
+
+        const cleanupFiles = [];
+        let outputFilePath = null;
+
+        if (inputFileName) {
+            const inputFilePath = await window.electronAPI.pathJoin(runDir, inputFileName);
+            await window.electronAPI.writeFile(inputFilePath, inputData || '');
+            cleanupFiles.push(inputFilePath);
+        }
+
+        if (outputFileName) {
+            outputFilePath = await window.electronAPI.pathJoin(runDir, outputFileName);
+            cleanupFiles.push(outputFilePath);
+        }
+
+        return {
+            runInput: inputFileName ? '' : inputData,
+            workingDirectory: runDir,
+            outputFilePath,
+            cleanupFiles
+        };
+    }
+
+    async cleanupFreopenContext(context) {
+        if (!context || !Array.isArray(context.cleanupFiles)) return;
+        for (const filePath of context.cleanupFiles) {
+            try {
+                const exists = await window.electronAPI.checkFileExists(filePath);
+                if (exists) {
+                    await window.electronAPI.deleteFile(filePath);
+                }
+            } catch (_) { }
+        }
+    }
+
+    async resolveProgramOutput(stdoutOutput, freopenContext) {
+        if (!freopenContext?.outputFilePath) {
+            return stdoutOutput || '';
+        }
+
+        try {
+            const exists = await window.electronAPI.checkFileExists(freopenContext.outputFilePath);
+            if (!exists) {
+                return stdoutOutput || '';
+            }
+            const output = await window.electronAPI.readFileContent(freopenContext.outputFilePath);
+            return String(output || '').trim();
+        } catch (_) {
+            return stdoutOutput || '';
+        }
     }
 
     compareOutputs(output1, output2) {
@@ -1437,7 +1587,9 @@ class CodeComparer {
                     testCode: task.config.testCodePath,
                     generator: task.config.generatorPath,
                     useTestlib: task.config.useTestlib,
-                    spjPath: task.config.spjPath
+                    spjPath: task.config.spjPath,
+                    freopenInputFile: task.config.freopenInputFile,
+                    freopenOutputFile: task.config.freopenOutputFile
                 }
             });
         } catch (_) { }
