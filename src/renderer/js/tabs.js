@@ -3361,10 +3361,18 @@ class TabManager {
         }
     }
 
+    isMarkdownTab(tabData) {
+        if (!tabData) return false;
+        const filePath = String(tabData.filePath || '').toLowerCase();
+        const fileName = String(tabData.fileName || '').toLowerCase();
+        return filePath.endsWith('.md') || fileName.endsWith('.md');
+    }
+
     toggleMarkdownSplitView() {
         if (!this.activeTabKey) return;
         const tabData = this.tabs.get(this.activeTabKey);
         if (!tabData) return;
+        if (!this.isMarkdownTab(tabData)) return;
 
         const previewUniqueKey = `${tabData.uniqueKey}::preview`;
         const existingPreviewTab = this.tabs.get(previewUniqueKey);
