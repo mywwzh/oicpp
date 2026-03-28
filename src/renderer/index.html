@@ -278,6 +278,20 @@
                                 </div>
                                 <input type="hidden" id="global-spj-path" onchange="sampleTester.updateGlobalSetting('spjPath', this.value)">
                             </div>
+                            <div class="setting-group global-bulk-row global-fileio-row">
+                                <span class="setting-label">文件IO</span>
+                                <div class="global-fileio-controls">
+                                    <input type="text" class="setting-input setting-input-wide" id="global-freopen-input-file" placeholder="输入文件名，如 sample.in">
+                                    <input type="text" class="setting-input setting-input-wide" id="global-freopen-output-file" placeholder="输出文件名，如 sample.out">
+                                    <button class="bulk-apply-btn" id="apply-fileio-all-btn" type="button" title="将文件IO设置应用到全部样例">应用</button>
+                                </div>
+                            </div>
+                            <div class="setting-group global-bulk-row">
+                                <span class="setting-label">运行时间</span>
+                                <input type="number" class="setting-input" id="global-time-limit" min="1" value="1000">
+                                <span class="setting-unit">ms</span>
+                                <button class="bulk-apply-btn" id="apply-time-limit-all-btn" type="button" title="将运行时间应用到全部样例">应用</button>
+                            </div>
                         </div>
                     </div>
                     <div class="samples-content">
