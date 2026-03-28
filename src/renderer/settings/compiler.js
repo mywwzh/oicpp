@@ -1031,29 +1031,42 @@ class CompilerSettings {
     async testTestlib() {
         const testlibPath = document.getElementById('testlib-path').value;
         const resultDiv = document.getElementById('testlib-test-result');
+
+        const renderTestResult = (type, message) => {
+            if (!resultDiv) return;
+            resultDiv.classList.remove('is-success', 'is-error', 'is-testing');
+            if (type === 'success') {
+                resultDiv.classList.add('is-success');
+            } else if (type === 'error') {
+                resultDiv.classList.add('is-error');
+            } else {
+                resultDiv.classList.add('is-testing');
+            }
+            resultDiv.textContent = message;
+        };
         
         if (!testlibPath) {
-            resultDiv.innerHTML = '<div class="error">请先设置Testlib路径</div>';
+            renderTestResult('error', '请先设置 Testlib 路径');
             return;
         }
         
-        resultDiv.innerHTML = '正在测试Testlib...';
+        renderTestResult('testing', '正在测试 Testlib 环境...');
         
         try {
             if (window.electronAPI && window.electronAPI.testTestlib) {
                 const result = await window.electronAPI.testTestlib(testlibPath);
                 
                 if (result.success) {
-                    resultDiv.innerHTML = '<div class="success">Testlib测试成功！</div>';
+                    renderTestResult('success', 'Testlib 测试成功！');
                 } else {
-                    resultDiv.innerHTML = `<div class="error">Testlib测试失败: ${result.error}</div>`;
+                    renderTestResult('error', `Testlib 测试失败：${result.error || '未知错误'}`);
                 }
             } else {
-                resultDiv.innerHTML = '<div class="error">测试API不可用</div>';
+                renderTestResult('error', '测试 API 不可用');
             }
         } catch (error) {
             logError('测试Testlib失败:', error);
-            resultDiv.innerHTML = `<div class="error">测试失败: ${error.message}</div>`;
+            renderTestResult('error', `测试失败：${error.message}`);
         }
     }
     
