@@ -1085,7 +1085,7 @@ function createMenuBar() {
             label: '文件',
             submenu: [
                 {
-                    label: '新建 C++ 文件',
+                    label: '新建文件',
                     accelerator: 'CmdOrCtrl+N',
                     click: () => {
                         mainWindow.webContents.send('menu-new-cpp-file');
