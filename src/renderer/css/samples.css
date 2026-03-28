@@ -463,6 +463,54 @@
     gap: 12px;
 }
 
+.global-bulk-row {
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.global-bulk-row .setting-label {
+    min-width: 56px;
+}
+
+.global-fileio-row {
+    align-items: flex-start;
+}
+
+.global-fileio-row .setting-label {
+    width: 100%;
+    min-width: 0;
+}
+
+.global-fileio-controls {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.bulk-apply-btn {
+    height: 26px;
+    border: 1px solid var(--primary-color, #007acc);
+    background: var(--primary-color, #007acc);
+    color: #fff;
+    border-radius: 4px;
+    padding: 0 10px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.bulk-apply-btn:hover {
+    background: var(--primary-color-hover, #005a9e);
+    border-color: var(--primary-color-hover, #005a9e);
+}
+
+.bulk-apply-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
 .setting-checkbox {
     display: flex;
     align-items: center;
@@ -737,4 +785,24 @@
 
 .setting-input-wide {
     width: 140px;
+}
+
+@media (max-width: 768px) {
+    .global-fileio-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .global-fileio-controls .bulk-apply-btn {
+        align-self: flex-start;
+    }
+
+    .global-bulk-row .setting-input-wide {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .global-bulk-row .setting-input {
+        min-width: 96px;
+    }
 }
