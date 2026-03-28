@@ -658,6 +658,7 @@ class MonacoEditorManager {
             } else {
                 this.currentEditor.setValue(content);
                 this.currentEditor.filePath = filePath;
+                this.currentEditor.fileName = this.currentFileName;
                 this.currentEditor.getFilePath = () => {
                     return this.currentEditor.filePath || filePath;
                 };
@@ -667,6 +668,7 @@ class MonacoEditorManager {
                         model.__oicppFilePath = filePath;
                     }
                 } catch (_) {}
+                this.updateMarkdownPreviewContextKey(this.currentEditor, filePath, this.currentFileName);
             }
             
             logInfo('文件打开成功:', filePath);
@@ -697,6 +699,8 @@ class MonacoEditorManager {
                 if (targetGroup) {
                     this.moveEditorToGroup(tabId, targetGroup);
                 }
+
+                this.updateMarkdownPreviewContextKey(existingEditor, existingEditor.filePath || filePath, existingEditor.fileName || fileName);
                 
                 setTimeout(() => {
                     existingEditor.focus();
@@ -899,11 +903,12 @@ class MonacoEditorManager {
 
             try {
                 const markdownPreviewKey = this.toMonacoKeybinding('markdownPreview') || (monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyV);
+                const previewContextExpr = monaco.ContextKeyExpr ? monaco.ContextKeyExpr.equals('oicppIsMarkdown', true) : 'oicppIsMarkdown';
                 editor.addAction({
                     id: 'markdown-preview-split',
                     label: '打开 Markdown 预览',
                     keybindings: markdownPreviewKey ? [markdownPreviewKey] : [],
-                    precondition: null,
+                    precondition: previewContextExpr,
                     keybindingContext: null,
                     contextMenuGroupId: 'navigation',
                     contextMenuOrder: 1.5,
@@ -1128,6 +1133,7 @@ class MonacoEditorManager {
                     model.__oicppFilePath = resolvedFilePath;
                 }
             } catch (_) {}
+            this.updateMarkdownPreviewContextKey(editor, resolvedFilePath, fileName);
 
             this.currentEditor = editor;
             this.editors.set(tabId, editor);
@@ -1569,6 +1575,26 @@ class MonacoEditorManager {
         return parts[parts.length - 1];
     }
 
+    isMarkdownFile(filePathOrName) {
+        if (!filePathOrName || typeof filePathOrName !== 'string') return false;
+        return filePathOrName.toLowerCase().endsWith('.md');
+    }
+
+    updateMarkdownPreviewContextKey(editor, filePath = null, fileName = null) {
+        if (!editor) return;
+        const candidate = (typeof filePath === 'string' && filePath)
+            ? filePath
+            : ((typeof fileName === 'string' && fileName) ? fileName : (editor.filePath || editor.fileName || ''));
+        const isMarkdown = this.isMarkdownFile(candidate);
+        try {
+            if (!editor.__markdownPreviewContextKey && typeof editor.createContextKey === 'function') {
+                editor.__markdownPreviewContextKey = editor.createContextKey('oicppIsMarkdown', isMarkdown);
+            } else if (editor.__markdownPreviewContextKey && typeof editor.__markdownPreviewContextKey.set === 'function') {
+                editor.__markdownPreviewContextKey.set(isMarkdown);
+            }
+        } catch (_) { }
+    }
+
     getLanguageFromFileName(fileName) {
         const ext = fileName.split('.').pop().toLowerCase();
         switch (ext) {
@@ -1640,6 +1666,8 @@ class MonacoEditorManager {
                     this.currentFileName = isDiff ? (editor.__diffMeta?.label || editor.fileName || 'diff') : (editor.fileName || 'untitled');
                 }
 
+                this.updateMarkdownPreviewContextKey(this.currentEditor, this.currentFilePath, this.currentFileName);
+
                 editor.layout();
                 this.groupActiveTab.set(groupId, tabId);
             } else {
@@ -1694,6 +1722,7 @@ class MonacoEditorManager {
                         model.__oicppFilePath = newPath;
                     }
                 } catch (_) {}
+                this.updateMarkdownPreviewContextKey(ed, newPath, ed.fileName);
             }
             if (this.currentEditor === ed) {
                 this.currentFilePath = newPath;
