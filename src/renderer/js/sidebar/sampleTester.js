@@ -17,7 +17,10 @@ class SampleTester {
         this.statusFilter = null;
         this.globalSettings = {
             useTestlib: false,
-            spjPath: ''
+            spjPath: '',
+            freopenInputFile: '',
+            freopenOutputFile: '',
+            defaultTimeLimit: 1000
         };
 
         this.setupEventListeners();
@@ -274,6 +277,47 @@ class SampleTester {
         if (globalSpjPath) {
             globalSpjPath.addEventListener('change', (e) => {
                 this.updateGlobalSetting('spjPath', e.target.value);
+            });
+        }
+
+        const globalFreopenInputFile = document.getElementById('global-freopen-input-file');
+        if (globalFreopenInputFile) {
+            globalFreopenInputFile.addEventListener('change', (e) => {
+                const normalized = this.normalizeFreopenFileName(e.target.value);
+                e.target.value = normalized;
+                this.updateGlobalSetting('freopenInputFile', normalized);
+            });
+        }
+
+        const globalFreopenOutputFile = document.getElementById('global-freopen-output-file');
+        if (globalFreopenOutputFile) {
+            globalFreopenOutputFile.addEventListener('change', (e) => {
+                const normalized = this.normalizeFreopenFileName(e.target.value);
+                e.target.value = normalized;
+                this.updateGlobalSetting('freopenOutputFile', normalized);
+            });
+        }
+
+        const globalTimeLimit = document.getElementById('global-time-limit');
+        if (globalTimeLimit) {
+            globalTimeLimit.addEventListener('change', (e) => {
+                const parsed = this.sanitizeTimeLimit(e.target.value, this.globalSettings.defaultTimeLimit);
+                e.target.value = parsed;
+                this.updateGlobalSetting('defaultTimeLimit', parsed);
+            });
+        }
+
+        const applyFileIoAllBtn = document.getElementById('apply-fileio-all-btn');
+        if (applyFileIoAllBtn) {
+            applyFileIoAllBtn.addEventListener('click', () => {
+                this.applyFreopenToAllSamples();
+            });
+        }
+
+        const applyTimeLimitAllBtn = document.getElementById('apply-time-limit-all-btn');
+        if (applyTimeLimitAllBtn) {
+            applyTimeLimitAllBtn.addEventListener('click', () => {
+                this.applyTimeLimitToAllSamples();
             });
         }
 
@@ -1108,9 +1152,9 @@ class SampleTester {
                 outputType: 'userinput',
                 input: '',
                 output: '',
-                timeLimit: 1000,
-                freopenInputFile: '',
-                freopenOutputFile: '',
+                timeLimit: this.sanitizeTimeLimit(this.globalSettings.defaultTimeLimit, 1000),
+                freopenInputFile: this.normalizeFreopenFileName(this.globalSettings.freopenInputFile || ''),
+                freopenOutputFile: this.normalizeFreopenFileName(this.globalSettings.freopenOutputFile || ''),
                 useTestlib: false,
                 spjPath: '',
                 result: null
@@ -1186,7 +1230,7 @@ class SampleTester {
         const sample = this.samples.find(s => s.id === id);
         if (sample) {
             if (setting === 'timeLimit') {
-                sample[setting] = parseInt(value);
+                sample[setting] = this.sanitizeTimeLimit(value, sample.timeLimit || this.globalSettings.defaultTimeLimit || 1000);
             } else if (setting === 'freopenInputFile' || setting === 'freopenOutputFile') {
                 sample[setting] = this.normalizeFreopenFileName(value);
             } else if (setting === 'useTestlib') {
@@ -1196,6 +1240,80 @@ class SampleTester {
             }
             this.saveSamples();
         }
+    }
+
+    sanitizeTimeLimit(value, fallback = 1000) {
+        const parsed = parseInt(value, 10);
+        const safeFallback = Number.isFinite(fallback) && fallback > 0 ? Math.floor(fallback) : 1000;
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            return safeFallback;
+        }
+        return Math.floor(parsed);
+    }
+
+    applyFreopenToAllSamples() {
+        if (this.samples.length === 0) return;
+
+        const expandedSampleIds = this.getExpandedSampleIds();
+
+        const inputName = this.normalizeFreopenFileName(this.globalSettings.freopenInputFile || '');
+        const outputName = this.normalizeFreopenFileName(this.globalSettings.freopenOutputFile || '');
+
+        this.globalSettings.freopenInputFile = inputName;
+        this.globalSettings.freopenOutputFile = outputName;
+
+        this.samples.forEach(sample => {
+            sample.freopenInputFile = inputName;
+            sample.freopenOutputFile = outputName;
+        });
+
+        this.saveSamples();
+        this.updateUI();
+        this.restoreExpandedSampleIds(expandedSampleIds);
+    }
+
+    applyTimeLimitToAllSamples() {
+        if (this.samples.length === 0) return;
+
+        const expandedSampleIds = this.getExpandedSampleIds();
+
+        const timeLimit = this.sanitizeTimeLimit(this.globalSettings.defaultTimeLimit, 1000);
+        this.globalSettings.defaultTimeLimit = timeLimit;
+
+        this.samples.forEach(sample => {
+            sample.timeLimit = timeLimit;
+        });
+
+        this.saveSamples();
+        this.updateUI();
+        this.restoreExpandedSampleIds(expandedSampleIds);
+    }
+
+    getExpandedSampleIds() {
+        const expandedElements = document.querySelectorAll('.sample-group.expanded');
+        const ids = [];
+        expandedElements.forEach(element => {
+            const sampleId = parseInt(element.dataset.sampleId, 10);
+            if (Number.isFinite(sampleId)) {
+                ids.push(sampleId);
+            }
+        });
+        return ids;
+    }
+
+    restoreExpandedSampleIds(ids) {
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return;
+        }
+
+        setTimeout(() => {
+            ids.forEach(id => {
+                const element = document.querySelector(`[data-sample-id="${id}"]`);
+                if (element) {
+                    element.classList.add('expanded');
+                }
+            });
+        }, 0);
     }
 
     normalizeFreopenFileName(value) {
@@ -2644,6 +2762,9 @@ class SampleTester {
     updateGlobalSettingsUI() {
         const globalUseTestlib = document.getElementById('global-use-testlib');
         const globalSpjPath = document.getElementById('global-spj-path');
+        const globalFreopenInputFile = document.getElementById('global-freopen-input-file');
+        const globalFreopenOutputFile = document.getElementById('global-freopen-output-file');
+        const globalTimeLimit = document.getElementById('global-time-limit');
 
         if (globalUseTestlib) {
             globalUseTestlib.checked = this.globalSettings.useTestlib;
@@ -2652,11 +2773,26 @@ class SampleTester {
             globalSpjPath.value = this.globalSettings.spjPath || '';
             this.updateSpjFileDisplay(this.globalSettings.spjPath || '');
         }
+        if (globalFreopenInputFile) {
+            globalFreopenInputFile.value = this.globalSettings.freopenInputFile || '';
+        }
+        if (globalFreopenOutputFile) {
+            globalFreopenOutputFile.value = this.globalSettings.freopenOutputFile || '';
+        }
+        if (globalTimeLimit) {
+            globalTimeLimit.value = this.sanitizeTimeLimit(this.globalSettings.defaultTimeLimit, 1000);
+        }
     }
 
     updateGlobalSetting(setting, value) {
         logInfo('[样例测试器] 更新全局设置:', setting, '=', value);
-        this.globalSettings[setting] = value;
+        if (setting === 'freopenInputFile' || setting === 'freopenOutputFile') {
+            this.globalSettings[setting] = this.normalizeFreopenFileName(value);
+        } else if (setting === 'defaultTimeLimit') {
+            this.globalSettings[setting] = this.sanitizeTimeLimit(value, this.globalSettings.defaultTimeLimit);
+        } else {
+            this.globalSettings[setting] = value;
+        }
         logInfo('[样例测试器] 更新后的全局设置:', this.globalSettings);
         this.saveGlobalSettings();
     }
@@ -2717,9 +2853,16 @@ class SampleTester {
         } else {
             this.globalSettings = {
                 useTestlib: false,
-                spjPath: ''
+                spjPath: '',
+                freopenInputFile: '',
+                freopenOutputFile: '',
+                defaultTimeLimit: 1000
             };
         }
+
+        this.globalSettings.freopenInputFile = this.normalizeFreopenFileName(this.globalSettings.freopenInputFile || '');
+        this.globalSettings.freopenOutputFile = this.normalizeFreopenFileName(this.globalSettings.freopenOutputFile || '');
+        this.globalSettings.defaultTimeLimit = this.sanitizeTimeLimit(this.globalSettings.defaultTimeLimit, 1000);
     }
 }
 
