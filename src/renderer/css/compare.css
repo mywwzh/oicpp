@@ -237,6 +237,22 @@
     flex: 1;
 }
 
+.compare-freopen-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.compare-freopen-group {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.compare-freopen-input {
+    width: 170px;
+}
+
 .spj-help-text {
     margin-top: 4px;
     margin-bottom: 0;
@@ -294,6 +310,12 @@
 .compare-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+    .compare-freopen-input {
+        width: 100%;
+    }
 }
 
 .compare-status {
