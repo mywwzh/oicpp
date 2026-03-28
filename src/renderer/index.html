@@ -328,7 +328,7 @@
                             <div class="compare-notice">
                                 <div class="notice-icon" data-ui-icon="warning"></div>
                                 <div class="notice-text">
-                                    <strong>重要提醒：</strong>所有程序的输入输出均要从标准输入输出(stdin/stdout)进行，不要使用文件读写。
+                                    <strong>重要提醒：</strong>默认使用标准输入输出(stdin/stdout)；如代码使用了 freopen，可在下方设置输入/输出文件名。
                                 </div>
                             </div>
                             
@@ -372,6 +372,13 @@
                                     <label class="config-label" for="time-limit">时间限制：</label>
                                     <input type="number" class="config-input" id="time-limit" value="1000" min="0">
                                     <span class="config-unit">ms</span>
+                                </div>
+                                <div class="config-item compare-freopen-row">
+                                    <label class="config-label">文件IO：</label>
+                                    <div class="file-input-group compare-freopen-group">
+                                        <input type="text" class="config-input compare-freopen-input" id="compare-freopen-input-file" placeholder="如 sample.in">
+                                        <input type="text" class="config-input compare-freopen-input" id="compare-freopen-output-file" placeholder="如 sample.out">
+                                    </div>
                                 </div>
                                 <div class="config-item testlib-spj-row">
                                     <label class="config-label testlib-label">
