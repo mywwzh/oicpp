@@ -692,20 +692,35 @@ textarea:focus {
     padding: 12px;
     border-radius: 4px;
     min-height: 40px;
-    display: flex;
+    display: none;
     align-items: center;
+    border: 1px solid var(--settings-border);
+    background-color: var(--settings-card-bg);
+    color: var(--settings-text-secondary);
+    font-size: 14px;
+    transition: all 0.2s ease;
 }
 
-.test-result .success {
-    background-color: rgba(76, 175, 80, 0.1);
-    border: 1px solid #4caf50;
+.test-result.is-testing {
+    display: flex;
+    border-color: var(--settings-input-border);
+    color: var(--settings-text-secondary);
+}
+
+.test-result.is-success {
+    display: flex;
+    background-color: rgba(76, 175, 80, 0.12);
+    border-color: #4caf50;
     color: #4caf50;
+    font-weight: 600;
 }
 
-.test-result .error {
-    background-color: rgba(244, 67, 54, 0.1);
-    border: 1px solid #f44336;
+.test-result.is-error {
+    display: flex;
+    background-color: rgba(244, 67, 54, 0.12);
+    border-color: #f44336;
     color: #f44336;
+    font-weight: 600;
 }
 
 .hidden {
