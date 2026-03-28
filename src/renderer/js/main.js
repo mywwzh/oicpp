@@ -80,9 +80,10 @@ class OICPPApp {
             this.handleResize();
         });
 
+        // Use capture phase so global shortcuts are still handled even if Monaco stops bubbling.
         document.addEventListener('keydown', (e) => {
             this.handleKeyDown(e);
-        });
+        }, true);
 
 
         document.addEventListener('dragover', (e) => {
@@ -852,6 +853,7 @@ class OICPPApp {
     }
 
     handleKeyDown(e) {
+        const key = (e.key || '').toLowerCase();
         const isInEditor = e.target.closest('.monaco-editor') || 
                           e.target.closest('.monaco-editor-container') ||
                           e.target.classList.contains('monaco-editor') ||
@@ -872,12 +874,12 @@ class OICPPApp {
         
         if (isInEditor) {
             if (e.ctrlKey || e.metaKey) {
-                if (e.shiftKey && (e.key === 'N' || e.key === 'n')) {
+                if (e.shiftKey && key === 'n') {
                     e.preventDefault();
                     this.createNewTempFile();
                     return;
                 }
-                switch (e.key) {
+                switch (key) {
                     case 'n':
                         e.preventDefault();
                         this.createNewCppFile();
@@ -913,7 +915,7 @@ class OICPPApp {
             return;
         }
         
-        if (e.ctrlKey && e.key === 'z') {
+        if (e.ctrlKey && key === 'z') {
             const target = e.target;
             const currentEditor = this.editorManager ? this.editorManager.currentEditor : null;
             const targetInfo = {
@@ -935,12 +937,12 @@ class OICPPApp {
         }
         
         if (e.ctrlKey || e.metaKey) {
-            if (e.shiftKey && (e.key === 'N' || e.key === 'n')) {
+            if (e.shiftKey && key === 'n') {
                 e.preventDefault();
                 this.createNewTempFile();
                 return;
             }
-            switch (e.key) {
+            switch (key) {
                 case 'n':
                     e.preventDefault();
                     this.createNewCppFile();
