@@ -20,7 +20,7 @@ const CONSOLE_PAUSER_SOURCE = require('./utils/consolepauser-source');
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
-const APP_VERSION = '1.3.4';
+const APP_VERSION = '1.3.3';
 const SAVE_ALL_TIMEOUT = 4000;
 
 function getUserIconPath() {
@@ -564,8 +564,72 @@ let settings = getDefaultSettings();
 
 let isUpdateDownloading = false; // 是否正在下载更新
 let currentDownloadingVersion = null; // 正在下载的版本
+let currentUpdateDownloadProgress = 0; // 更新下载进度(0-100)
 let pendingInstallerLaunch = null; // 退出后待启动的安装程序
 let pendingInstallerLaunchArmed = false;
+
+function notifyUser(title, body, level = 'info') {
+    const safeTitle = String(title || 'OICPP IDE');
+    const safeBody = String(body || '');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        try {
+            mainWindow.webContents.send('app-toast', {
+                type: level,
+                message: safeBody ? `${safeTitle}: ${safeBody}` : safeTitle
+            });
+        } catch (_) { }
+    }
+}
+
+function getUpdateDownloadState() {
+    return {
+        downloading: !!isUpdateDownloading,
+        version: currentDownloadingVersion || '',
+        progress: Number.isFinite(currentUpdateDownloadProgress) ? Math.max(0, Math.min(100, Math.round(currentUpdateDownloadProgress))) : 0
+    };
+}
+
+function buildUpdateMenuLabel(state = getUpdateDownloadState()) {
+    if (!state.downloading) {
+        return '检查更新';
+    }
+    const progressText = Number.isFinite(state.progress) ? `${Math.max(0, Math.min(100, Math.round(state.progress)))}%` : '0%';
+    return `下载更新中 ${progressText}`;
+}
+
+function refreshNativeUpdateMenuState() {
+    try {
+        const menu = Menu.getApplicationMenu();
+        if (!menu || typeof menu.getMenuItemById !== 'function') {
+            return;
+        }
+        const item = menu.getMenuItemById('check-update');
+        if (!item) {
+            return;
+        }
+
+        const state = getUpdateDownloadState();
+        item.label = buildUpdateMenuLabel(state);
+        item.enabled = !state.downloading;
+    } catch (error) {
+        try { logWarn('[更新] 刷新原生菜单状态失败:', error?.message || error); } catch (_) { }
+    }
+}
+
+function broadcastUpdateDownloadState(extra = {}) {
+    const state = { ...getUpdateDownloadState(), ...extra };
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        try { mainWindow.webContents.send('update-download-status', state); } catch (_) { }
+    }
+    refreshNativeUpdateMenuState();
+}
+
+function setUpdateDownloadState({ downloading = false, version = '', progress = 0 } = {}) {
+    isUpdateDownloading = !!downloading;
+    currentDownloadingVersion = version || null;
+    currentUpdateDownloadProgress = Number.isFinite(progress) ? Math.max(0, Math.min(100, Number(progress))) : 0;
+    broadcastUpdateDownloadState();
+}
 
 let debugProcess = null;
 let debugSession = null;
@@ -983,6 +1047,7 @@ function createWindow() {
             rendererReadyForExternalOpens = true;
             processExternalOpenQueue();
         }
+        broadcastUpdateDownloadState();
     });
 
     if (process.argv.includes('--dev')) {
@@ -1072,6 +1137,10 @@ function createWindow() {
             logError('open-external 失败:', err?.message || err);
             throw err;
         }
+    });
+
+    ipcMain.handle('get-update-download-status', () => {
+        return getUpdateDownloadState();
     });
 
     startSampleTesterServer();
@@ -1182,8 +1251,12 @@ function createMenuBar() {
             label: '帮助',
             submenu: [
                 {
+                    id: 'check-update',
                     label: '检查更新',
                     click: () => {
+                        if (isUpdateDownloading) {
+                            return;
+                        }
                         checkForUpdates(true); // true 表示手动检查
                     }
                 }
@@ -1193,6 +1266,7 @@ function createMenuBar() {
 
     const menu = Menu.buildFromTemplate(menuTemplate);
     Menu.setApplicationMenu(menu);
+    refreshNativeUpdateMenuState();
 }
 
 function writeJson(res, statusCode, payload) {
@@ -3328,6 +3402,7 @@ function setupIPC() {
                             backgroundDownload = true;
                             logInfo('[编译器下载] 用户选择后台下载编译器');
                             progressWindow.destroy();
+                            bringMainWindowToFront();
                         } else {
                             logInfo('[编译器下载] 用户取消编译器下载');
                             if (downloader) {
@@ -3486,6 +3561,10 @@ function setupIPC() {
                     compilerPath: compilerPath || path.join(versionDir, 'bin', 'g++.exe')
                 };
 
+                if (backgroundDownload) {
+                    notifyUser('编译器下载完成', `${name} ${version} 已下载并安装完成。`, 'success');
+                }
+
                 if (!backgroundDownload && progressWindow && !progressWindow.isDestroyed()) {
                     setTimeout(() => {
                         if (progressWindow && !progressWindow.isDestroyed()) {
@@ -3503,6 +3582,10 @@ function setupIPC() {
                 const errorMessage = isCancelledError ? '下载已取消' : `下载失败: ${error.message}`;
 
                 logError('[编译器下载] 下载过程出错:', error.message);
+
+                if (backgroundDownload && !isCancelledError) {
+                    notifyUser('编译器下载失败', `${name} ${version} 下载失败: ${error.message}`, 'error');
+                }
 
                 if (!backgroundDownload && progressWindow && !progressWindow.isDestroyed()) {
                     updateProgress(errorMessage);
@@ -3718,6 +3801,7 @@ function setupIPC() {
                             backgroundDownload = true;
                             logInfo('[testlib下载] 用户选择后台下载testlib');
                             progressWindow.destroy();
+                            bringMainWindowToFront();
                         } else {
                             logInfo('[testlib下载] 用户取消testlib下载');
                             if (downloader) {
@@ -3870,6 +3954,10 @@ function setupIPC() {
                     testlibPath: testlibPath || path.join(versionDir, 'testlib.h')
                 };
 
+                if (backgroundDownload) {
+                    notifyUser('testlib 下载完成', `${name} ${version} 已下载并安装完成。`, 'success');
+                }
+
                 if (!backgroundDownload && progressWindow && !progressWindow.isDestroyed()) {
                     setTimeout(() => {
                         if (progressWindow && !progressWindow.isDestroyed()) {
@@ -3887,6 +3975,10 @@ function setupIPC() {
                 const errorMessage = isCancelledError ? '下载已取消' : `下载失败: ${error.message}`;
 
                 logError('[testlib下载] 下载过程出错:', error.message);
+
+                if (backgroundDownload && !isCancelledError) {
+                    notifyUser('testlib 下载失败', `${name} ${version} 下载失败: ${error.message}`, 'error');
+                }
 
                 if (!backgroundDownload && progressWindow && !progressWindow.isDestroyed()) {
                     updateProgress(errorMessage);
@@ -4536,6 +4628,20 @@ function openBackupSettings() {
 
 async function checkForUpdates(isManual = false) {
     try {
+        if (isUpdateDownloading) {
+            if (isManual) {
+                const state = getUpdateDownloadState();
+                const versionSuffix = state.version ? ` (${state.version})` : '';
+                dialog.showMessageBox(mainWindow, {
+                    type: 'info',
+                    title: '检查更新',
+                    message: '更新下载进行中',
+                    detail: `当前正在后台下载更新${versionSuffix}，进度 ${state.progress}%。`
+                });
+            }
+            return;
+        }
+
         if (process.platform !== 'win32') {
             logInfo('[更新] 非 Windows 平台，跳过下载更新逻辑');
             if (isManual && mainWindow) {
@@ -4743,22 +4849,36 @@ async function downloadAndInstallUpdate(updateInfo = null) {
         if (fs.existsSync(installerPath)) {
             logInfo('[更新] 安装程序已存在，直接提示安装');
         } else {
-            isUpdateDownloading = true;
-            currentDownloadingVersion = latestVersion;
+            setUpdateDownloadState({ downloading: true, version: latestVersion, progress: 0 });
+            notifyUser('更新下载已开始', `正在后台下载 ${latestVersion}，可继续正常使用。`, 'info');
             const downloader = new MultiThreadDownloader({
                 maxConcurrency: 16,
                 chunkSize: 1024 * 1024 * 2,
                 timeout: 45000,
                 retryCount: 8,
-                progressCallback: () => { /* 静默，不回显 */ }
+                progressCallback: (progress) => {
+                    if (!progress || (progress.type !== 'single' && progress.type !== 'multi')) {
+                        return;
+                    }
+                    const next = Number(progress.progress);
+                    if (!Number.isFinite(next)) {
+                        return;
+                    }
+                    const rounded = Math.max(0, Math.min(100, Math.round(next)));
+                    if (rounded !== Math.round(currentUpdateDownloadProgress || 0)) {
+                        currentUpdateDownloadProgress = rounded;
+                        broadcastUpdateDownloadState();
+                    }
+                }
             });
             try {
                 await downloader.download(installerFile.downloadUrl, installerPath);
                 logInfo('[更新] 静默下载完成');
+                notifyUser('更新下载完成', `版本 ${latestVersion} 已下载完成，点击“检查更新”可继续安装。`, 'success');
             } catch (e) {
                 logError('[更新] 静默下载失败:', e.message);
-                isUpdateDownloading = false;
-                currentDownloadingVersion = null;
+                setUpdateDownloadState({ downloading: false, version: '', progress: 0 });
+                notifyUser('更新下载失败', `后台下载失败: ${e.message || '请稍后重试'}`, 'error');
                 dialog.showMessageBox(mainWindow, {
                     type: 'error',
                     title: '更新下载失败',
@@ -4767,7 +4887,7 @@ async function downloadAndInstallUpdate(updateInfo = null) {
                 });
                 return;
             } finally {
-                isUpdateDownloading = false;
+                setUpdateDownloadState({ downloading: false, version: '', progress: 0 });
             }
         }
 
@@ -4795,8 +4915,7 @@ async function downloadAndInstallUpdate(updateInfo = null) {
             logInfo('[更新] 用户稍后安装');
         }
     } catch (error) {
-        isUpdateDownloading = false;
-        currentDownloadingVersion = null;
+        setUpdateDownloadState({ downloading: false, version: '', progress: 0 });
         logError('[更新] 更新流程异常:', error.message);
         dialog.showMessageBox(mainWindow, {
             type: 'error',
@@ -6382,6 +6501,28 @@ async function openFolderFromExternalQueue(folderPath) {
 
 function delay(ms = 0) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function bringMainWindowToFront() {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    try {
+        if (mainWindow.isMinimized()) {
+            mainWindow.restore();
+        }
+        mainWindow.show();
+        // Temporarily raise the window so focus reliably returns on Windows.
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+        mainWindow.focus();
+        setTimeout(() => {
+            try {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.setAlwaysOnTop(false);
+                }
+            } catch (_) { }
+        }, 300);
+    } catch (err) {
+        try { logWarn('[窗口] 主窗口前置失败:', err?.message || String(err)); } catch (_) { }
+    }
 }
 
 app.on('open-file', (event, filePath) => {
