@@ -5,6 +5,15 @@ class OICPPApp {
         this.settings = {
             theme: 'dark',
             fontSize: 14,
+            syntaxColors: {
+                keyword: '#c586c0',
+                string: '#ce9178',
+                number: '#b5cea8',
+                type: '#4ec9b0',
+                function: '#dcdcaa',
+                class: '#4ec9b0',
+                comment: '#6a9955'
+            },
             tabSize: 4,
             wordWrap: false,
             enableAutoCompletion: true
@@ -958,6 +967,7 @@ class OICPPApp {
             font: this.settings.font || 'Consolas',
             fontSize: this.settings.fontSize || 14,
             theme: this.settings.theme || 'dark',
+            syntaxColors: this.settings.syntaxColors,
             enableAutoCompletion: this.settings.enableAutoCompletion !== false,
             tabSize: this.settings.tabSize || 4,
             wordWrap: this.settings.wordWrap || false,
