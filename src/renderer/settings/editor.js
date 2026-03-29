@@ -51,6 +51,28 @@ class EditorSettings {
         };
     }
 
+    getEditableKeybindingKeys() {
+        return [
+            'formatCode',
+            'showFunctionPicker',
+            'markdownPreview',
+            'renameSymbol',
+            'deleteLine',
+            'duplicateLine',
+            'moveLineUp',
+            'moveLineDown',
+            'compileCode',
+            'runCode',
+            'compileAndRun',
+            'toggleDebug',
+            'debugContinue',
+            'debugStepOver',
+            'debugStepInto',
+            'debugStepOut',
+            'cloudCompile'
+        ];
+    }
+
     getKeybindingSchema() {
         return [
             { key: 'formatCode', label: '格式化代码' },
@@ -61,9 +83,6 @@ class EditorSettings {
             { key: 'duplicateLine', label: '复制行' },
             { key: 'moveLineUp', label: '上移行' },
             { key: 'moveLineDown', label: '下移行' },
-            { key: 'copy', label: '复制' },
-            { key: 'paste', label: '粘贴' },
-            { key: 'cut', label: '剪切' },
             { key: 'compileCode', label: '编译当前文件' },
             { key: 'runCode', label: '运行当前文件' },
             { key: 'compileAndRun', label: '编译并运行' },
@@ -310,8 +329,12 @@ class EditorSettings {
     normalizeKeybindings(raw) {
         const defaults = this.getDefaultKeybindings();
         const normalized = { ...defaults };
+        const editableKeys = new Set(this.getEditableKeybindingKeys());
         if (raw && typeof raw === 'object') {
             Object.keys(defaults).forEach((key) => {
+                if (!editableKeys.has(key)) {
+                    return;
+                }
                 const val = raw[key];
                 if (typeof val === 'string' && val.trim()) {
                     normalized[key] = val.trim();
@@ -653,11 +676,13 @@ class EditorSettings {
         }
 
         const defaultKeybindings = this.getDefaultKeybindings();
+        const editableKeys = new Set(this.getEditableKeybindingKeys());
         const keybindingInputs = document.querySelectorAll('[data-keybinding-key]');
-        const keybindings = { ...defaultKeybindings };
+        const keybindings = this.normalizeKeybindings(this.settings.keybindings);
         keybindingInputs.forEach((input) => {
             const key = input.dataset.keybindingKey;
             if (!key) return;
+            if (!editableKeys.has(key)) return;
             const val = (input.value || '').trim();
             keybindings[key] = val || defaultKeybindings[key];
         });

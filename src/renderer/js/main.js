@@ -713,6 +713,61 @@ class OICPPApp {
         if (!newSettings || newSettings.autoSave !== undefined || newSettings.autoSaveInterval !== undefined) {
             this.configureAutoSave();
         }
+
+        this.updateMenuShortcutHints();
+    }
+
+    getDefaultKeybindings() {
+        return {
+            formatCode: 'Alt+Shift+S',
+            showFunctionPicker: 'Ctrl+Shift+G',
+            markdownPreview: 'Ctrl+Shift+V',
+            renameSymbol: 'F2',
+            deleteLine: 'Ctrl+D',
+            duplicateLine: 'Ctrl+E',
+            moveLineUp: 'Ctrl+Shift+Up',
+            moveLineDown: 'Ctrl+Shift+Down',
+            copy: 'Ctrl+C',
+            paste: 'Ctrl+V',
+            cut: 'Ctrl+X',
+            compileCode: 'F9',
+            runCode: 'F10',
+            compileAndRun: 'F11',
+            toggleDebug: 'F5',
+            debugContinue: 'F6',
+            debugStepOver: 'F7',
+            debugStepInto: 'F8',
+            debugStepOut: 'Shift+F8',
+            cloudCompile: 'F12'
+        };
+    }
+
+    resolveShortcutLabel(keybindingKey) {
+        const defaults = this.getDefaultKeybindings();
+        const fromSettings = this.settings?.keybindings?.[keybindingKey];
+        if (typeof fromSettings === 'string' && fromSettings.trim()) {
+            return fromSettings.trim();
+        }
+        return defaults[keybindingKey] || '';
+    }
+
+    updateMenuShortcutHints() {
+        const mappings = [
+            { action: 'cloud-compile', key: 'cloudCompile' },
+            { action: 'format-code', key: 'formatCode' },
+            { action: 'compile', key: 'compileCode' },
+            { action: 'run', key: 'runCode' },
+            { action: 'compile-run', key: 'compileAndRun' },
+            { action: 'debug', key: 'toggleDebug' }
+        ];
+
+        mappings.forEach((item) => {
+            const node = document.querySelector(`.menu-dropdown-item[data-action="${item.action}"] .menu-shortcut`);
+            if (!node) {
+                return;
+            }
+            node.textContent = this.resolveShortcutLabel(item.key);
+        });
     }
     
     configureAutoSave() {
@@ -969,7 +1024,7 @@ class OICPPApp {
         };
         
         if (isInEditor) {
-            if (e.ctrlKey || e.metaKey) {
+            if ((e.ctrlKey || e.metaKey) && !e.altKey) {
                 if (e.shiftKey && key === 'n') {
                     e.preventDefault();
                     this.createNewTempFile();
@@ -1032,7 +1087,7 @@ class OICPPApp {
             logInfo(`当前标签页ID:`, this.editorManager ? this.editorManager.currentTabId : '无');
         }
         
-        if (e.ctrlKey || e.metaKey) {
+        if ((e.ctrlKey || e.metaKey) && !e.altKey) {
             if (e.shiftKey && key === 'n') {
                 e.preventDefault();
                 this.createNewTempFile();
