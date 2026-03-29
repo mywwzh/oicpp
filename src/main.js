@@ -1163,7 +1163,25 @@ function createWindow() {
 
 
 function createMenuBar() {
-    const compileRunAccelerator = 'F11';
+    const defaultKeybindings = getDefaultSettings().keybindings || {};
+    const activeKeybindings = (settings && settings.keybindings && typeof settings.keybindings === 'object')
+        ? settings.keybindings
+        : {};
+    const resolveRunMenuAccelerator = (key, fallback) => {
+        const candidate = activeKeybindings[key];
+        if (typeof candidate === 'string' && candidate.trim()) {
+            return candidate.trim();
+        }
+        if (typeof defaultKeybindings[key] === 'string' && defaultKeybindings[key].trim()) {
+            return defaultKeybindings[key].trim();
+        }
+        return fallback;
+    };
+
+    const debugAccelerator = resolveRunMenuAccelerator('toggleDebug', 'F5');
+    const compileAccelerator = resolveRunMenuAccelerator('compileCode', 'F9');
+    const runAccelerator = resolveRunMenuAccelerator('runCode', 'F10');
+    const compileRunAccelerator = resolveRunMenuAccelerator('compileAndRun', 'F11');
     const menuTemplate = [
         {
             label: '文件',
@@ -1233,6 +1251,7 @@ function createMenuBar() {
             submenu: [
                 {
                     label: '调试',
+                    accelerator: debugAccelerator,
                     click: () => {
                         if (mainWindow && !mainWindow.isDestroyed()) {
                             mainWindow.webContents.send('menu-debug');
@@ -1241,14 +1260,14 @@ function createMenuBar() {
                 },
                 {
                     label: '编译',
-                    accelerator: 'F9',
+                    accelerator: compileAccelerator,
                     click: () => {
                         mainWindow.webContents.send('menu-compile');
                     }
                 },
                 {
                     label: '运行',
-                    accelerator: 'F10',
+                    accelerator: runAccelerator,
                     click: () => {
                         mainWindow.webContents.send('menu-run');
                     }
@@ -1657,6 +1676,9 @@ function setupIPC() {
 
             await saveSettings(); // 确保保存完成
             scheduleAutoSettingsBackup('update-settings');
+            if (newSettings && Object.prototype.hasOwnProperty.call(newSettings, 'keybindings')) {
+                createMenuBar();
+            }
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('settings-applied', settings);
             }
@@ -5278,6 +5300,10 @@ function updateSettings(settingsType, newSettings) {
 
         saveSettings();
         scheduleAutoSettingsBackup('update-top-level-settings');
+
+        if (newSettings && Object.prototype.hasOwnProperty.call(newSettings, 'keybindings')) {
+            createMenuBar();
+        }
 
         if (mainWindow) {
             mainWindow.webContents.send('settings-changed', null, settings);
