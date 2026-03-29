@@ -5,6 +5,7 @@ class EditorSettings {
             fontSize: 14,
             lineHeight: 0,
             theme: 'dark',
+            syntaxColors: this.getDefaultSyntaxColors(),
             tabSize: 4,
             wordWrap: false,
             foldingEnabled: true,
@@ -93,6 +94,128 @@ class EditorSettings {
                         { key: 'debugStepOut', label: '单步跳出' },
                         { key: 'cloudCompile', label: '云端编译' }
         ];
+    }
+
+    getDefaultSyntaxColors() {
+        return {
+            keyword: '#c586c0',
+            string: '#ce9178',
+            number: '#b5cea8',
+            type: '#4ec9b0',
+            function: '#dcdcaa',
+            class: '#4ec9b0',
+            comment: '#6a9955'
+        };
+    }
+
+    normalizeHexColor(color, fallback = '#c586c0') {
+        if (typeof color !== 'string') {
+            return fallback;
+        }
+        const trimmed = color.trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
+            return trimmed.toLowerCase();
+        }
+        return fallback;
+    }
+
+    normalizeSyntaxColors(raw) {
+        const defaults = this.getDefaultSyntaxColors();
+        const normalized = { ...defaults };
+        if (raw && typeof raw === 'object') {
+            Object.keys(defaults).forEach((key) => {
+                normalized[key] = this.normalizeHexColor(raw[key], defaults[key]);
+            });
+        }
+        return normalized;
+    }
+
+    updateSyntaxColorUI(colors) {
+        const normalized = this.normalizeSyntaxColors(colors);
+        Object.keys(normalized).forEach((key) => {
+            const colorInput = document.getElementById(`syntax-color-${key}`);
+            const textInput = document.getElementById(`syntax-color-${key}-text`);
+            if (colorInput) {
+                colorInput.value = normalized[key];
+            }
+            if (textInput) {
+                textInput.value = normalized[key].toUpperCase();
+            }
+        });
+        this.updateSyntaxPreview(normalized);
+    }
+
+    getSyntaxColorsFromUI() {
+        const defaults = this.getDefaultSyntaxColors();
+        const result = { ...defaults };
+        Object.keys(defaults).forEach((key) => {
+            const textInput = document.getElementById(`syntax-color-${key}-text`);
+            const colorInput = document.getElementById(`syntax-color-${key}`);
+            const raw = textInput?.value || colorInput?.value;
+            result[key] = this.normalizeHexColor(raw, defaults[key]);
+        });
+        return result;
+    }
+
+    updateSyntaxPreview(colors = null) {
+        const preview = document.getElementById('syntax-color-preview');
+        if (!preview) {
+            return;
+        }
+        const normalized = this.normalizeSyntaxColors(colors || this.getSyntaxColorsFromUI());
+        preview.style.setProperty('--syntax-keyword', normalized.keyword);
+        preview.style.setProperty('--syntax-string', normalized.string);
+        preview.style.setProperty('--syntax-number', normalized.number);
+        preview.style.setProperty('--syntax-type', normalized.type);
+        preview.style.setProperty('--syntax-function', normalized.function);
+        preview.style.setProperty('--syntax-class', normalized.class);
+        preview.style.setProperty('--syntax-comment', normalized.comment);
+
+        const fontSelect = document.getElementById('editor-font');
+        const fontSizeInput = document.getElementById('editor-font-size');
+        if (fontSelect && fontSelect.value) {
+            preview.style.fontFamily = fontSelect.value;
+        }
+        const parsedFontSize = parseInt(fontSizeInput?.value || '', 10);
+        if (!Number.isNaN(parsedFontSize) && parsedFontSize > 0) {
+            preview.style.fontSize = `${Math.max(10, parsedFontSize - 1)}px`;
+        }
+    }
+
+    bindSyntaxColorControls() {
+        const defaults = this.getDefaultSyntaxColors();
+        const bindColorPair = (key) => {
+            const colorInput = document.getElementById(`syntax-color-${key}`);
+            const textInput = document.getElementById(`syntax-color-${key}-text`);
+            if (!colorInput || !textInput) {
+                return;
+            }
+
+            colorInput.addEventListener('input', () => {
+                const normalized = this.normalizeHexColor(colorInput.value, defaults[key]);
+                textInput.value = normalized.toUpperCase();
+                this.updateSyntaxPreview();
+                this.notifyMainWindowPreview();
+            });
+
+            textInput.addEventListener('input', () => {
+                const normalized = this.normalizeHexColor(textInput.value, defaults[key]);
+                colorInput.value = normalized;
+                textInput.value = normalized.toUpperCase();
+                this.updateSyntaxPreview();
+                this.notifyMainWindowPreview();
+            });
+        };
+
+        Object.keys(defaults).forEach(bindColorPair);
+
+        const resetBtn = document.getElementById('reset-syntax-colors');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                this.updateSyntaxColorUI(defaults);
+                this.notifyMainWindowPreview();
+            });
+        }
     }
 
     async init() {
@@ -189,6 +312,7 @@ class EditorSettings {
         }
 
         this.setupRealTimePreview();
+        this.bindSyntaxColorControls();
 
         const autoSaveCheckbox = document.getElementById('editor-auto-save-enabled');
         const autoSaveIntervalInput = document.getElementById('editor-auto-save-interval');
@@ -300,6 +424,7 @@ class EditorSettings {
                 const newFontSize = parseInt(e.target.value);
                 logInfo('字体大小输入变化:', { oldValue: this.settings.fontSize, newValue: newFontSize });
                 this.updatePreview();
+                this.updateSyntaxPreview();
                 this.notifyMainWindowPreview();
             });
         } else {
@@ -319,6 +444,14 @@ class EditorSettings {
             fontSelect.addEventListener('change', (e) => {
                 logInfo('字体选择变化:', { oldValue: this.settings.font, newValue: e.target.value });
                 this.updatePreview();
+                this.updateSyntaxPreview();
+                this.notifyMainWindowPreview();
+            });
+        }
+
+        const themeSelect = document.getElementById('editor-theme');
+        if (themeSelect) {
+            themeSelect.addEventListener('change', () => {
                 this.notifyMainWindowPreview();
             });
         }
@@ -479,6 +612,7 @@ class EditorSettings {
                     fontSize: allSettings.fontSize || 14,
                     lineHeight: typeof allSettings.lineHeight === 'number' && allSettings.lineHeight > 0 ? allSettings.lineHeight : 0,
                     theme: allSettings.theme || 'dark',
+                    syntaxColors: this.normalizeSyntaxColors(allSettings.syntaxColors),
                     tabSize: allSettings.tabSize || 4,
                     fontLigaturesEnabled: allSettings.fontLigaturesEnabled !== false,
                     foldingEnabled: allSettings.foldingEnabled !== false,
@@ -500,6 +634,7 @@ class EditorSettings {
                     fontSize: 14,
                     lineHeight: 0,
                     theme: 'dark',
+                    syntaxColors: this.getDefaultSyntaxColors(),
                     tabSize: 4,
                     stickyScrollEnabled: true,
                     foldingEnabled: true,
@@ -520,6 +655,7 @@ class EditorSettings {
                 fontSize: 14,
                 lineHeight: 0,
                 theme: 'dark',
+                syntaxColors: this.getDefaultSyntaxColors(),
                 tabSize: 4,
                 stickyScrollEnabled: true,
                 foldingEnabled: true,
@@ -674,6 +810,10 @@ class EditorSettings {
         if (bgImageInput) {
             newSettings.backgroundImage = bgImageInput.value;
         }
+
+        const defaultSyntaxColors = this.getDefaultSyntaxColors();
+        const syntaxColors = this.getSyntaxColorsFromUI();
+        newSettings.syntaxColors = syntaxColors;
 
         const defaultKeybindings = this.getDefaultKeybindings();
         const editableKeys = new Set(this.getEditableKeybindingKeys());
@@ -862,6 +1002,8 @@ class EditorSettings {
             themeSelect.value = this.settings.theme;
             logInfo('主题设置已更新:', themeSelect.value);
         }
+        this.updateSyntaxColorUI(this.settings.syntaxColors);
+        this.updateSyntaxPreview(this.settings.syntaxColors);
         if (foldingCheckbox) {
             foldingCheckbox.checked = this.settings.foldingEnabled !== false;
         }

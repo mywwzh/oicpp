@@ -38,6 +38,14 @@ body {
     --secondary-bg: #6c757d;
     --secondary-bg-hover: #5a6268;
     --secondary-fg: #ffffff;
+
+    --syntax-keyword: #c586c0;
+    --syntax-string: #ce9178;
+    --syntax-number: #b5cea8;
+    --syntax-type: #4ec9b0;
+    --syntax-function: #dcdcaa;
+    --syntax-class: #4ec9b0;
+    --syntax-comment: #6a9955;
 }
 
 body.theme-light,
@@ -307,6 +315,92 @@ body[data-theme="dracula"] {
 .setting-group {
     margin-bottom: 24px;
 }
+
+.syntax-color-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--settings-border);
+    border-radius: 6px;
+    background-color: var(--settings-card-bg);
+}
+
+.syntax-color-row {
+    display: grid;
+    grid-template-columns: 96px 42px 1fr;
+    gap: 10px;
+    align-items: center;
+}
+
+.syntax-color-label {
+    color: var(--settings-text);
+    font-size: 13px;
+}
+
+.syntax-color-input {
+    width: 34px;
+    height: 26px;
+    border: 1px solid var(--settings-input-border);
+    border-radius: 4px;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+}
+
+.syntax-color-input::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.syntax-color-input::-webkit-color-swatch {
+    border: none;
+    border-radius: 3px;
+}
+
+.syntax-color-text {
+    width: 100%;
+    font-family: Consolas, monospace;
+    text-transform: uppercase;
+}
+
+.syntax-color-actions {
+    margin-top: 10px;
+    justify-content: flex-end;
+}
+
+.syntax-preview {
+    margin-top: 10px;
+    border: 1px solid var(--settings-border);
+    border-radius: 6px;
+    background-color: var(--settings-bg);
+    overflow: hidden;
+}
+
+.syntax-preview-title {
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--settings-text-secondary);
+    border-bottom: 1px solid var(--settings-border);
+    background-color: var(--settings-header-bg);
+}
+
+.syntax-preview-code {
+    margin: 0;
+    padding: 12px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    white-space: pre;
+    color: var(--settings-text);
+}
+
+.syntax-preview-code .tok-keyword { color: var(--syntax-keyword); }
+.syntax-preview-code .tok-string { color: var(--syntax-string); }
+.syntax-preview-code .tok-number { color: var(--syntax-number); }
+.syntax-preview-code .tok-type { color: var(--syntax-type); }
+.syntax-preview-code .tok-function { color: var(--syntax-function); }
+.syntax-preview-code .tok-class { color: var(--syntax-class); }
+.syntax-preview-code .tok-comment { color: var(--syntax-comment); }
 
 .setting-group label {
     display: block;
