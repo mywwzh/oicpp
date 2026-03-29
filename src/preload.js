@@ -507,6 +507,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onMenuAbout: (callback) => ipcRenderer.on('menu-about', callback),
     onMenuSettings: (callback) => ipcRenderer.on('menu-settings', callback),
     onMenuCheckUpdates: (callback) => ipcRenderer.on('menu-check-updates', callback),
+    getUpdateDownloadStatus: () => ipcRenderer.invoke('get-update-download-status'),
+    onUpdateDownloadStatus: (callback) => ipcRenderer.on('update-download-status', (_event, payload) => callback && callback(payload)),
+    onAppToast: (callback) => ipcRenderer.on('app-toast', (_event, payload) => callback && callback(payload)),
 
     onShowDebugDevelopingMessage: (callback) => ipcRenderer.on('show-debug-developing-message', callback),
     onSettingsChanged: (callback) => ipcRenderer.on('settings-changed', callback),
