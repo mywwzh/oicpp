@@ -3295,6 +3295,7 @@ function setupIPC() {
                     height: 400,
                     show: false,
                     resizable: false,
+                    autoHideMenuBar: true,
                     parent: BrowserWindow.getFocusedWindow(),
                     modal: false,
                     webPreferences: {
@@ -3304,6 +3305,9 @@ function setupIPC() {
                 });
 
                 logInfo('[编译器下载] 进度窗口已创建');
+
+                progressWindow.setMenuBarVisibility(false);
+                progressWindow.setMenu(null);
 
                 progressWindow.on('close', (event) => {
                     logInfo('[编译器下载] 进度窗口关闭事件, downloadCompleted:', downloadCompleted);
@@ -3681,6 +3685,7 @@ function setupIPC() {
                     height: 400,
                     show: false,
                     resizable: false,
+                    autoHideMenuBar: true,
                     parent: BrowserWindow.getFocusedWindow(),
                     modal: false,
                     webPreferences: {
@@ -3690,6 +3695,9 @@ function setupIPC() {
                 });
 
                 logInfo('[testlib下载] 进度窗口已创建');
+
+                progressWindow.setMenuBarVisibility(false);
+                progressWindow.setMenu(null);
 
                 progressWindow.on('close', (event) => {
                     logInfo('[testlib下载] 进度窗口关闭事件, downloadCompleted:', downloadCompleted);
