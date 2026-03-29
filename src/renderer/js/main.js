@@ -19,6 +19,7 @@ class OICPPApp {
     this._debugSessionId = 0;
     this._debugExited = false;
         this.updateDownloadState = {
+            autoChecking: false,
             downloading: false,
             version: '',
             progress: 0
@@ -140,9 +141,13 @@ class OICPPApp {
                 if (menuItem.classList.contains('disabled') || menuItem.getAttribute('aria-disabled') === 'true') {
                     e.preventDefault();
                     const blockedAction = menuItem.dataset.action;
-                    if (blockedAction === 'check-update' && this.updateDownloadState.downloading) {
-                        const versionSuffix = this.updateDownloadState.version ? ` (${this.updateDownloadState.version})` : '';
-                        this.showMessage(`更新正在后台下载${versionSuffix}，当前进度 ${this.updateDownloadState.progress}%`, 'info');
+                    if (blockedAction === 'check-update') {
+                        if (this.updateDownloadState.autoChecking) {
+                            this.showMessage('正在执行启动自动检查，请稍后再手动检查更新', 'info');
+                        } else if (this.updateDownloadState.downloading) {
+                            const versionSuffix = this.updateDownloadState.version ? ` (${this.updateDownloadState.version})` : '';
+                            this.showMessage(`更新正在后台下载${versionSuffix}，当前进度 ${this.updateDownloadState.progress}%`, 'info');
+                        }
                     }
                     return;
                 }
@@ -417,17 +422,26 @@ class OICPPApp {
         }
 
         const labelNode = menuItem.querySelector('span') || menuItem;
+        const autoChecking = !!state?.autoChecking;
         const downloading = !!state?.downloading;
         const progress = Number.isFinite(Number(state?.progress))
             ? Math.max(0, Math.min(100, Math.round(Number(state.progress))))
             : 0;
 
-        labelNode.textContent = downloading ? `下载更新中 ${progress}%` : '检查更新';
+        if (autoChecking) {
+            labelNode.textContent = '自动检查更新中...';
+        } else {
+            labelNode.textContent = downloading ? `下载更新中 ${progress}%` : '检查更新';
+        }
 
-        if (downloading) {
+        if (autoChecking || downloading) {
             menuItem.classList.add('disabled');
             menuItem.setAttribute('aria-disabled', 'true');
-            menuItem.setAttribute('title', `后台下载更新中 ${progress}%`);
+            if (autoChecking) {
+                menuItem.setAttribute('title', '启动自动检查更新中');
+            } else {
+                menuItem.setAttribute('title', `后台下载更新中 ${progress}%`);
+            }
         } else {
             menuItem.classList.remove('disabled');
             menuItem.removeAttribute('aria-disabled');
@@ -442,6 +456,7 @@ class OICPPApp {
             : 0;
 
         this.updateDownloadState = {
+            autoChecking: !!payload.autoChecking,
             downloading: !!payload.downloading,
             version: payload.version || '',
             progress
@@ -3112,6 +3127,11 @@ ${data.message || '程序已加载，等待开始执行'}
     }
 
     checkForUpdates() {
+        if (this.updateDownloadState.autoChecking) {
+            this.showMessage('正在执行启动自动检查，请稍后再手动检查更新', 'info');
+            return;
+        }
+
         if (this.updateDownloadState.downloading) {
             const versionSuffix = this.updateDownloadState.version ? ` (${this.updateDownloadState.version})` : '';
             this.showMessage(`更新正在后台下载${versionSuffix}，当前进度 ${this.updateDownloadState.progress}%`, 'info');
