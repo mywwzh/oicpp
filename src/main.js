@@ -565,6 +565,7 @@ let settings = getDefaultSettings();
 let isUpdateDownloading = false; // 是否正在下载更新
 let currentDownloadingVersion = null; // 正在下载的版本
 let currentUpdateDownloadProgress = 0; // 更新下载进度(0-100)
+let isAutoUpdateCheckInProgress = false; // 启动自动检查更新是否进行中
 let pendingInstallerLaunch = null; // 退出后待启动的安装程序
 let pendingInstallerLaunchArmed = false;
 
@@ -583,6 +584,7 @@ function notifyUser(title, body, level = 'info') {
 
 function getUpdateDownloadState() {
     return {
+        autoChecking: !!isAutoUpdateCheckInProgress,
         downloading: !!isUpdateDownloading,
         version: currentDownloadingVersion || '',
         progress: Number.isFinite(currentUpdateDownloadProgress) ? Math.max(0, Math.min(100, Math.round(currentUpdateDownloadProgress))) : 0
@@ -590,6 +592,9 @@ function getUpdateDownloadState() {
 }
 
 function buildUpdateMenuLabel(state = getUpdateDownloadState()) {
+    if (state.autoChecking) {
+        return '自动检查更新中...';
+    }
     if (!state.downloading) {
         return '检查更新';
     }
@@ -610,7 +615,7 @@ function refreshNativeUpdateMenuState() {
 
         const state = getUpdateDownloadState();
         item.label = buildUpdateMenuLabel(state);
-        item.enabled = !state.downloading;
+        item.enabled = !state.downloading && !state.autoChecking;
     } catch (error) {
         try { logWarn('[更新] 刷新原生菜单状态失败:', error?.message || error); } catch (_) { }
     }
@@ -628,6 +633,11 @@ function setUpdateDownloadState({ downloading = false, version = '', progress = 
     isUpdateDownloading = !!downloading;
     currentDownloadingVersion = version || null;
     currentUpdateDownloadProgress = Number.isFinite(progress) ? Math.max(0, Math.min(100, Number(progress))) : 0;
+    broadcastUpdateDownloadState();
+}
+
+function setAutoUpdateCheckInProgress(inProgress = false) {
+    isAutoUpdateCheckInProgress = !!inProgress;
     broadcastUpdateDownloadState();
 }
 
@@ -1085,7 +1095,12 @@ function createWindow() {
 
         checkPendingUpdate();
 
-        checkDailyUpdate().catch(err => logError('启动时检查更新失败:', err));
+        setAutoUpdateCheckInProgress(true);
+        checkDailyUpdate()
+            .catch(err => logError('启动时检查更新失败:', err))
+            .finally(() => {
+                setAutoUpdateCheckInProgress(false);
+            });
         
         // 清理启动时可能遗留的旧安装包（延迟执行，避免影响启动速度）
         setTimeout(async () => {
@@ -1254,7 +1269,7 @@ function createMenuBar() {
                     id: 'check-update',
                     label: '检查更新',
                     click: () => {
-                        if (isUpdateDownloading) {
+                        if (isUpdateDownloading || isAutoUpdateCheckInProgress) {
                             return;
                         }
                         checkForUpdates(true); // true 表示手动检查
@@ -4628,6 +4643,16 @@ function openBackupSettings() {
 
 async function checkForUpdates(isManual = false) {
     try {
+        if (isManual && isAutoUpdateCheckInProgress) {
+            dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                title: '检查更新',
+                message: '正在执行启动自动检查',
+                detail: '请等待自动检查完成后，再进行手动检查更新。'
+            });
+            return;
+        }
+
         if (isUpdateDownloading) {
             if (isManual) {
                 const state = getUpdateDownloadState();
