@@ -350,11 +350,37 @@ class MonacoEditorManager {
         };
     }
 
+    getEditableKeybindingKeys() {
+        return [
+            'formatCode',
+            'showFunctionPicker',
+            'markdownPreview',
+            'renameSymbol',
+            'deleteLine',
+            'duplicateLine',
+            'moveLineUp',
+            'moveLineDown',
+            'compileCode',
+            'runCode',
+            'compileAndRun',
+            'toggleDebug',
+            'debugContinue',
+            'debugStepOver',
+            'debugStepInto',
+            'debugStepOut',
+            'cloudCompile'
+        ];
+    }
+
     normalizeKeybindings(raw) {
         const defaults = this.getDefaultKeybindings();
         const normalized = { ...defaults };
+        const editableKeys = new Set(this.getEditableKeybindingKeys());
         if (raw && typeof raw === 'object') {
             Object.keys(defaults).forEach((key) => {
+                if (!editableKeys.has(key)) {
+                    return;
+                }
                 const candidate = raw[key];
                 if (typeof candidate === 'string' && candidate.trim()) {
                     normalized[key] = candidate.trim();
