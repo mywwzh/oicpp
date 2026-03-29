@@ -41,6 +41,7 @@ class MonacoEditorManager {
     this._includeRootsCache = new Map();
     this._fileIncludeCache = new Map();
         this.lineHeightSetting = 0;
+        this.syntaxColors = null;
         
         this.init();
 
@@ -310,6 +311,295 @@ class MonacoEditorManager {
         const parsedFontSize = parseInt(fontSize, 10);
         const safeFontSize = Number.isNaN(parsedFontSize) || parsedFontSize <= 0 ? 14 : parsedFontSize;
         return Math.round(safeFontSize * 1.4);
+    }
+
+    getDefaultSyntaxColors() {
+        return {
+            keyword: '#c586c0',
+            string: '#ce9178',
+            number: '#b5cea8',
+            type: '#4ec9b0',
+            function: '#dcdcaa',
+            class: '#4ec9b0',
+            comment: '#6a9955'
+        };
+    }
+
+    normalizeSyntaxColors(raw) {
+        const defaults = this.getDefaultSyntaxColors();
+        const normalized = { ...defaults };
+        if (raw && typeof raw === 'object') {
+            Object.keys(defaults).forEach((key) => {
+                const value = raw[key];
+                if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.trim())) {
+                    normalized[key] = value.trim().toLowerCase();
+                }
+            });
+        }
+        return normalized;
+    }
+
+    toMonacoColorHex(color, fallback = 'C586C0') {
+        if (typeof color !== 'string') {
+            return fallback;
+        }
+        const normalized = color.trim();
+        if (!/^#[0-9a-fA-F]{6}$/.test(normalized)) {
+            return fallback;
+        }
+        return normalized.slice(1).toUpperCase();
+    }
+
+    buildSyntaxColorRules(syntaxColors) {
+        const colors = this.normalizeSyntaxColors(syntaxColors);
+        return [
+            { token: 'keyword', foreground: this.toMonacoColorHex(colors.keyword) },
+            { token: 'keyword.control', foreground: this.toMonacoColorHex(colors.keyword) },
+            { token: 'keyword.operator', foreground: this.toMonacoColorHex(colors.keyword) },
+            { token: 'string', foreground: this.toMonacoColorHex(colors.string) },
+            { token: 'string.escape', foreground: this.toMonacoColorHex(colors.string) },
+            { token: 'number', foreground: this.toMonacoColorHex(colors.number) },
+            { token: 'constant.numeric', foreground: this.toMonacoColorHex(colors.number) },
+            { token: 'type', foreground: this.toMonacoColorHex(colors.type) },
+            { token: 'type.identifier', foreground: this.toMonacoColorHex(colors.type) },
+            { token: 'entity.name.function', foreground: this.toMonacoColorHex(colors.function) },
+            { token: 'function', foreground: this.toMonacoColorHex(colors.function) },
+            { token: 'entity.name.class', foreground: this.toMonacoColorHex(colors.class) },
+            { token: 'class', foreground: this.toMonacoColorHex(colors.class) },
+            { token: 'comment', foreground: this.toMonacoColorHex(colors.comment) }
+        ];
+    }
+
+    getBaseMonacoThemeName(theme) {
+        const selectedTheme = (typeof theme === 'string' && theme.trim()) ? theme.trim() : 'dark';
+        if (selectedTheme === 'light') return 'oicpp-light';
+        if (selectedTheme === 'dark') return 'oicpp-dark';
+        return `oicpp-${selectedTheme}`;
+    }
+
+    resolveMonacoTheme(theme, syntaxColors) {
+        const baseTheme = this.getBaseMonacoThemeName(theme);
+        if (typeof monaco === 'undefined' || !monaco.editor) {
+            return baseTheme;
+        }
+
+        const normalized = this.normalizeSyntaxColors(syntaxColors);
+        const customThemeName = `${baseTheme}-custom`;
+        const themePreset = this.getThemePreset(theme);
+        try {
+            monaco.editor.defineTheme(customThemeName, {
+                base: themePreset.base,
+                inherit: true,
+                rules: [
+                    ...(Array.isArray(themePreset.rules) ? themePreset.rules : []),
+                    ...this.buildSyntaxColorRules(normalized)
+                ],
+                colors: themePreset.colors || {}
+            });
+            this.syntaxColors = normalized;
+            return customThemeName;
+        } catch (err) {
+            logWarn('定义自定义语法配色主题失败:', err);
+            return baseTheme;
+        }
+    }
+
+    getThemePreset(theme) {
+        const selectedTheme = (typeof theme === 'string' && theme.trim()) ? theme.trim() : 'dark';
+        switch (selectedTheme) {
+            case 'light':
+                return {
+                    base: 'vs',
+                    rules: [],
+                    colors: {
+                        'editor.background': '#FFFFFF',
+                        'editor.foreground': '#000000',
+                        'editor.selectionBackground': '#57A1FF99',
+                        'editor.inactiveSelectionBackground': '#ADD6FFB3',
+                        'editor.selectionForeground': '#000000',
+                        'editor.selectionHighlightBackground': '#ADD6FF99',
+                        'editor.wordHighlightStrongBackground': '#ADD6FF66',
+                        'editor.lineHighlightBackground': '#E9F2FF',
+                        'editorCursor.foreground': '#000000',
+                        'editorIndentGuide.background': '#00000022',
+                        'editorIndentGuide.activeBackground': '#0b216f66',
+                        'editorIndentGuide.background1': '#00000022',
+                        'editorIndentGuide.background2': '#00000022',
+                        'editorIndentGuide.activeBackground1': '#0b216f66',
+                        'editorIndentGuide.activeBackground2': '#0b216f66',
+                        'editorBracketPairGuide.background1': '#5c6bc05a',
+                        'editorBracketPairGuide.background2': '#42a5f55a',
+                        'editorBracketPairGuide.background3': '#26a69a5a',
+                        'editorBracketPairGuide.background4': '#9ccc655a',
+                        'editorBracketPairGuide.background5': '#ffa7265a',
+                        'editorBracketPairGuide.background6': '#ab47bc5a',
+                        'editorBracketPairGuide.activeBackground1': '#1e3a8a',
+                        'editorBracketPairGuide.activeBackground2': '#0d47a1',
+                        'editorBracketPairGuide.activeBackground3': '#01579b',
+                        'editorBracketPairGuide.activeBackground4': '#004d40',
+                        'editorBracketPairGuide.activeBackground5': '#e65100',
+                        'editorBracketPairGuide.activeBackground6': '#4a148c'
+                    }
+                };
+            case 'monokai':
+                return {
+                    base: 'vs-dark',
+                    rules: [
+                        { token: 'comment', foreground: '75715e' },
+                        { token: 'keyword', foreground: 'f92672' },
+                        { token: 'string', foreground: 'e6db74' },
+                        { token: 'number', foreground: 'ae81ff' },
+                        { token: 'type', foreground: '66d9ef' },
+                        { token: 'class', foreground: 'a6e22e' },
+                        { token: 'function', foreground: 'a6e22e' }
+                    ],
+                    colors: {
+                        'editor.background': '#272822',
+                        'editor.foreground': '#f8f8f2',
+                        'editorCursor.foreground': '#f8f8f0',
+                        'editor.selectionBackground': '#49483e',
+                        'editor.lineHighlightBackground': '#3e3d32',
+                        'editorIndentGuide.background': '#464741',
+                        'editorIndentGuide.activeBackground': '#75715e'
+                    }
+                };
+            case 'github-light':
+                return {
+                    base: 'vs',
+                    rules: [
+                        { token: 'comment', foreground: '6a737d' },
+                        { token: 'keyword', foreground: 'd73a49' },
+                        { token: 'string', foreground: '032f62' },
+                        { token: 'number', foreground: '005cc5' },
+                        { token: 'type', foreground: '6f42c1' }
+                    ],
+                    colors: {
+                        'editor.background': '#ffffff',
+                        'editor.foreground': '#24292e',
+                        'editorCursor.foreground': '#24292e',
+                        'editor.selectionBackground': '#0366d625',
+                        'editor.lineHighlightBackground': '#f6f8fa',
+                        'editorIndentGuide.background': '#d1d5da',
+                        'editorIndentGuide.activeBackground': '#959da5'
+                    }
+                };
+            case 'github-dark':
+                return {
+                    base: 'vs-dark',
+                    rules: [
+                        { token: 'comment', foreground: '6a737d' },
+                        { token: 'keyword', foreground: 'ff7b72' },
+                        { token: 'string', foreground: 'a5d6ff' },
+                        { token: 'number', foreground: '79c0ff' },
+                        { token: 'type', foreground: 'd2a8ff' }
+                    ],
+                    colors: {
+                        'editor.background': '#24292e',
+                        'editor.foreground': '#e1e4e8',
+                        'editorCursor.foreground': '#e1e4e8',
+                        'editor.selectionBackground': '#3392FF44',
+                        'editor.lineHighlightBackground': '#2b3036',
+                        'editorIndentGuide.background': '#444d56',
+                        'editorIndentGuide.activeBackground': '#6a737d'
+                    }
+                };
+            case 'solarized-light':
+                return {
+                    base: 'vs',
+                    rules: [
+                        { token: 'comment', foreground: '93a1a1' },
+                        { token: 'keyword', foreground: '859900' },
+                        { token: 'string', foreground: '2aa198' },
+                        { token: 'number', foreground: 'd33682' },
+                        { token: 'type', foreground: 'b58900' }
+                    ],
+                    colors: {
+                        'editor.background': '#fdf6e3',
+                        'editor.foreground': '#657b83',
+                        'editorCursor.foreground': '#657b83',
+                        'editor.selectionBackground': '#eee8d5',
+                        'editor.lineHighlightBackground': '#eee8d5',
+                        'editorIndentGuide.background': '#93a1a155',
+                        'editorIndentGuide.activeBackground': '#586e75'
+                    }
+                };
+            case 'solarized-dark':
+                return {
+                    base: 'vs-dark',
+                    rules: [
+                        { token: 'comment', foreground: '586e75' },
+                        { token: 'keyword', foreground: '859900' },
+                        { token: 'string', foreground: '2aa198' },
+                        { token: 'number', foreground: 'd33682' },
+                        { token: 'type', foreground: 'b58900' }
+                    ],
+                    colors: {
+                        'editor.background': '#002b36',
+                        'editor.foreground': '#839496',
+                        'editorCursor.foreground': '#839496',
+                        'editor.selectionBackground': '#073642',
+                        'editor.lineHighlightBackground': '#073642',
+                        'editorIndentGuide.background': '#586e7555',
+                        'editorIndentGuide.activeBackground': '#93a1a1'
+                    }
+                };
+            case 'dracula':
+                return {
+                    base: 'vs-dark',
+                    rules: [
+                        { token: 'comment', foreground: '6272a4' },
+                        { token: 'keyword', foreground: 'ff79c6' },
+                        { token: 'string', foreground: 'f1fa8c' },
+                        { token: 'number', foreground: 'bd93f9' },
+                        { token: 'type', foreground: '8be9fd' },
+                        { token: 'class', foreground: '50fa7b' },
+                        { token: 'function', foreground: '50fa7b' }
+                    ],
+                    colors: {
+                        'editor.background': '#282a36',
+                        'editor.foreground': '#f8f8f2',
+                        'editorCursor.foreground': '#f8f8f0',
+                        'editor.selectionBackground': '#44475a',
+                        'editor.lineHighlightBackground': '#44475a',
+                        'editorIndentGuide.background': '#6272a4',
+                        'editorIndentGuide.activeBackground': '#f8f8f2'
+                    }
+                };
+            case 'dark':
+            default:
+                return {
+                    base: 'vs-dark',
+                    rules: [],
+                    colors: {
+                        'editorIndentGuide.background': '#ffffff25',
+                        'editorIndentGuide.activeBackground': '#ffffff55',
+                        'editorBracketPairGuide.background1': '#90caf925',
+                        'editorBracketPairGuide.background2': '#ffcc8025',
+                        'editorBracketPairGuide.background3': '#ce93d825',
+                        'editorBracketPairGuide.background4': '#80cbc425',
+                        'editorBracketPairGuide.background5': '#f48fb125',
+                        'editorBracketPairGuide.background6': '#a5d6a725',
+                        'editorBracketPairGuide.activeBackground1': '#90caf955',
+                        'editorBracketPairGuide.activeBackground2': '#ffcc8055',
+                        'editorBracketPairGuide.activeBackground3': '#ce93d855',
+                        'editorBracketPairGuide.activeBackground4': '#80cbc455',
+                        'editorBracketPairGuide.activeBackground5': '#f48fb155',
+                        'editorBracketPairGuide.activeBackground6': '#a5d6a755'
+                    }
+                };
+        }
+    }
+
+    updateIndentGuideTone(themeName) {
+        if (typeof document === 'undefined') {
+            return;
+        }
+        const isLightTheme = typeof themeName === 'string' && themeName.toLowerCase().includes('light');
+        if (isLightTheme) {
+            document.body.setAttribute('data-strong-indent-guides', '');
+        } else {
+            document.body.removeAttribute('data-strong-indent-guides');
+        }
     }
 
     async waitForMonaco() {
@@ -779,6 +1069,7 @@ class MonacoEditorManager {
             let tabSize = 4;
             let autoCompletionEnabled = true;
             let lineHeightSetting = 0;
+            let syntaxColors = this.getDefaultSyntaxColors();
             try {
                 if (window.electronAPI && window.electronAPI.getAllSettings) {
                     const allSettings = await window.electronAPI.getAllSettings();
@@ -806,6 +1097,7 @@ class MonacoEditorManager {
                         stickyScrollEnabled = allSettings.stickyScrollEnabled !== false;
                         fontLigaturesEnabled = allSettings.fontLigaturesEnabled !== false;
                         autoCompletionEnabled = allSettings.enableAutoCompletion !== false;
+                        syntaxColors = this.normalizeSyntaxColors(allSettings.syntaxColors);
                         const parsedTabSize = parseInt(allSettings.tabSize, 10);
                         if (!Number.isNaN(parsedTabSize) && parsedTabSize > 0) {
                             tabSize = parsedTabSize;
@@ -819,10 +1111,7 @@ class MonacoEditorManager {
 
             this.lineHeightSetting = lineHeightSetting;
             
-            let monacoTheme = 'oicpp-dark';
-            if (currentTheme === 'light') monacoTheme = 'oicpp-light';
-            else if (currentTheme === 'dark') monacoTheme = 'oicpp-dark';
-            else monacoTheme = `oicpp-${currentTheme}`;
+            const monacoTheme = this.resolveMonacoTheme(currentTheme, syntaxColors);
 
             const editor = monaco.editor.create(monacoContainer, {
                 value: content,
@@ -916,11 +1205,7 @@ class MonacoEditorManager {
             });
             try {
                 monaco.editor.setTheme(monacoTheme);
-                if (monacoTheme === 'oicpp-light' || monacoTheme === 'oicpp-github-light' || monacoTheme === 'oicpp-solarized-light') {
-                    document.body.setAttribute('data-strong-indent-guides', '');
-                } else {
-                    document.body.removeAttribute('data-strong-indent-guides');
-                }
+                this.updateIndentGuideTone(monacoTheme);
             } catch (_) {}
             
             if (autoCompletionEnabled) {
@@ -2329,13 +2614,17 @@ class MonacoEditorManager {
             }
         }
         
-        if (settings.theme !== undefined && typeof monaco !== 'undefined' && monaco.editor) {
-            let newTheme = 'oicpp-dark';
-            if (settings.theme === 'light') newTheme = 'oicpp-light';
-            else if (settings.theme === 'dark') newTheme = 'oicpp-dark';
-            else newTheme = `oicpp-${settings.theme}`;
-            
-            try { monaco.editor.setTheme(newTheme); } catch (e) { logWarn('切换主题失败:', e); }
+        if ((settings.theme !== undefined || settings.syntaxColors !== undefined) && typeof monaco !== 'undefined' && monaco.editor) {
+            const fallbackTheme = document?.body?.getAttribute('data-theme') || 'dark';
+            const selectedTheme = settings.theme !== undefined ? settings.theme : fallbackTheme;
+            const selectedSyntaxColors = settings.syntaxColors !== undefined ? settings.syntaxColors : this.syntaxColors;
+            const resolvedTheme = this.resolveMonacoTheme(selectedTheme, selectedSyntaxColors);
+            try {
+                monaco.editor.setTheme(resolvedTheme);
+                this.updateIndentGuideTone(resolvedTheme);
+            } catch (e) {
+                logWarn('切换主题失败:', e);
+            }
         }
     }
 
