@@ -18,6 +18,11 @@ class OICPPApp {
     this._autoContinueOnStart = false;
     this._debugSessionId = 0;
     this._debugExited = false;
+        this.updateDownloadState = {
+            downloading: false,
+            version: '',
+            progress: 0
+        };
         this.autoSaveController = {
         timerId: null,
         enabled: true,
@@ -128,6 +133,19 @@ class OICPPApp {
                 
                 const menuItem = e.target.classList.contains('menu-dropdown-item') ? 
                     e.target : e.target.closest('.menu-dropdown-item');
+                if (!menuItem) {
+                    return;
+                }
+
+                if (menuItem.classList.contains('disabled') || menuItem.getAttribute('aria-disabled') === 'true') {
+                    e.preventDefault();
+                    const blockedAction = menuItem.dataset.action;
+                    if (blockedAction === 'check-update' && this.updateDownloadState.downloading) {
+                        const versionSuffix = this.updateDownloadState.version ? ` (${this.updateDownloadState.version})` : '';
+                        this.showMessage(`更新正在后台下载${versionSuffix}，当前进度 ${this.updateDownloadState.progress}%`, 'info');
+                    }
+                    return;
+                }
                 
                 const action = menuItem.dataset.action;
                 if (action) {
@@ -388,6 +406,48 @@ class OICPPApp {
         } catch (error) {
             logWarn('更新平台特定菜单失败:', error);
         }
+
+        this.updateCheckUpdateMenuItem();
+    }
+
+    updateCheckUpdateMenuItem(state = this.updateDownloadState) {
+        const menuItem = document.querySelector('.menu-dropdown-item[data-action="check-update"]');
+        if (!menuItem) {
+            return;
+        }
+
+        const labelNode = menuItem.querySelector('span') || menuItem;
+        const downloading = !!state?.downloading;
+        const progress = Number.isFinite(Number(state?.progress))
+            ? Math.max(0, Math.min(100, Math.round(Number(state.progress))))
+            : 0;
+
+        labelNode.textContent = downloading ? `下载更新中 ${progress}%` : '检查更新';
+
+        if (downloading) {
+            menuItem.classList.add('disabled');
+            menuItem.setAttribute('aria-disabled', 'true');
+            menuItem.setAttribute('title', `后台下载更新中 ${progress}%`);
+        } else {
+            menuItem.classList.remove('disabled');
+            menuItem.removeAttribute('aria-disabled');
+            menuItem.removeAttribute('title');
+        }
+    }
+
+    applyUpdateDownloadStatus(payload = {}) {
+        const progressRaw = Number(payload.progress);
+        const progress = Number.isFinite(progressRaw)
+            ? Math.max(0, Math.min(100, Math.round(progressRaw)))
+            : 0;
+
+        this.updateDownloadState = {
+            downloading: !!payload.downloading,
+            version: payload.version || '',
+            progress
+        };
+
+        this.updateCheckUpdateMenuItem(this.updateDownloadState);
     }
 
     setupIPC() {
@@ -535,6 +595,27 @@ class OICPPApp {
                 this.forceRefreshEditor(); // 强制刷新以应用字体等
                 try { window.monacoEditorManager?.refreshUserSnippets?.(); } catch (_) {}
             });
+
+            if (typeof window.electronAPI.onUpdateDownloadStatus === 'function') {
+                window.electronAPI.onUpdateDownloadStatus((payload) => {
+                    this.applyUpdateDownloadStatus(payload || {});
+                });
+            }
+
+            if (typeof window.electronAPI.getUpdateDownloadStatus === 'function') {
+                window.electronAPI.getUpdateDownloadStatus()
+                    .then((payload) => this.applyUpdateDownloadStatus(payload || {}))
+                    .catch((error) => logWarn('读取更新下载状态失败:', error?.message || error));
+            }
+
+            if (typeof window.electronAPI.onAppToast === 'function') {
+                window.electronAPI.onAppToast((payload) => {
+                    if (!payload || !payload.message) {
+                        return;
+                    }
+                    this.showMessage(payload.message, payload.type || 'info');
+                });
+            }
 
             logInfo('IPC 事件监听器已设置');
         } catch (error) {
@@ -3031,6 +3112,12 @@ ${data.message || '程序已加载，等待开始执行'}
     }
 
     checkForUpdates() {
+        if (this.updateDownloadState.downloading) {
+            const versionSuffix = this.updateDownloadState.version ? ` (${this.updateDownloadState.version})` : '';
+            this.showMessage(`更新正在后台下载${versionSuffix}，当前进度 ${this.updateDownloadState.progress}%`, 'info');
+            return;
+        }
+
         if (typeof require !== 'undefined') {
             try {
                 const { ipcRenderer } = require('electron');
