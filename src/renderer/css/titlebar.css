@@ -199,6 +199,12 @@
     color: #ffffff;
 }
 
+.menu-dropdown-item.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 .menu-shortcut {
     font-size: 11px;
     color: var(--text-secondary, #888888);
