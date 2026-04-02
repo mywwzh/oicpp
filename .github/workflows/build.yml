@@ -146,8 +146,61 @@ jobs:
           echo "Uploading $FILE to $UPLOAD_API"
           curl -s -X POST -H "Authorization: Bearer $UPLOAD_TOKEN" -F "file=@$FILE" -F "version=$VERSION" -F "platform=windows" "$UPLOAD_API"
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          VERSION=${VERSION#v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install --os=darwin --cpu=x64 sharp
+
+      - name: Build macOS packages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: |
+            dist/*.dmg
+            dist/*.zip
+
+      - name: Upload macOS packages to remote
+        env:
+          UPLOAD_API: ${{ secrets.UPLOAD_API }}
+          UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+        run: |
+          VERSION=$VERSION
+          echo "Uploading packages for version $VERSION to $UPLOAD_API"
+          for f in dist/*.dmg dist/*.zip; do
+            [ -f "$f" ] || continue
+            echo "Uploading $f"
+            curl -sS -X POST -H "Authorization: Bearer $UPLOAD_TOKEN" -F "file=@$f" -F "version=$VERSION" -F "platform=darwin" "$UPLOAD_API"
+          done
+
   release:
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:

@@ -3259,7 +3259,9 @@ function setupIPC() {
     });
 
     ipcMain.handle('get-platform', async () => {
-        return process.platform === 'win32' ? 'windows' : 'linux';
+        if (process.platform === 'win32') return 'windows';
+        if (process.platform === 'darwin') return 'macos';
+        return 'linux';
     });
 
     ipcMain.handle('get-user-home', async () => {
