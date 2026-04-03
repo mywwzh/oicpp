@@ -18,9 +18,10 @@ class CodeComparer {
 
     normalizeTaskKey(taskKey) {
         if (!taskKey || typeof taskKey !== 'string') return '';
-        const normalized = String(taskKey).trim().replace(/\//g, '\\');
         const isWin = typeof window !== 'undefined' && window.process?.platform === 'win32';
-        return isWin ? normalized.toLowerCase() : normalized;
+        const normalized = String(taskKey).trim();
+        if (!isWin) return normalized;
+        return normalized.replace(/\//g, '\\').toLowerCase();
     }
 
     setupActiveFileListener() {
