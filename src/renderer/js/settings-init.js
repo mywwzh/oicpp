@@ -43,6 +43,19 @@
             logInfo('应用主题到设置页面:', settings.theme);
             document.body.setAttribute('data-theme', settings.theme);
             document.documentElement.setAttribute('data-theme', settings.theme);
+            const normalizedTheme = String(settings.theme || '').toLowerCase();
+            const tone = normalizedTheme.includes('light') ? 'light' : 'dark';
+            document.body.setAttribute('data-editor-theme', tone);
+            document.documentElement.setAttribute('data-editor-theme', tone);
+            document.body.classList.remove('theme-light', 'theme-dark', 'light-theme', 'dark-theme');
+            document.documentElement.classList.remove('theme-light', 'theme-dark', 'light-theme', 'dark-theme');
+            if (tone === 'light') {
+                document.body.classList.add('theme-light', 'light-theme');
+                document.documentElement.classList.add('theme-light', 'light-theme');
+            } else {
+                document.body.classList.add('theme-dark', 'dark-theme');
+                document.documentElement.classList.add('theme-dark', 'dark-theme');
+            }
         }
 
         if (settings.font || settings.fontSize) {
@@ -115,21 +128,21 @@
                     body.has-custom-bg .main-container {
                         background-color: transparent !important;
                     }
-                    body.has-custom-bg[data-theme="light"] .main-container {
+                    body.has-custom-bg[data-editor-theme="light"] .main-container {
                         background-color: transparent !important;
                     }
 
                     body.has-custom-bg .editor-container {
                         background-color: rgba(30, 30, 30, 0.85) !important;
                     }
-                    body.has-custom-bg[data-theme="light"] .editor-container {
+                    body.has-custom-bg[data-editor-theme="light"] .editor-container {
                         background-color: rgba(255, 255, 255, 0.85) !important;
                     }
                     
                     body.has-custom-bg .sidebar {
                         background-color: rgba(37, 37, 38, 0.4) !important;
                     }
-                    body.has-custom-bg[data-theme="light"] .sidebar {
+                    body.has-custom-bg[data-editor-theme="light"] .sidebar {
                         background-color: rgba(243, 243, 243, 0.4) !important;
                     }
 
@@ -171,7 +184,7 @@
                     body.has-custom-bg .titlebar {
                         background-color: rgba(50, 50, 51, 0.8) !important;
                     }
-                    body.has-custom-bg[data-theme="light"] .titlebar {
+                    body.has-custom-bg[data-editor-theme="light"] .titlebar {
                         background-color: rgba(243, 243, 243, 0.8) !important;
                     }
                 `;

@@ -47,10 +47,11 @@
         show(opts = {}) {
             return new Promise(resolve => {
                 const theme = (window.oicppApp?.settings?.theme) || 'dark';
+                const isLightTheme = String(theme).toLowerCase().includes('light');
                 let cur = opts.startPath || window.oicppApp?.settings?.lastOpen || ((process.platform === 'win32') ? (process.env.USERPROFILE || 'C:/') : '/');
                 if (!cur) cur = '/';
                 const backdrop = E('div', 'folder-picker-backdrop');
-                const panel = E('div', 'folder-picker ' + (theme === 'light' ? 'light' : ''));
+                const panel = E('div', 'folder-picker ' + (isLightTheme ? 'light' : ''));
                 backdrop.appendChild(panel);
                 const header = E('div', 'folder-picker-header');
                 header.appendChild(E('span', null, '选择工作区文件夹'));

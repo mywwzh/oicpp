@@ -5,7 +5,7 @@ class EditorSettings {
             fontSize: 14,
             lineHeight: 0,
             theme: 'dark',
-            syntaxColors: this.getDefaultSyntaxColors(),
+            syntaxColorsByTheme: {},
             tabSize: 4,
             wordWrap: false,
             foldingEnabled: true,
@@ -96,16 +96,88 @@ class EditorSettings {
         ];
     }
 
-    getDefaultSyntaxColors() {
-        return {
-            keyword: '#c586c0',
-            string: '#ce9178',
-            number: '#b5cea8',
-            type: '#4ec9b0',
-            function: '#dcdcaa',
-            class: '#4ec9b0',
-            comment: '#6a9955'
+    normalizeThemeKey(theme) {
+        const raw = (typeof theme === 'string' && theme.trim()) ? theme.trim() : 'dark';
+        return raw;
+    }
+
+    getDefaultSyntaxColors(theme = 'dark') {
+        const themeKey = this.normalizeThemeKey(theme);
+        const presets = {
+            dark: {
+                keyword: '#c586c0',
+                string: '#ce9178',
+                number: '#b5cea8',
+                type: '#4ec9b0',
+                function: '#dcdcaa',
+                class: '#4ec9b0',
+                comment: '#6a9955'
+            },
+            light: {
+                keyword: '#0000ff',
+                string: '#a31515',
+                number: '#098658',
+                type: '#267f99',
+                function: '#795e26',
+                class: '#267f99',
+                comment: '#008000'
+            },
+            monokai: {
+                keyword: '#f92672',
+                string: '#e6db74',
+                number: '#ae81ff',
+                type: '#66d9ef',
+                function: '#a6e22e',
+                class: '#a6e22e',
+                comment: '#75715e'
+            },
+            'github-light': {
+                keyword: '#d73a49',
+                string: '#032f62',
+                number: '#005cc5',
+                type: '#6f42c1',
+                function: '#6f42c1',
+                class: '#6f42c1',
+                comment: '#6a737d'
+            },
+            'github-dark': {
+                keyword: '#ff7b72',
+                string: '#a5d6ff',
+                number: '#79c0ff',
+                type: '#d2a8ff',
+                function: '#d2a8ff',
+                class: '#d2a8ff',
+                comment: '#6a737d'
+            },
+            'solarized-light': {
+                keyword: '#859900',
+                string: '#2aa198',
+                number: '#d33682',
+                type: '#b58900',
+                function: '#b58900',
+                class: '#b58900',
+                comment: '#93a1a1'
+            },
+            'solarized-dark': {
+                keyword: '#859900',
+                string: '#2aa198',
+                number: '#d33682',
+                type: '#b58900',
+                function: '#b58900',
+                class: '#b58900',
+                comment: '#586e75'
+            },
+            dracula: {
+                keyword: '#ff79c6',
+                string: '#f1fa8c',
+                number: '#bd93f9',
+                type: '#8be9fd',
+                function: '#50fa7b',
+                class: '#50fa7b',
+                comment: '#6272a4'
+            }
         };
+        return { ...(presets[themeKey] || presets.dark) };
     }
 
     normalizeHexColor(color, fallback = '#c586c0') {
@@ -119,8 +191,8 @@ class EditorSettings {
         return fallback;
     }
 
-    normalizeSyntaxColors(raw) {
-        const defaults = this.getDefaultSyntaxColors();
+    normalizeSyntaxColors(raw, theme = 'dark') {
+        const defaults = this.getDefaultSyntaxColors(theme);
         const normalized = { ...defaults };
         if (raw && typeof raw === 'object') {
             Object.keys(defaults).forEach((key) => {
@@ -130,8 +202,63 @@ class EditorSettings {
         return normalized;
     }
 
-    updateSyntaxColorUI(colors) {
-        const normalized = this.normalizeSyntaxColors(colors);
+    normalizeSyntaxColorsByTheme(raw) {
+        const normalized = {};
+        if (!raw || typeof raw !== 'object') {
+            return normalized;
+        }
+        Object.keys(raw).forEach((themeKey) => {
+            if (!raw[themeKey] || typeof raw[themeKey] !== 'object') {
+                return;
+            }
+            normalized[this.normalizeThemeKey(themeKey)] = this.normalizeSyntaxColors(raw[themeKey], themeKey);
+        });
+        return normalized;
+    }
+
+    areSyntaxColorsEqual(left, right) {
+        const keys = ['keyword', 'string', 'number', 'type', 'function', 'class', 'comment'];
+        return keys.every((key) => left[key] === right[key]);
+    }
+
+    getCurrentThemeFromUI() {
+        const themeSelect = document.getElementById('editor-theme');
+        return this.normalizeThemeKey(themeSelect?.value || this.settings.theme || 'dark');
+    }
+
+    getEffectiveSyntaxColors(theme = this.getCurrentThemeFromUI(), syntaxColorsByTheme = this.settings.syntaxColorsByTheme) {
+        const themeKey = this.normalizeThemeKey(theme);
+        const defaults = this.getDefaultSyntaxColors(themeKey);
+        const byTheme = this.normalizeSyntaxColorsByTheme(syntaxColorsByTheme);
+        if (byTheme[themeKey]) {
+            return this.normalizeSyntaxColors(byTheme[themeKey], themeKey);
+        }
+        return defaults;
+    }
+
+    setThemeSyntaxColorOverride(theme, colors, targetByTheme = null) {
+        const themeKey = this.normalizeThemeKey(theme);
+        const defaults = this.getDefaultSyntaxColors(themeKey);
+        const normalizedColors = this.normalizeSyntaxColors(colors, themeKey);
+        const byTheme = targetByTheme || this.settings.syntaxColorsByTheme || {};
+        if (this.areSyntaxColorsEqual(normalizedColors, defaults)) {
+            delete byTheme[themeKey];
+        } else {
+            byTheme[themeKey] = normalizedColors;
+        }
+        if (!targetByTheme) {
+            this.settings.syntaxColorsByTheme = byTheme;
+        }
+        return byTheme;
+    }
+
+    persistCurrentThemeSyntaxColors(theme = this.getCurrentThemeFromUI()) {
+        const currentColors = this.getSyntaxColorsFromUI(theme);
+        this.setThemeSyntaxColorOverride(theme, currentColors);
+    }
+
+    updateSyntaxColorUI(colors, theme = this.getCurrentThemeFromUI()) {
+        const normalized = this.normalizeSyntaxColors(colors, theme);
         Object.keys(normalized).forEach((key) => {
             const colorInput = document.getElementById(`syntax-color-${key}`);
             const textInput = document.getElementById(`syntax-color-${key}-text`);
@@ -142,11 +269,11 @@ class EditorSettings {
                 textInput.value = normalized[key].toUpperCase();
             }
         });
-        this.updateSyntaxPreview(normalized);
+        this.updateSyntaxPreview(normalized, theme);
     }
 
-    getSyntaxColorsFromUI() {
-        const defaults = this.getDefaultSyntaxColors();
+    getSyntaxColorsFromUI(theme = this.getCurrentThemeFromUI()) {
+        const defaults = this.getDefaultSyntaxColors(theme);
         const result = { ...defaults };
         Object.keys(defaults).forEach((key) => {
             const textInput = document.getElementById(`syntax-color-${key}-text`);
@@ -157,12 +284,12 @@ class EditorSettings {
         return result;
     }
 
-    updateSyntaxPreview(colors = null) {
+    updateSyntaxPreview(colors = null, theme = this.getCurrentThemeFromUI()) {
         const preview = document.getElementById('syntax-color-preview');
         if (!preview) {
             return;
         }
-        const normalized = this.normalizeSyntaxColors(colors || this.getSyntaxColorsFromUI());
+        const normalized = this.normalizeSyntaxColors(colors || this.getSyntaxColorsFromUI(theme), theme);
         preview.style.setProperty('--syntax-keyword', normalized.keyword);
         preview.style.setProperty('--syntax-string', normalized.string);
         preview.style.setProperty('--syntax-number', normalized.number);
@@ -183,7 +310,7 @@ class EditorSettings {
     }
 
     bindSyntaxColorControls() {
-        const defaults = this.getDefaultSyntaxColors();
+        const defaults = this.getDefaultSyntaxColors(this.getCurrentThemeFromUI());
         const bindColorPair = (key) => {
             const colorInput = document.getElementById(`syntax-color-${key}`);
             const textInput = document.getElementById(`syntax-color-${key}-text`);
@@ -192,17 +319,21 @@ class EditorSettings {
             }
 
             colorInput.addEventListener('input', () => {
-                const normalized = this.normalizeHexColor(colorInput.value, defaults[key]);
+                const currentTheme = this.getCurrentThemeFromUI();
+                const themeDefaults = this.getDefaultSyntaxColors(currentTheme);
+                const normalized = this.normalizeHexColor(colorInput.value, themeDefaults[key]);
                 textInput.value = normalized.toUpperCase();
-                this.updateSyntaxPreview();
+                this.updateSyntaxPreview(null, currentTheme);
                 this.notifyMainWindowPreview();
             });
 
             textInput.addEventListener('input', () => {
-                const normalized = this.normalizeHexColor(textInput.value, defaults[key]);
+                const currentTheme = this.getCurrentThemeFromUI();
+                const themeDefaults = this.getDefaultSyntaxColors(currentTheme);
+                const normalized = this.normalizeHexColor(textInput.value, themeDefaults[key]);
                 colorInput.value = normalized;
                 textInput.value = normalized.toUpperCase();
-                this.updateSyntaxPreview();
+                this.updateSyntaxPreview(null, currentTheme);
                 this.notifyMainWindowPreview();
             });
         };
@@ -212,7 +343,11 @@ class EditorSettings {
         const resetBtn = document.getElementById('reset-syntax-colors');
         if (resetBtn) {
             resetBtn.addEventListener('click', () => {
-                this.updateSyntaxColorUI(defaults);
+                const currentTheme = this.getCurrentThemeFromUI();
+                const byTheme = this.normalizeSyntaxColorsByTheme(this.settings.syntaxColorsByTheme);
+                delete byTheme[currentTheme];
+                this.settings.syntaxColorsByTheme = byTheme;
+                this.updateSyntaxColorUI(this.getDefaultSyntaxColors(currentTheme), currentTheme);
                 this.notifyMainWindowPreview();
             });
         }
@@ -452,6 +587,12 @@ class EditorSettings {
         const themeSelect = document.getElementById('editor-theme');
         if (themeSelect) {
             themeSelect.addEventListener('change', () => {
+                const previousTheme = this.settings.theme || 'dark';
+                this.persistCurrentThemeSyntaxColors(previousTheme);
+
+                const nextTheme = this.normalizeThemeKey(themeSelect.value || 'dark');
+                this.settings.theme = nextTheme;
+                this.updateSyntaxColorUI(this.getEffectiveSyntaxColors(nextTheme), nextTheme);
                 this.notifyMainWindowPreview();
             });
         }
@@ -612,7 +753,17 @@ class EditorSettings {
                     fontSize: allSettings.fontSize || 14,
                     lineHeight: typeof allSettings.lineHeight === 'number' && allSettings.lineHeight > 0 ? allSettings.lineHeight : 0,
                     theme: allSettings.theme || 'dark',
-                    syntaxColors: this.normalizeSyntaxColors(allSettings.syntaxColors),
+                    syntaxColorsByTheme: (() => {
+                        const normalizedTheme = this.normalizeThemeKey(allSettings.theme || 'dark');
+                        const byTheme = this.normalizeSyntaxColorsByTheme(allSettings.syntaxColorsByTheme);
+                        if (Object.keys(byTheme).length === 0 && allSettings.syntaxColors && typeof allSettings.syntaxColors === 'object') {
+                            const migrated = this.normalizeSyntaxColors(allSettings.syntaxColors, normalizedTheme);
+                            if (!this.areSyntaxColorsEqual(migrated, this.getDefaultSyntaxColors(normalizedTheme))) {
+                                byTheme[normalizedTheme] = migrated;
+                            }
+                        }
+                        return byTheme;
+                    })(),
                     tabSize: allSettings.tabSize || 4,
                     fontLigaturesEnabled: allSettings.fontLigaturesEnabled !== false,
                     foldingEnabled: allSettings.foldingEnabled !== false,
@@ -634,7 +785,7 @@ class EditorSettings {
                     fontSize: 14,
                     lineHeight: 0,
                     theme: 'dark',
-                    syntaxColors: this.getDefaultSyntaxColors(),
+                    syntaxColorsByTheme: {},
                     tabSize: 4,
                     stickyScrollEnabled: true,
                     foldingEnabled: true,
@@ -655,7 +806,7 @@ class EditorSettings {
                 fontSize: 14,
                 lineHeight: 0,
                 theme: 'dark',
-                syntaxColors: this.getDefaultSyntaxColors(),
+                syntaxColorsByTheme: {},
                 tabSize: 4,
                 stickyScrollEnabled: true,
                 foldingEnabled: true,
@@ -811,9 +962,11 @@ class EditorSettings {
             newSettings.backgroundImage = bgImageInput.value;
         }
 
-        const defaultSyntaxColors = this.getDefaultSyntaxColors();
-        const syntaxColors = this.getSyntaxColorsFromUI();
-        newSettings.syntaxColors = syntaxColors;
+        const currentTheme = this.normalizeThemeKey(newSettings.theme || this.settings.theme || 'dark');
+        const syntaxColorsByTheme = this.normalizeSyntaxColorsByTheme(this.settings.syntaxColorsByTheme);
+        const syntaxColors = this.getSyntaxColorsFromUI(currentTheme);
+        this.setThemeSyntaxColorOverride(currentTheme, syntaxColors, syntaxColorsByTheme);
+        newSettings.syntaxColorsByTheme = syntaxColorsByTheme;
 
         const defaultKeybindings = this.getDefaultKeybindings();
         const editableKeys = new Set(this.getEditableKeybindingKeys());
@@ -892,19 +1045,6 @@ class EditorSettings {
                 logInfo('背景图片变化检测:', { oldBgImage: this.settings.backgroundImage, newBgImage: newSettings.backgroundImage, changed: bgImageChanged });
 
                 Object.assign(this.settings, newSettings);
-
-                if (themeChanged || bgImageChanged) {
-                    const msg = themeChanged ? '主题已更改，正在重启编辑器...' : '背景图片已更改，正在重启编辑器...';
-                    this.showMessage(msg, 'info');
-                    setTimeout(() => {
-                        if (window.electronAPI && window.electronAPI.relaunchApp) {
-                            window.electronAPI.relaunchApp();
-                        } else {
-                            window.location.reload();
-                        }
-                    }, 1000);
-                    return; // 不执行后续的关闭窗口操作
-                }
 
                 this.showMessage('编辑器设置保存成功！', 'success');
 
@@ -1002,8 +1142,10 @@ class EditorSettings {
             themeSelect.value = this.settings.theme;
             logInfo('主题设置已更新:', themeSelect.value);
         }
-        this.updateSyntaxColorUI(this.settings.syntaxColors);
-        this.updateSyntaxPreview(this.settings.syntaxColors);
+        const currentTheme = this.normalizeThemeKey(themeSelect?.value || this.settings.theme || 'dark');
+        const effectiveSyntaxColors = this.getEffectiveSyntaxColors(currentTheme, this.settings.syntaxColorsByTheme);
+        this.updateSyntaxColorUI(effectiveSyntaxColors, currentTheme);
+        this.updateSyntaxPreview(effectiveSyntaxColors, currentTheme);
         if (foldingCheckbox) {
             foldingCheckbox.checked = this.settings.foldingEnabled !== false;
         }

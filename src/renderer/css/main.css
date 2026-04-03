@@ -248,7 +248,9 @@ body[data-editor-theme="light"] .active {
 .message-toast.info { background: #2196F3; }
 .message-toast.success { background: #4CAF50; }
 .message-toast.error { background: #F44336; }
-body[data-theme="light"] .message-toast { color: #fff; }
+body.theme-light .message-toast,
+body[data-theme="light"] .message-toast,
+body[data-editor-theme="light"] .message-toast { color: #fff; }
 
 body.theme-light,
 body[data-theme="light"],
