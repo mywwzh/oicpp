@@ -41,7 +41,7 @@ class MonacoEditorManager {
     this._includeRootsCache = new Map();
     this._fileIncludeCache = new Map();
         this.lineHeightSetting = 0;
-        this.syntaxColors = null;
+        this.syntaxColorsByTheme = {};
         
         this.init();
 
@@ -313,20 +313,92 @@ class MonacoEditorManager {
         return Math.round(safeFontSize * 1.4);
     }
 
-    getDefaultSyntaxColors() {
-        return {
-            keyword: '#c586c0',
-            string: '#ce9178',
-            number: '#b5cea8',
-            type: '#4ec9b0',
-            function: '#dcdcaa',
-            class: '#4ec9b0',
-            comment: '#6a9955'
-        };
+    normalizeThemeKey(theme) {
+        const raw = (typeof theme === 'string' && theme.trim()) ? theme.trim() : 'dark';
+        return raw;
     }
 
-    normalizeSyntaxColors(raw) {
-        const defaults = this.getDefaultSyntaxColors();
+    getDefaultSyntaxColors(theme = 'dark') {
+        const themeKey = this.normalizeThemeKey(theme);
+        const presets = {
+            dark: {
+                keyword: '#c586c0',
+                string: '#ce9178',
+                number: '#b5cea8',
+                type: '#4ec9b0',
+                function: '#dcdcaa',
+                class: '#4ec9b0',
+                comment: '#6a9955'
+            },
+            light: {
+                keyword: '#0000ff',
+                string: '#a31515',
+                number: '#098658',
+                type: '#267f99',
+                function: '#795e26',
+                class: '#267f99',
+                comment: '#008000'
+            },
+            monokai: {
+                keyword: '#f92672',
+                string: '#e6db74',
+                number: '#ae81ff',
+                type: '#66d9ef',
+                function: '#a6e22e',
+                class: '#a6e22e',
+                comment: '#75715e'
+            },
+            'github-light': {
+                keyword: '#d73a49',
+                string: '#032f62',
+                number: '#005cc5',
+                type: '#6f42c1',
+                function: '#6f42c1',
+                class: '#6f42c1',
+                comment: '#6a737d'
+            },
+            'github-dark': {
+                keyword: '#ff7b72',
+                string: '#a5d6ff',
+                number: '#79c0ff',
+                type: '#d2a8ff',
+                function: '#d2a8ff',
+                class: '#d2a8ff',
+                comment: '#6a737d'
+            },
+            'solarized-light': {
+                keyword: '#859900',
+                string: '#2aa198',
+                number: '#d33682',
+                type: '#b58900',
+                function: '#b58900',
+                class: '#b58900',
+                comment: '#93a1a1'
+            },
+            'solarized-dark': {
+                keyword: '#859900',
+                string: '#2aa198',
+                number: '#d33682',
+                type: '#b58900',
+                function: '#b58900',
+                class: '#b58900',
+                comment: '#586e75'
+            },
+            dracula: {
+                keyword: '#ff79c6',
+                string: '#f1fa8c',
+                number: '#bd93f9',
+                type: '#8be9fd',
+                function: '#50fa7b',
+                class: '#50fa7b',
+                comment: '#6272a4'
+            }
+        };
+        return { ...(presets[themeKey] || presets.dark) };
+    }
+
+    normalizeSyntaxColors(raw, theme = 'dark') {
+        const defaults = this.getDefaultSyntaxColors(theme);
         const normalized = { ...defaults };
         if (raw && typeof raw === 'object') {
             Object.keys(defaults).forEach((key) => {
@@ -336,6 +408,21 @@ class MonacoEditorManager {
                 }
             });
         }
+        return normalized;
+    }
+
+    normalizeSyntaxColorsByTheme(raw) {
+        const normalized = {};
+        if (!raw || typeof raw !== 'object') {
+            return normalized;
+        }
+        Object.keys(raw).forEach((themeKey) => {
+            if (!raw[themeKey] || typeof raw[themeKey] !== 'object') {
+                return;
+            }
+            const key = this.normalizeThemeKey(themeKey);
+            normalized[key] = this.normalizeSyntaxColors(raw[themeKey], key);
+        });
         return normalized;
     }
 
@@ -350,8 +437,8 @@ class MonacoEditorManager {
         return normalized.slice(1).toUpperCase();
     }
 
-    buildSyntaxColorRules(syntaxColors) {
-        const colors = this.normalizeSyntaxColors(syntaxColors);
+    buildSyntaxColorRules(syntaxColors, theme = 'dark') {
+        const colors = this.normalizeSyntaxColors(syntaxColors, theme);
         return [
             { token: 'keyword', foreground: this.toMonacoColorHex(colors.keyword) },
             { token: 'keyword.control', foreground: this.toMonacoColorHex(colors.keyword) },
@@ -370,20 +457,43 @@ class MonacoEditorManager {
         ];
     }
 
+    getThemeSyntaxOverride(theme, syntaxSettings = {}) {
+        const themeKey = this.normalizeThemeKey(theme);
+        const hasByThemeInPayload = !!(syntaxSettings && syntaxSettings.syntaxColorsByTheme !== undefined);
+
+        if (hasByThemeInPayload) {
+            this.syntaxColorsByTheme = this.normalizeSyntaxColorsByTheme(syntaxSettings.syntaxColorsByTheme);
+        }
+
+        if (this.syntaxColorsByTheme && Object.prototype.hasOwnProperty.call(this.syntaxColorsByTheme, themeKey)) {
+            return this.normalizeSyntaxColors(this.syntaxColorsByTheme[themeKey], themeKey);
+        }
+
+        if (!hasByThemeInPayload && syntaxSettings && syntaxSettings.syntaxColors && typeof syntaxSettings.syntaxColors === 'object') {
+            return this.normalizeSyntaxColors(syntaxSettings.syntaxColors, themeKey);
+        }
+
+        return null;
+    }
+
     getBaseMonacoThemeName(theme) {
-        const selectedTheme = (typeof theme === 'string' && theme.trim()) ? theme.trim() : 'dark';
+        const selectedTheme = this.normalizeThemeKey(theme);
         if (selectedTheme === 'light') return 'oicpp-light';
         if (selectedTheme === 'dark') return 'oicpp-dark';
         return `oicpp-${selectedTheme}`;
     }
 
-    resolveMonacoTheme(theme, syntaxColors) {
+    resolveMonacoTheme(theme, syntaxSettings = {}) {
         const baseTheme = this.getBaseMonacoThemeName(theme);
         if (typeof monaco === 'undefined' || !monaco.editor) {
             return baseTheme;
         }
 
-        const normalized = this.normalizeSyntaxColors(syntaxColors);
+        const normalized = this.getThemeSyntaxOverride(theme, syntaxSettings);
+        if (!normalized) {
+            return baseTheme;
+        }
+
         const customThemeName = `${baseTheme}-custom`;
         const themePreset = this.getThemePreset(theme);
         try {
@@ -392,11 +502,10 @@ class MonacoEditorManager {
                 inherit: true,
                 rules: [
                     ...(Array.isArray(themePreset.rules) ? themePreset.rules : []),
-                    ...this.buildSyntaxColorRules(normalized)
+                    ...this.buildSyntaxColorRules(normalized, theme)
                 ],
                 colors: themePreset.colors || {}
             });
-            this.syntaxColors = normalized;
             return customThemeName;
         } catch (err) {
             logWarn('定义自定义语法配色主题失败:', err);
@@ -1069,7 +1178,7 @@ class MonacoEditorManager {
             let tabSize = 4;
             let autoCompletionEnabled = true;
             let lineHeightSetting = 0;
-            let syntaxColors = this.getDefaultSyntaxColors();
+            let syntaxSettings = { syntaxColorsByTheme: this.syntaxColorsByTheme };
             try {
                 if (window.electronAPI && window.electronAPI.getAllSettings) {
                     const allSettings = await window.electronAPI.getAllSettings();
@@ -1097,7 +1206,11 @@ class MonacoEditorManager {
                         stickyScrollEnabled = allSettings.stickyScrollEnabled !== false;
                         fontLigaturesEnabled = allSettings.fontLigaturesEnabled !== false;
                         autoCompletionEnabled = allSettings.enableAutoCompletion !== false;
-                        syntaxColors = this.normalizeSyntaxColors(allSettings.syntaxColors);
+                        this.syntaxColorsByTheme = this.normalizeSyntaxColorsByTheme(allSettings.syntaxColorsByTheme);
+                        syntaxSettings = {
+                            syntaxColorsByTheme: allSettings.syntaxColorsByTheme,
+                            syntaxColors: allSettings.syntaxColors
+                        };
                         const parsedTabSize = parseInt(allSettings.tabSize, 10);
                         if (!Number.isNaN(parsedTabSize) && parsedTabSize > 0) {
                             tabSize = parsedTabSize;
@@ -1111,7 +1224,7 @@ class MonacoEditorManager {
 
             this.lineHeightSetting = lineHeightSetting;
             
-            const monacoTheme = this.resolveMonacoTheme(currentTheme, syntaxColors);
+            const monacoTheme = this.resolveMonacoTheme(currentTheme, syntaxSettings);
 
             const editor = monaco.editor.create(monacoContainer, {
                 value: content,
@@ -2271,6 +2384,10 @@ class MonacoEditorManager {
     }
 
     updateSettings(settings) {
+        if (settings && Object.prototype.hasOwnProperty.call(settings, 'syntaxColorsByTheme')) {
+            this.syntaxColorsByTheme = this.normalizeSyntaxColorsByTheme(settings.syntaxColorsByTheme);
+        }
+
         if (this.currentEditor && settings) {
             const updateOptions = {};
             let targetFontSize = null;
@@ -2614,11 +2731,10 @@ class MonacoEditorManager {
             }
         }
         
-        if ((settings.theme !== undefined || settings.syntaxColors !== undefined) && typeof monaco !== 'undefined' && monaco.editor) {
+        if ((settings.theme !== undefined || settings.syntaxColorsByTheme !== undefined || settings.syntaxColors !== undefined) && typeof monaco !== 'undefined' && monaco.editor) {
             const fallbackTheme = document?.body?.getAttribute('data-theme') || 'dark';
             const selectedTheme = settings.theme !== undefined ? settings.theme : fallbackTheme;
-            const selectedSyntaxColors = settings.syntaxColors !== undefined ? settings.syntaxColors : this.syntaxColors;
-            const resolvedTheme = this.resolveMonacoTheme(selectedTheme, selectedSyntaxColors);
+            const resolvedTheme = this.resolveMonacoTheme(selectedTheme, settings);
             try {
                 monaco.editor.setTheme(resolvedTheme);
                 this.updateIndentGuideTone(resolvedTheme);
