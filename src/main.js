@@ -20,7 +20,7 @@ const CONSOLE_PAUSER_SOURCE = require('./utils/consolepauser-source');
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
-const APP_VERSION = '1.3.3';
+const APP_VERSION = '1.3.6';
 const SAVE_ALL_TIMEOUT = 4000;
 
 function getUserIconPath() {
@@ -785,6 +785,7 @@ async function ensureConsolePauserExecutable(compilerPath) {
     fs.mkdirSync(oicppDir, { recursive: true });
 
     const sourcePath = path.join(oicppDir, 'consolepauser.cpp');
+
     const { spawn } = require('child_process');
 
     const decodeBufferAuto = (buffer) => {
