@@ -978,7 +978,7 @@ ipcMain.handle('get-build-info', () => {
     } catch (error) {
         logger.logwarn('读取构建信息失败:', error);
     }
-    return { version: '1.3.6 (V32)', buildTime: '未知', author: 'mywwzh' };
+    return { version: '1.3.6 (v32)', buildTime: '未知', author: 'mywwzh' };
 });
 
 function requestSaveAllAndClose(context = '关闭窗口') {
@@ -5376,7 +5376,7 @@ function resetSettings(settingsType = null) {
 function exportSettings(filePath) {
     try {
         const exportData = {
-            version: '1.3.6 (V32)',
+            version: '1.3.6 (v32)',
             timestamp: new Date().toISOString(),
             settings: settings
         };

@@ -728,6 +728,14 @@ class TabManager {
                 tabData.viewerContainer.dataset.groupId = targetGroupId;
                 tabData.viewerContainer.style.display = 'none';
             }
+        } else if (tabData.viewType === 'markdown-preview' && tabData.previewContainer) {
+            const newGroup = this.groups.get(targetGroupId);
+            const targetArea = newGroup?.editorArea;
+            if (targetArea) {
+                targetArea.appendChild(tabData.previewContainer);
+                tabData.previewContainer.dataset.groupId = targetGroupId;
+                tabData.previewContainer.style.display = 'none';
+            }
         } else if (this.monacoEditorManager && tabData.tabId) {
             this.monacoEditorManager.moveEditorToGroup(tabData.tabId, targetGroupId);
         }
@@ -1240,13 +1248,19 @@ class TabManager {
             }
         } else if (tabData.viewType === 'markdown-preview') {
             this.hideGroupViewContainers(tabData.groupId);
-            if (!tabData.previewContainer) {
+            if (!tabData.previewContainer || !tabData.previewContainer.parentElement) {
                 tabData.previewContainer = this.createMarkdownPreviewContainer({
                     groupId: tabData.groupId,
                     tabId: tabData.tabId,
                     content: tabData.content,
                     filePath: tabData.filePath
                 });
+            } else if (tabData.previewContainer.dataset.groupId !== tabData.groupId) {
+                const targetGroup = this.groups.get(tabData.groupId);
+                if (targetGroup?.editorArea) {
+                    targetGroup.editorArea.appendChild(tabData.previewContainer);
+                    tabData.previewContainer.dataset.groupId = tabData.groupId;
+                }
             }
             if (tabData.previewContainer) {
                 tabData.previewContainer.style.display = 'block';
@@ -4406,7 +4420,7 @@ class TabManager {
                     <img class="welcome-logo-image" alt="OICPP Logo">
                     <div class="welcome-logo">OICPP IDE</div>
                     <div class="welcome-subtitle">为 OIer 优化的 C++ 编程环境</div>
-                    <div class="welcome-version">版本 1.3.6 (V32)</div>
+                    <div class="welcome-version">版本 1.3.6 (v32)</div>
                 </div>
                 
                 <div class="welcome-content">
@@ -4827,7 +4841,7 @@ void hello() {
                     <img class="welcome-logo-image" alt="OICPP Logo">
                     <div class="welcome-logo">OICPP IDE</div>
                     <div class="welcome-subtitle">为 OIer 优化的 C++ 编程环境</div>
-                    <div class="welcome-version">版本 1.3.6 (V32)</div>
+                    <div class="welcome-version">版本 1.3.6 (v32)</div>
                 </div>
                 
                 <div class="welcome-content">
@@ -4855,7 +4869,7 @@ void hello() {
                 
                 <div class="welcome-footer">
                     <p>OICPP IDE - 为 OIer 优化的 C++ 编程环境</p>
-                    <p>版本 1.3.6 (V32), Copyright (C) 2025 mywwzh.</p>
+                    <p>版本 1.3.6 (v32), Copyright (C) 2025 mywwzh.</p>
                 </div>
             </div>
         `;
