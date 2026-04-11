@@ -931,6 +931,36 @@ class MonacoEditorManager {
         return tag === 'input' || tag === 'textarea' || target.isContentEditable;
     }
 
+    isFindWidgetInputFocused(target = document.activeElement) {
+        if (!target || !this.isInputLikeTarget(target)) return false;
+        return !!target.closest('.find-widget');
+    }
+
+    pasteTextIntoInputTarget(target, text) {
+        if (!target || typeof text !== 'string') return false;
+        if (target.isContentEditable) {
+            target.focus();
+            try {
+                if (document.execCommand('insertText', false, text)) {
+                    target.dispatchEvent(new Event('input', { bubbles: true }));
+                    return true;
+                }
+            } catch (_) {}
+            return false;
+        }
+
+        if (typeof target.setRangeText === 'function') {
+            const start = typeof target.selectionStart === 'number' ? target.selectionStart : target.value.length;
+            const end = typeof target.selectionEnd === 'number' ? target.selectionEnd : start;
+            target.focus();
+            target.setRangeText(text, start, end, 'end');
+            target.dispatchEvent(new Event('input', { bubbles: true }));
+            return true;
+        }
+
+        return false;
+    }
+
     async refreshKeybindingsFromSettings() {
         try {
             if (window.electronAPI && window.electronAPI.getAllSettings) {
@@ -1472,6 +1502,19 @@ class MonacoEditorManager {
 
             const pasteKeybinding = this.toMonacoKeybinding('paste') || (monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV);
             editor.addCommand(pasteKeybinding, async () => {
+                const focusedTarget = document.activeElement;
+                if (this.isFindWidgetInputFocused(focusedTarget)) {
+                    try {
+                        const text = await this.readFromClipboard();
+                        if (typeof text === 'string' && this.pasteTextIntoInputTarget(focusedTarget, text)) {
+                            logInfo('已将剪贴板内容粘贴到查找/替换输入框');
+                        }
+                    } catch (err) {
+                        logError('查找框粘贴失败:', err);
+                    }
+                    return;
+                }
+
                 const activeEditor = this.currentEditor;
                 if (activeEditor) {
                     logInfo('粘贴命令被触发 - 使用当前活动编辑器:', this.currentFileName);
