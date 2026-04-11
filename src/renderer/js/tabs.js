@@ -3382,18 +3382,88 @@ class TabManager {
         return filePath.endsWith('.md') || fileName.endsWith('.md');
     }
 
+    resolveMarkdownSourceTabForPreviewToggle(initialTabData = null) {
+        const normalizePath = (p) => String(p || '').replace(/\\/g, '/').toLowerCase();
+        const isValidSourceTab = (tab) => !!tab && tab.viewType !== 'markdown-preview' && this.isMarkdownTab(tab);
+
+        let tabData = initialTabData;
+        if (tabData?.viewType === 'markdown-preview' && tabData.sourceTabKey) {
+            const sourceTab = this.tabs.get(tabData.sourceTabKey);
+            if (isValidSourceTab(sourceTab)) {
+                return sourceTab;
+            }
+        }
+        if (isValidSourceTab(tabData)) {
+            return tabData;
+        }
+
+        const mm = this.monacoEditorManager || window.monacoEditorManager;
+        const currentPath = normalizePath(mm?.currentEditor?.filePath || mm?.currentFilePath || '');
+        const currentName = String(mm?.currentEditor?.fileName || mm?.currentFileName || '').toLowerCase();
+
+        if (currentPath) {
+            for (const tab of this.tabs.values()) {
+                if (!isValidSourceTab(tab)) continue;
+                if (normalizePath(tab.filePath) === currentPath) {
+                    return tab;
+                }
+            }
+        }
+
+        if (currentName && currentName.endsWith('.md')) {
+            for (const tab of this.tabs.values()) {
+                if (!isValidSourceTab(tab)) continue;
+                if (String(tab.fileName || '').toLowerCase() === currentName) {
+                    return tab;
+                }
+            }
+        }
+
+        const activeGroup = this.groups.get(this.activeGroupId || '');
+        if (activeGroup?.activeTabKey) {
+            const activeGroupTab = this.tabs.get(activeGroup.activeTabKey);
+            if (isValidSourceTab(activeGroupTab)) {
+                return activeGroupTab;
+            }
+        }
+
+        for (const tab of this.tabs.values()) {
+            if (isValidSourceTab(tab)) {
+                return tab;
+            }
+        }
+
+        return null;
+    }
+
     toggleMarkdownSplitView() {
-        if (!this.activeTabKey) return;
-        const tabData = this.tabs.get(this.activeTabKey);
+        const initialTabData = this.activeTabKey ? this.tabs.get(this.activeTabKey) : null;
+        const tabData = this.resolveMarkdownSourceTabForPreviewToggle(initialTabData);
         if (!tabData) return;
-        if (!this.isMarkdownTab(tabData)) return;
+
+        this.activeTabKey = tabData.uniqueKey;
+        this.activeTab = tabData.fileName;
+        this.activeGroupId = tabData.groupId || this.activeGroupId;
 
         const previewUniqueKey = `${tabData.uniqueKey}::preview`;
         const existingPreviewTab = this.tabs.get(previewUniqueKey);
 
         if (existingPreviewTab) {
-            this.closeTab(previewUniqueKey);
-            return;
+            const previewGroup = this.groups.get(existingPreviewTab.groupId);
+            const hasValidGroup = !!previewGroup;
+            const hasValidElement = !!(existingPreviewTab.element && existingPreviewTab.element.isConnected);
+
+            if (!hasValidGroup || !hasValidElement) {
+                try {
+                    if (existingPreviewTab.previewContainer?.parentNode) {
+                        existingPreviewTab.previewContainer.parentNode.removeChild(existingPreviewTab.previewContainer);
+                    }
+                } catch (_) { }
+                this.tabs.delete(previewUniqueKey);
+            } else {
+                this.closeTabByUniqueKey(previewUniqueKey);
+                return;
+            }
         }
 
         this.openMarkdownPreviewInNewGroup(tabData);
@@ -3467,6 +3537,8 @@ class TabManager {
 
         this.syncGroupTabs(newGroup.id);
         this.refreshTabLabels();
+
+        this.activateTabByUniqueKey(previewUniqueKey).catch(logError);
     }
 
     setupMarkdownPreviewSync(sourceTabId, previewTabData) {
