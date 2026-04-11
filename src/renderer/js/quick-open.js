@@ -1,6 +1,7 @@
 (function () {
     let allFiles = [];
     let indexedRoot = '';
+    let indexDirty = true;
     const overlay = document.getElementById('quick-open-overlay');
     const input = document.getElementById('quick-open-input');
     const results = document.getElementById('quick-open-results');
@@ -56,6 +57,10 @@
     }
 
     let lastList = [];
+    function markIndexDirty() {
+        indexDirty = true;
+    }
+
     function search(query) {
         if (!query) { render(allFiles.slice(0, 100)); return; }
         const ranked = allFiles.map(f => ({ ...f, __s: fuzzyScore(query, f.path) }))
@@ -70,12 +75,13 @@
         const fileExplorer = window.sidebarManager?.panels?.files;
         const root = fileExplorer?.currentPath || fileExplorer?.workspacePath || '';
         if (!root) return false;
-        if (indexedRoot === root && allFiles.length > 0) return true;
+        if (!indexDirty && indexedRoot === root && allFiles.length > 0) return true;
         indexedRoot = root;
         try {
             const res = await window.electronAPI.walkDirectory(root, { excludeGlobs: ['node_modules', '.git', '.oicpp', '.vscode'] });
             if (res && res.success) {
                 allFiles = res.files || [];
+                indexDirty = false;
                 return true;
             }
         } catch (e) {
@@ -175,6 +181,28 @@
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
     window.quickOpen = { open, close, ensureIndex };
+
+    if (window.electronIPC?.on) {
+        window.electronIPC.on('file-renamed', (_event, _oldPath, _newPath, error) => {
+            if (!error) markIndexDirty();
+        });
+        window.electronIPC.on('file-created', (_event, _filePath, error) => {
+            if (!error) markIndexDirty();
+        });
+        window.electronIPC.on('folder-created', (_event, _folderPath, error) => {
+            if (!error) markIndexDirty();
+        });
+        window.electronIPC.on('file-deleted', (_event, _filePath, error) => {
+            if (!error) markIndexDirty();
+        });
+        window.electronIPC.on('file-pasted', (_event, _sourcePath, _targetPath, _operation, error) => {
+            if (!error) markIndexDirty();
+        });
+    }
+
+    document.addEventListener('workspace-opened', () => {
+        markIndexDirty();
+    });
 
     if (titleTrigger) {
         titleTrigger.addEventListener('click', async (e) => {
