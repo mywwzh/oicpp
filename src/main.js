@@ -538,6 +538,7 @@ function getDefaultSettings() {
         markdownMode: 'split',
         lastUpdateCheck: '1970-01-01',
         pendingUpdate: null, // 待安装的更新信息
+        postInstallNotice: null, // 待展示的更新完成提示
         lastOpen: '', // 最后打开的工作区路径
         autoOpenLastWorkspace: true,
         recentFiles: [], // 最近使用的文件列表
@@ -579,6 +580,63 @@ let currentUpdateDownloadProgress = 0; // 更新下载进度(0-100)
 let isAutoUpdateCheckInProgress = false; // 启动自动检查更新是否进行中
 let pendingInstallerLaunch = null; // 退出后待启动的安装程序
 let pendingInstallerLaunchArmed = false;
+
+function buildWindowsSilentInstallArgs() {
+    const args = ['/S', '/UPDATE_SILENT=1'];
+    try {
+        const installDir = path.dirname(process.execPath || '');
+        if (installDir) {
+            args.push(`/UPDATE_DIR=${installDir}`);
+        }
+    } catch (_) { }
+    return args;
+}
+
+function armPendingUpdateSilentInstallOnQuit(reason = '退出应用') {
+    if (process.platform !== 'win32') return;
+    const pending = settings?.pendingUpdate;
+    if (!pending || !pending.installerPath || !pending.autoInstallOnQuit) return;
+    if (!fs.existsSync(pending.installerPath)) return;
+
+    settings.postInstallNotice = {
+        targetVersion: pending.version || '',
+        description: pending.description || '',
+        source: reason,
+        armedAt: new Date().toISOString()
+    };
+    saveSettings();
+
+    armInstallerLaunchOnQuit(pending.installerPath, buildWindowsSilentInstallArgs());
+}
+
+function showPostInstallNoticeIfNeeded() {
+    const notice = settings?.postInstallNotice;
+    if (!notice || !notice.targetVersion) {
+        return;
+    }
+    if (String(notice.targetVersion) !== String(APP_VERSION)) {
+        return;
+    }
+
+    const desc = String(notice.description || '').replace(/\\n/g, '\n').trim();
+    const detail = desc || '本次更新未提供额外更新说明。';
+    setTimeout(() => {
+        try {
+            dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                title: '更新完成',
+                message: `OICPP IDE 已更新到 ${APP_VERSION}`,
+                detail
+            });
+        } catch (_) { }
+    }, 1200);
+
+    delete settings.postInstallNotice;
+    if (settings.pendingUpdate && String(settings.pendingUpdate.version || '') === String(APP_VERSION)) {
+        delete settings.pendingUpdate;
+    }
+    saveSettings();
+}
 
 function notifyUser(title, body, level = 'info') {
     const safeTitle = String(title || 'OICPP IDE');
@@ -1106,6 +1164,7 @@ function createWindow() {
         })();
 
         checkPendingUpdate();
+        showPostInstallNoticeIfNeeded();
 
         setAutoUpdateCheckInProgress(true);
         checkDailyUpdate()
@@ -4701,19 +4760,6 @@ async function checkForUpdates(isManual = false) {
             return;
         }
 
-        if (process.platform !== 'win32') {
-            logInfo('[更新] 非 Windows 平台，跳过下载更新逻辑');
-            if (isManual && mainWindow) {
-                dialog.showMessageBox(mainWindow, {
-                    type: 'info',
-                    title: '检查更新',
-                    message: '请前往官网获取最新版本',
-                    detail: '即将打开: https://oicpp.mywwzh.top/'
-                }).then(() => { try { shell.openExternal('https://oicpp.mywwzh.top/'); } catch (_) { } });
-            }
-            try { const today = new Date().toISOString().split('T')[0]; settings.lastUpdateCheck = today; saveSettings(); } catch (_) { }
-            return;
-        }
         logInfo('开始检查更新...');
         logInfo('检查类型:', isManual ? '手动检查' : '自动检查');
 
@@ -4742,23 +4788,15 @@ async function checkForUpdates(isManual = false) {
             logInfo('发现新版本:', latestVersion);
 
             const formattedDescription = description.replace(/\\n/g, '\n');
-
-            const choice = dialog.showMessageBoxSync(mainWindow, {
-                type: 'info',
-                title: '发现新版本',
-                message: `发现新版本 ${latestVersion}`,
-                detail: formattedDescription || `有新版本 ${latestVersion} 可用，是否立即更新？`,
-                buttons: ['立即更新', '稍后更新'],
-                defaultId: 0,
-                width: 500
-            });
-
-            if (choice === 0) {
-                logInfo('用户选择立即更新');
-                downloadAndInstallUpdate(updateInfo);
-            } else {
-                logInfo('用户选择稍后更新');
+            if (isManual) {
+                dialog.showMessageBox(mainWindow, {
+                    type: 'info',
+                    title: '发现新版本',
+                    message: `发现新版本 ${latestVersion}`,
+                    detail: formattedDescription || '已开始后台下载更新包。'
+                }).catch(() => { });
             }
+            downloadAndInstallUpdate(updateInfo, { isManual });
         } else {
             logInfo('当前已是最新版本');
             if (isManual) {
@@ -4845,9 +4883,36 @@ async function cleanupOldInstallers(keepFile = null) {
     }
 }
 
-async function downloadAndInstallUpdate(updateInfo = null) {
+function promptLinuxManualInstall(pendingUpdate) {
+    if (!pendingUpdate || !pendingUpdate.installerPath) return;
+    const updateDesc = String(pendingUpdate.description || '').replace(/\\n/g, '\n').trim();
+    const detailParts = [
+        `安装包已下载到：\n${pendingUpdate.installerPath}`,
+        '请手动运行安装包完成更新。'
+    ];
+    if (updateDesc) {
+        detailParts.push('\n更新内容：');
+        detailParts.push(updateDesc);
+    }
+
+    dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: '更新包已下载',
+        message: `版本 ${pendingUpdate.version || ''} 已下载完成`,
+        detail: detailParts.join('\n'),
+        buttons: ['打开所在目录', '知道了'],
+        defaultId: 0
+    }).then((result) => {
+        if (result.response === 0) {
+            try { shell.showItemInFolder(pendingUpdate.installerPath); } catch (_) { }
+        }
+    }).catch(() => { });
+}
+
+async function downloadAndInstallUpdate(updateInfo = null, options = {}) {
     try {
         logInfo('=== 开始下载安装程序(静默) ===');
+        const isManual = !!options.isManual;
 
         if (isUpdateDownloading) {
             logInfo('[更新] 已有静默下载进行中，忽略本次调用');
@@ -4855,12 +4920,14 @@ async function downloadAndInstallUpdate(updateInfo = null) {
         }
 
         let latestVersion = updateInfo?.latestVersion;
+        let updateDescription = updateInfo?.description || '';
         if (!latestVersion) {
             try {
                 const versionResponse = await fetch('https://oicpp.mywwzh.top/api/checkUpdate');
                 if (versionResponse.ok) {
                     const versionInfo = await versionResponse.json();
                     latestVersion = versionInfo.latestVersion;
+                    updateDescription = versionInfo.description || '';
                 }
             } catch (e) {
                 logWarn('[更新] 获取远程版本失败，放弃下载');
@@ -4906,7 +4973,7 @@ async function downloadAndInstallUpdate(updateInfo = null) {
         const installerPath = path.join(userOicppDir, installerFile.name);
 
         if (fs.existsSync(installerPath)) {
-            logInfo('[更新] 安装程序已存在，直接提示安装');
+            logInfo('[更新] 安装程序已存在，复用已有文件');
         } else {
             setUpdateDownloadState({ downloading: true, version: latestVersion, progress: 0 });
             notifyUser('更新下载已开始', `正在后台下载 ${latestVersion}，可继续正常使用。`, 'info');
@@ -4933,7 +5000,11 @@ async function downloadAndInstallUpdate(updateInfo = null) {
             try {
                 await downloader.download(installerFile.downloadUrl, installerPath);
                 logInfo('[更新] 静默下载完成');
-                notifyUser('更新下载完成', `版本 ${latestVersion} 已下载完成，点击“检查更新”可继续安装。`, 'success');
+                if (process.platform === 'win32') {
+                    notifyUser('更新下载完成', `版本 ${latestVersion} 已下载完成，关闭 OICPP 后将自动安装。`, 'success');
+                } else {
+                    notifyUser('更新下载完成', `版本 ${latestVersion} 已下载完成，请手动运行安装包完成更新。`, 'success');
+                }
             } catch (e) {
                 logError('[更新] 静默下载失败:', e.message);
                 setUpdateDownloadState({ downloading: false, version: '', progress: 0 });
@@ -4954,24 +5025,16 @@ async function downloadAndInstallUpdate(updateInfo = null) {
             version: latestVersion,
             installerPath,
             installerName: installerFile.name,
+            description: updateDescription || '',
+            autoInstallOnQuit: process.platform === 'win32',
             downloadTime: new Date().toISOString()
         };
         saveSettings();
 
-        const choice = dialog.showMessageBoxSync(mainWindow, {
-            type: 'info',
-            title: '安装程序已准备就绪',
-            message: '更新安装程序下载完成',
-            detail: '是否立即运行安装程序？\n\n选择"稍后安装"将在下次启动时再次提醒。',
-            buttons: ['立即安装', '稍后安装'],
-            defaultId: 0
-        });
-        if (choice === 0) {
-            runInstaller(installerPath);
-            delete settings.pendingUpdate;
-            saveSettings();
+        if (process.platform === 'win32') {
+            armPendingUpdateSilentInstallOnQuit(isManual ? '手动检查更新' : '启动自动检查更新');
         } else {
-            logInfo('[更新] 用户稍后安装');
+            promptLinuxManualInstall(settings.pendingUpdate);
         }
     } catch (error) {
         setUpdateDownloadState({ downloading: false, version: '', progress: 0 });
@@ -4985,9 +5048,13 @@ async function downloadAndInstallUpdate(updateInfo = null) {
     }
 }
 
-function launchInstallerDetached(installerPath) {
+function launchInstallerDetached(installerPath, installerArgs = []) {
     const { spawn } = require('child_process');
-    const child = spawn('cmd.exe', ['/c', 'start', '""', installerPath], { detached: true, stdio: 'ignore', windowsHide: true });
+    const child = spawn(installerPath, Array.isArray(installerArgs) ? installerArgs : [], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+    });
     child.on('error', (err) => {
         try { logError('[更新] 启动安装程序失败:', err?.message || err); } catch (_) { }
         try {
@@ -4998,9 +5065,9 @@ function launchInstallerDetached(installerPath) {
     child.unref();
 }
 
-function armInstallerLaunchOnQuit(installerPath) {
+function armInstallerLaunchOnQuit(installerPath, installerArgs = []) {
     if (!installerPath || process.platform !== 'win32') return;
-    pendingInstallerLaunch = { installerPath, requestedAt: Date.now() };
+    pendingInstallerLaunch = { installerPath, installerArgs, requestedAt: Date.now() };
     if (pendingInstallerLaunchArmed) return;
     pendingInstallerLaunchArmed = true;
     app.once('will-quit', () => {
@@ -5009,7 +5076,7 @@ function armInstallerLaunchOnQuit(installerPath) {
         pendingInstallerLaunchArmed = false;
         if (!launchInfo || !launchInfo.installerPath) return;
         try {
-            launchInstallerDetached(launchInfo.installerPath);
+            launchInstallerDetached(launchInfo.installerPath, launchInfo.installerArgs || []);
             logInfo('[更新] 应用退出后已尝试启动安装程序');
         } catch (err) {
             logError('[更新] 退出后启动安装程序失败:', err?.message || err);
@@ -5110,37 +5177,21 @@ function checkPendingUpdate() {
         const pendingUpdate = settings.pendingUpdate;
         logInfo('发现待安装的更新:', pendingUpdate);
 
+        if (process.platform === 'win32' && pendingUpdate.autoInstallOnQuit !== true) {
+            pendingUpdate.autoInstallOnQuit = true;
+            settings.pendingUpdate = pendingUpdate;
+            saveSettings();
+        }
+
         if (fs.existsSync(pendingUpdate.installerPath)) {
-            setTimeout(() => {
-                const installChoice = dialog.showMessageBoxSync(mainWindow, {
-                    type: 'info',
-                    title: '发现待安装的更新',
-                    message: `您有一个待安装的更新 (版本 ${pendingUpdate.version})`,
-                    detail: `安装程序已准备就绪。\n\n是否现在运行安装程序？`,
-                    buttons: ['立即安装', '稍后提醒', '取消此更新'],
-                    defaultId: 0
-                });
-
-                if (installChoice === 0) {
-                    logInfo('用户选择立即安装待更新版本');
-                    runInstaller(pendingUpdate.installerPath);
-
-                    delete settings.pendingUpdate;
-                    saveSettings();
-                } else if (installChoice === 2) {
-                    logInfo('用户取消此更新');
-
-                    try {
-                        fs.unlinkSync(pendingUpdate.installerPath);
-                        logInfo('已删除安装程序文件');
-                    } catch (error) {
-                        logWarn('删除安装程序文件失败:', error);
-                    }
-
-                    delete settings.pendingUpdate;
-                    saveSettings();
-                }
-            }, 3000); // 3秒后显示提示
+            if (process.platform === 'win32') {
+                armPendingUpdateSilentInstallOnQuit('启动恢复待安装更新');
+                notifyUser('更新已准备就绪', `版本 ${pendingUpdate.version || ''} 将在退出 OICPP 时自动安装。`, 'info');
+            } else {
+                setTimeout(() => {
+                    promptLinuxManualInstall(pendingUpdate);
+                }, 1500);
+            }
         } else {
 
             delete settings.pendingUpdate;
@@ -5201,7 +5252,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
             let needsSaveAfterMigration = false;
 
             for (const key of validKeys) {
