@@ -517,6 +517,7 @@ function getDefaultSettings() {
         lineHeight: 0,
         theme: 'dark',
         syntaxColorsByTheme: {},
+        syntaxFontStyles: {},
         syntaxColors: {
             keyword: '#c586c0',
             string: '#ce9178',
@@ -5200,7 +5201,8 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+            let needsSaveAfterMigration = false;
 
             for (const key of validKeys) {
                 if (savedSettings[key] !== undefined) {
@@ -5217,7 +5219,12 @@ function loadSettings() {
                 settings.syntaxColorsByTheme = {
                     [currentTheme]: settings.syntaxColors
                 };
+                needsSaveAfterMigration = true;
             }
+            if (needsSaveAfterMigration) {
+                saveSettings();
+            }
+
         } else {
             logInfo('设置文件不存在，使用默认设置');
             saveSettings();
@@ -5249,7 +5256,7 @@ function loadSettings() {
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -5271,43 +5278,12 @@ function saveSettings() {
     }
 }
 
-function migrateOldSettings() {
-    try {
-        const settingsDir = path.join(os.homedir(), '.oicpp');
-        let migrated = false;
-
-        const compilerPath = path.join(settingsDir, 'compiler.json');
-        if (fs.existsSync(compilerPath)) {
-            const compilerSettings = JSON.parse(fs.readFileSync(compilerPath, 'utf8'));
-            settings.compiler = { ...settings.compiler, ...compilerSettings };
-            migrated = true;
-            logInfo('已迁移编译器设置');
-        }
-
-        const editorPath = path.join(settingsDir, 'editor.json');
-        if (fs.existsSync(editorPath)) {
-            const editorSettings = JSON.parse(fs.readFileSync(editorPath, 'utf8'));
-            settings = { ...settings, ...editorSettings };
-            migrated = true;
-            logInfo('已迁移编辑器设置');
-        }
-
-        if (migrated) {
-            saveSettings();
-            logInfo('设置迁移完成，保存统一设置文件');
-        }
-
-    } catch (error) {
-        logError('迁移旧设置失败:', error);
-    }
-}
-
 function updateSettings(settingsType, newSettings) {
     try {
 
         const validKeys = [
             'compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme',
-            'syntaxColorsByTheme', 'syntaxColors', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'autoSave', 'autoSaveInterval',
+            'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'autoSave', 'autoSaveInterval',
             'codeSnippets', 'windowOpacity', 'backgroundImage', 'markdownMode', 'keybindings', 'autoOpenLastWorkspace', 'autoBackupSettings'
         ];
 
@@ -5402,7 +5378,7 @@ function importSettings(filePath) {
             throw new Error('无效的设置文件格式');
         }
 
-        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings'];
+        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings'];
         const defaultSettings = getDefaultSettings();
 
         for (const key of validKeys) {

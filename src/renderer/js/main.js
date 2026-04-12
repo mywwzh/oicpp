@@ -6,6 +6,7 @@ class OICPPApp {
             theme: 'dark',
             fontSize: 14,
             syntaxColorsByTheme: {},
+            syntaxFontStyles: {},
             tabSize: 4,
             wordWrap: false,
             enableAutoCompletion: true
@@ -960,6 +961,7 @@ class OICPPApp {
             fontSize: this.settings.fontSize || 14,
             theme: this.settings.theme || 'dark',
             syntaxColorsByTheme: this.settings.syntaxColorsByTheme,
+            syntaxFontStyles: this.settings.syntaxFontStyles,
             syntaxColors: this.settings.syntaxColors,
             enableAutoCompletion: this.settings.enableAutoCompletion !== false,
             tabSize: this.settings.tabSize || 4,

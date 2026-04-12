@@ -42,6 +42,7 @@ class MonacoEditorManager {
     this._fileIncludeCache = new Map();
         this.lineHeightSetting = 0;
         this.syntaxColorsByTheme = {};
+        this.syntaxStyles = {};
         this._cppSemanticProviders = [];
         
         this.init();
@@ -321,6 +322,24 @@ class MonacoEditorManager {
         return raw;
     }
 
+    getSyntaxTokenKeys() {
+        return [
+            'keyword',
+            'string',
+            'number',
+            'type',
+            'function',
+            'class',
+            'comment',
+            'namespace',
+            'preprocessor',
+            'operator',
+            'pointer',
+            'localVariable',
+            'globalVariable'
+        ];
+    }
+
     getDefaultSyntaxColors(theme = 'dark') {
         const themeKey = this.normalizeThemeKey(theme);
         const presets = {
@@ -331,7 +350,13 @@ class MonacoEditorManager {
                 type: '#4ec9b0',
                 function: '#dcdcaa',
                 class: '#4ec9b0',
-                comment: '#6a9955'
+                comment: '#6a9955',
+                namespace: '#4fc1ff',
+                preprocessor: '#c586c0',
+                operator: '#d4d4d4',
+                pointer: '#d4d4d4',
+                localVariable: '#9cdcfe',
+                globalVariable: '#4fc1ff'
             },
             light: {
                 keyword: '#0000ff',
@@ -340,7 +365,13 @@ class MonacoEditorManager {
                 type: '#267f99',
                 function: '#795e26',
                 class: '#267f99',
-                comment: '#008000'
+                comment: '#008000',
+                namespace: '#0451a5',
+                preprocessor: '#0000ff',
+                operator: '#000000',
+                pointer: '#001080',
+                localVariable: '#001080',
+                globalVariable: '#005cc5'
             },
             monokai: {
                 keyword: '#f92672',
@@ -349,7 +380,13 @@ class MonacoEditorManager {
                 type: '#66d9ef',
                 function: '#a6e22e',
                 class: '#a6e22e',
-                comment: '#75715e'
+                comment: '#75715e',
+                namespace: '#66d9ef',
+                preprocessor: '#f92672',
+                operator: '#f8f8f2',
+                pointer: '#fd971f',
+                localVariable: '#f8f8f2',
+                globalVariable: '#66d9ef'
             },
             'github-light': {
                 keyword: '#d73a49',
@@ -358,7 +395,13 @@ class MonacoEditorManager {
                 type: '#6f42c1',
                 function: '#6f42c1',
                 class: '#6f42c1',
-                comment: '#6a737d'
+                comment: '#6a737d',
+                namespace: '#005cc5',
+                preprocessor: '#d73a49',
+                operator: '#24292e',
+                pointer: '#e36209',
+                localVariable: '#24292e',
+                globalVariable: '#005cc5'
             },
             'github-dark': {
                 keyword: '#ff7b72',
@@ -367,7 +410,13 @@ class MonacoEditorManager {
                 type: '#d2a8ff',
                 function: '#d2a8ff',
                 class: '#d2a8ff',
-                comment: '#6a737d'
+                comment: '#6a737d',
+                namespace: '#79c0ff',
+                preprocessor: '#ff7b72',
+                operator: '#e6edf3',
+                pointer: '#ffa657',
+                localVariable: '#c9d1d9',
+                globalVariable: '#79c0ff'
             },
             'solarized-light': {
                 keyword: '#859900',
@@ -376,7 +425,13 @@ class MonacoEditorManager {
                 type: '#b58900',
                 function: '#b58900',
                 class: '#b58900',
-                comment: '#93a1a1'
+                comment: '#93a1a1',
+                namespace: '#268bd2',
+                preprocessor: '#859900',
+                operator: '#586e75',
+                pointer: '#cb4b16',
+                localVariable: '#657b83',
+                globalVariable: '#268bd2'
             },
             'solarized-dark': {
                 keyword: '#859900',
@@ -385,7 +440,13 @@ class MonacoEditorManager {
                 type: '#b58900',
                 function: '#b58900',
                 class: '#b58900',
-                comment: '#586e75'
+                comment: '#586e75',
+                namespace: '#268bd2',
+                preprocessor: '#859900',
+                operator: '#93a1a1',
+                pointer: '#cb4b16',
+                localVariable: '#93a1a1',
+                globalVariable: '#268bd2'
             },
             dracula: {
                 keyword: '#ff79c6',
@@ -394,10 +455,25 @@ class MonacoEditorManager {
                 type: '#8be9fd',
                 function: '#50fa7b',
                 class: '#50fa7b',
-                comment: '#6272a4'
+                comment: '#6272a4',
+                namespace: '#8be9fd',
+                preprocessor: '#ff79c6',
+                operator: '#f8f8f2',
+                pointer: '#ffb86c',
+                localVariable: '#f8f8f2',
+                globalVariable: '#8be9fd'
             }
         };
         return { ...(presets[themeKey] || presets.dark) };
+    }
+
+    getDefaultSyntaxStyles() {
+        const styles = {};
+        this.getSyntaxTokenKeys().forEach((key) => {
+            styles[key] = { bold: false, italic: false };
+        });
+        styles.comment.italic = true;
+        return styles;
     }
 
     normalizeSyntaxColors(raw, theme = 'dark') {
@@ -408,6 +484,21 @@ class MonacoEditorManager {
                 const value = raw[key];
                 if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.trim())) {
                     normalized[key] = value.trim().toLowerCase();
+                }
+            });
+        }
+        return normalized;
+    }
+
+    normalizeSyntaxStyles(raw) {
+        const defaults = this.getDefaultSyntaxStyles();
+        const normalized = JSON.parse(JSON.stringify(defaults));
+        if (raw && typeof raw === 'object') {
+            Object.keys(defaults).forEach((key) => {
+                const value = raw[key];
+                if (value && typeof value === 'object') {
+                    normalized[key].bold = !!value.bold;
+                    normalized[key].italic = !!value.italic;
                 }
             });
         }
@@ -440,60 +531,107 @@ class MonacoEditorManager {
         return normalized.slice(1).toUpperCase();
     }
 
-    buildSyntaxColorRules(syntaxColors, theme = 'dark') {
+    toMonacoFontStyle(styleConfig) {
+        if (!styleConfig || typeof styleConfig !== 'object') {
+            return '';
+        }
+        const segments = [];
+        if (styleConfig.italic) segments.push('italic');
+        if (styleConfig.bold) segments.push('bold');
+        return segments.join(' ');
+    }
+
+    buildSyntaxColorRules(syntaxColors, syntaxStyles, theme = 'dark') {
         const colors = this.normalizeSyntaxColors(syntaxColors, theme);
+        const styles = this.normalizeSyntaxStyles(syntaxStyles);
         const cppBuiltinTypeKeywords = [
             'bool', 'char', 'char8_t', 'char16_t', 'char32_t', 'double', 'float', 'int', 'long', 'short',
             'signed', 'unsigned', 'void', 'wchar_t', 'size_t', 'ssize_t', 'ptrdiff_t'
         ];
+
+        const makeRule = (token, colorKey) => {
+            const rule = {
+                token,
+                foreground: this.toMonacoColorHex(colors[colorKey])
+            };
+            const fontStyle = this.toMonacoFontStyle(styles[colorKey]);
+            if (fontStyle) {
+                rule.fontStyle = fontStyle;
+            }
+            return rule;
+        };
+
         const cppTypeKeywordRules = cppBuiltinTypeKeywords.map((keyword) => ({
             token: `keyword.${keyword}`,
-            foreground: this.toMonacoColorHex(colors.type)
+            foreground: this.toMonacoColorHex(colors.type),
+            ...(this.toMonacoFontStyle(styles.type) ? { fontStyle: this.toMonacoFontStyle(styles.type) } : {})
         }));
         return [
-            { token: 'keyword', foreground: this.toMonacoColorHex(colors.keyword) },
-            { token: 'keyword.control', foreground: this.toMonacoColorHex(colors.keyword) },
-            { token: 'keyword.operator', foreground: this.toMonacoColorHex(colors.keyword) },
+            makeRule('keyword', 'keyword'),
+            makeRule('keyword.control', 'keyword'),
+            makeRule('keyword.operator', 'operator'),
+            makeRule('keyword.directive', 'preprocessor'),
+            makeRule('meta.preprocessor', 'preprocessor'),
+            makeRule('preprocessor', 'preprocessor'),
             ...cppTypeKeywordRules,
-            { token: 'string', foreground: this.toMonacoColorHex(colors.string) },
-            { token: 'string.escape', foreground: this.toMonacoColorHex(colors.string) },
-            { token: 'number', foreground: this.toMonacoColorHex(colors.number) },
-            { token: 'constant.numeric', foreground: this.toMonacoColorHex(colors.number) },
-            { token: 'type', foreground: this.toMonacoColorHex(colors.type) },
-            { token: 'type.identifier', foreground: this.toMonacoColorHex(colors.type) },
-            { token: 'entity.name.type', foreground: this.toMonacoColorHex(colors.type) },
-            { token: 'entity.name.type.class', foreground: this.toMonacoColorHex(colors.class) },
-            { token: 'entity.name.namespace', foreground: this.toMonacoColorHex(colors.type) },
-            { token: 'support.type', foreground: this.toMonacoColorHex(colors.type) },
-            { token: 'entity.name.function', foreground: this.toMonacoColorHex(colors.function) },
-            { token: 'entity.name.function.constructor', foreground: this.toMonacoColorHex(colors.function) },
-            { token: 'support.function', foreground: this.toMonacoColorHex(colors.function) },
-            { token: 'support.function.builtin', foreground: this.toMonacoColorHex(colors.function) },
-            { token: 'function', foreground: this.toMonacoColorHex(colors.function) },
-            { token: 'entity.name.class', foreground: this.toMonacoColorHex(colors.class) },
-            { token: 'support.class', foreground: this.toMonacoColorHex(colors.class) },
-            { token: 'class', foreground: this.toMonacoColorHex(colors.class) },
-            { token: 'comment', foreground: this.toMonacoColorHex(colors.comment) }
+            makeRule('string', 'string'),
+            makeRule('string.escape', 'string'),
+            makeRule('number', 'number'),
+            makeRule('constant.numeric', 'number'),
+            makeRule('type', 'type'),
+            makeRule('type.identifier', 'type'),
+            makeRule('entity.name.type', 'type'),
+            makeRule('entity.name.type.class', 'class'),
+            makeRule('entity.name.class', 'class'),
+            makeRule('support.class', 'class'),
+            makeRule('class', 'class'),
+            makeRule('entity.name.namespace', 'namespace'),
+            makeRule('namespace', 'namespace'),
+            makeRule('support.type', 'type'),
+            makeRule('entity.name.function', 'function'),
+            makeRule('entity.name.function.constructor', 'function'),
+            makeRule('support.function', 'function'),
+            makeRule('support.function.builtin', 'function'),
+            makeRule('function', 'function'),
+            makeRule('operator', 'operator'),
+            makeRule('delimiter', 'operator'),
+            makeRule('operator.pointer', 'pointer'),
+            makeRule('pointer', 'pointer'),
+            makeRule('variable.local', 'localVariable'),
+            makeRule('localVar', 'localVariable'),
+            makeRule('variable.global', 'globalVariable'),
+            makeRule('globalVar', 'globalVariable'),
+            makeRule('comment', 'comment')
         ];
     }
 
     getThemeSyntaxOverride(theme, syntaxSettings = {}) {
         const themeKey = this.normalizeThemeKey(theme);
-        const hasByThemeInPayload = !!(syntaxSettings && syntaxSettings.syntaxColorsByTheme !== undefined);
+        const hasColorByThemeInPayload = !!(syntaxSettings && syntaxSettings.syntaxColorsByTheme !== undefined);
+        const hasGlobalStyleInPayload = !!(syntaxSettings && syntaxSettings.syntaxFontStyles !== undefined);
 
-        if (hasByThemeInPayload) {
+        if (hasColorByThemeInPayload) {
             this.syntaxColorsByTheme = this.normalizeSyntaxColorsByTheme(syntaxSettings.syntaxColorsByTheme);
         }
+        if (hasGlobalStyleInPayload) {
+            this.syntaxStyles = this.normalizeSyntaxStyles(syntaxSettings.syntaxFontStyles);
+        }
 
+        let colors = this.getDefaultSyntaxColors(themeKey);
         if (this.syntaxColorsByTheme && Object.prototype.hasOwnProperty.call(this.syntaxColorsByTheme, themeKey)) {
-            return this.normalizeSyntaxColors(this.syntaxColorsByTheme[themeKey], themeKey);
+            colors = this.normalizeSyntaxColors(this.syntaxColorsByTheme[themeKey], themeKey);
+        } else if (!hasColorByThemeInPayload && syntaxSettings && syntaxSettings.syntaxColors && typeof syntaxSettings.syntaxColors === 'object') {
+            colors = this.normalizeSyntaxColors(syntaxSettings.syntaxColors, themeKey);
         }
 
-        if (!hasByThemeInPayload && syntaxSettings && syntaxSettings.syntaxColors && typeof syntaxSettings.syntaxColors === 'object') {
-            return this.normalizeSyntaxColors(syntaxSettings.syntaxColors, themeKey);
+        let styles = this.getDefaultSyntaxStyles();
+        if (this.syntaxStyles && typeof this.syntaxStyles === 'object' && Object.keys(this.syntaxStyles).length > 0) {
+            styles = this.normalizeSyntaxStyles(this.syntaxStyles);
+        } else if (!hasGlobalStyleInPayload && syntaxSettings && syntaxSettings.syntaxFontStyles && typeof syntaxSettings.syntaxFontStyles === 'object') {
+            styles = this.normalizeSyntaxStyles(syntaxSettings.syntaxFontStyles);
         }
 
-        return this.getDefaultSyntaxColors(themeKey);
+        return { colors, styles };
     }
 
     getBaseMonacoThemeName(theme) {
@@ -518,7 +656,7 @@ class MonacoEditorManager {
                 inherit: true,
                 rules: [
                     ...(Array.isArray(themePreset.rules) ? themePreset.rules : []),
-                    ...this.buildSyntaxColorRules(normalized, theme)
+                    ...this.buildSyntaxColorRules(normalized.colors, normalized.styles, theme)
                 ],
                 colors: themePreset.colors || {}
             });
@@ -751,27 +889,118 @@ class MonacoEditorManager {
             }
 
             const legend = {
-                tokenTypes: ['type', 'class', 'function'],
+                tokenTypes: ['type', 'class', 'function', 'namespace', 'preprocessor', 'operator', 'pointer', 'localVar', 'globalVar'],
                 tokenModifiers: []
             };
 
             const typeIndex = {
                 type: 0,
                 class: 1,
-                function: 2
+                function: 2,
+                namespace: 3,
+                preprocessor: 4,
+                operator: 5,
+                pointer: 6,
+                localVar: 7,
+                globalVar: 8
             };
 
             const controlKeywords = new Set(['if', 'else', 'for', 'while', 'switch', 'catch', 'return', 'sizeof', 'alignof', 'decltype']);
             const builtinTypePattern = /\b(?:bool|char|char8_t|char16_t|char32_t|double|float|int|long|short|signed|unsigned|void|wchar_t|size_t|ssize_t|ptrdiff_t|int\d+_t|uint\d+_t)\b/g;
             const classDeclPattern = /\b(?:class|struct|enum|union)\s+([A-Za-z_]\w*)/g;
+            const namespaceDeclPattern = /\bnamespace\s+([A-Za-z_]\w*)/g;
             const functionPattern = /\b([A-Za-z_~]\w*)\s*\([^;{}]*\)\s*(?:const\s*)?(?:noexcept(?:\s*\([^)]*\))?\s*)?(?:\{|;|$)/g;
+            const variableDeclPattern = /\b(?:const|constexpr|volatile|mutable|register|static|unsigned|signed|long|short|auto|bool|char|char8_t|char16_t|char32_t|double|float|int|void|wchar_t|size_t|ssize_t|ptrdiff_t|[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)\s+(?:[*&]\s*)*([A-Za-z_]\w*)\s*(?=[=,;\)\[])/g;
+            const preprocessorPattern = /^\s*#\s*([A-Za-z_]\w*)/;
+            const operatorPattern = /(\+\+|--|->\*|->|<<=|>>=|==|!=|<=|>=|&&|\|\||<<|>>|[+\-*/%=&|^~<>!?:])/g;
 
             const provider = {
                 getLegend: () => legend,
                 provideDocumentSemanticTokens: (model) => {
                     const lines = model.getLinesContent();
-                    const tokens = [];
                     const occupied = new Map();
+                    let braceDepth = 0;
+                    const maskCommentContent = (text, inBlockComment) => {
+                        if (!text || text.length === 0) {
+                            return { scanText: text || '', inBlockComment };
+                        }
+
+                        const chars = text.split('');
+                        let inSingleQuote = false;
+                        let inDoubleQuote = false;
+                        let escaped = false;
+                        let inBlock = inBlockComment;
+
+                        for (let idx = 0; idx < chars.length; idx++) {
+                            const ch = chars[idx];
+                            const next = idx + 1 < chars.length ? chars[idx + 1] : '';
+
+                            if (inBlock) {
+                                chars[idx] = ' ';
+                                if (ch === '*' && next === '/') {
+                                    chars[idx + 1] = ' ';
+                                    idx += 1;
+                                    inBlock = false;
+                                }
+                                continue;
+                            }
+
+                            if ((inSingleQuote || inDoubleQuote) && ch === '\\' && !escaped) {
+                                escaped = true;
+                                continue;
+                            }
+
+                            if (inSingleQuote) {
+                                if (ch === '\'' && !escaped) {
+                                    inSingleQuote = false;
+                                }
+                                escaped = false;
+                                continue;
+                            }
+
+                            if (inDoubleQuote) {
+                                if (ch === '"' && !escaped) {
+                                    inDoubleQuote = false;
+                                }
+                                escaped = false;
+                                continue;
+                            }
+
+                            escaped = false;
+
+                            if (ch === '\'') {
+                                inSingleQuote = true;
+                                continue;
+                            }
+
+                            if (ch === '"') {
+                                inDoubleQuote = true;
+                                continue;
+                            }
+
+                            if (ch === '/' && next === '*') {
+                                chars[idx] = ' ';
+                                chars[idx + 1] = ' ';
+                                idx += 1;
+                                inBlock = true;
+                                continue;
+                            }
+
+                            if (ch === '/' && next === '/') {
+                                for (let j = idx; j < chars.length; j++) {
+                                    chars[j] = ' ';
+                                }
+                                break;
+                            }
+                        }
+
+                        return {
+                            scanText: chars.join(''),
+                            inBlockComment: inBlock
+                        };
+                    };
+
+                    let inBlockComment = false;
 
                     const putToken = (line, start, length, tokenType) => {
                         if (length <= 0) return;
@@ -789,22 +1018,47 @@ class MonacoEditorManager {
                         const lineText = lines[i];
                         if (!lineText || lineText.trim().length === 0) continue;
 
+                        const masked = maskCommentContent(lineText, inBlockComment);
+                        const scanText = masked.scanText;
+                        inBlockComment = masked.inBlockComment;
+                        if (!scanText || scanText.trim().length === 0) {
+                            continue;
+                        }
+
                         builtinTypePattern.lastIndex = 0;
                         classDeclPattern.lastIndex = 0;
+                        namespaceDeclPattern.lastIndex = 0;
                         functionPattern.lastIndex = 0;
+                        variableDeclPattern.lastIndex = 0;
+                        operatorPattern.lastIndex = 0;
+
+                        const preprocessorMatch = preprocessorPattern.exec(lineText);
+                        if (preprocessorMatch && preprocessorMatch[1]) {
+                            const directive = preprocessorMatch[1];
+                            const directiveStart = lineText.indexOf(directive);
+                            if (directiveStart >= 0) {
+                                putToken(i, directiveStart, directive.length, 'preprocessor');
+                            }
+                        }
 
                         let match;
-                        while ((match = builtinTypePattern.exec(lineText)) !== null) {
+                        while ((match = builtinTypePattern.exec(scanText)) !== null) {
                             putToken(i, match.index, match[0].length, 'type');
                         }
 
-                        while ((match = classDeclPattern.exec(lineText)) !== null) {
+                        while ((match = namespaceDeclPattern.exec(scanText)) !== null) {
+                            const namespaceName = match[1] || '';
+                            const nameStart = match.index + match[0].lastIndexOf(namespaceName);
+                            putToken(i, nameStart, namespaceName.length, 'namespace');
+                        }
+
+                        while ((match = classDeclPattern.exec(scanText)) !== null) {
                             const className = match[1] || '';
                             const nameStart = match.index + match[0].lastIndexOf(className);
                             putToken(i, nameStart, className.length, 'class');
                         }
 
-                        while ((match = functionPattern.exec(lineText)) !== null) {
+                        while ((match = functionPattern.exec(scanText)) !== null) {
                             const fnName = match[1] || '';
                             if (!fnName || controlKeywords.has(fnName)) {
                                 continue;
@@ -812,6 +1066,25 @@ class MonacoEditorManager {
                             const fnStart = match.index + match[0].indexOf(fnName);
                             putToken(i, fnStart, fnName.length, 'function');
                         }
+
+                        while ((match = variableDeclPattern.exec(scanText)) !== null) {
+                            const varName = match[1] || '';
+                            if (!varName || controlKeywords.has(varName)) {
+                                continue;
+                            }
+                            const varStart = match.index + match[0].lastIndexOf(varName);
+                            putToken(i, varStart, varName.length, braceDepth > 0 ? 'localVar' : 'globalVar');
+                        }
+
+                        while ((match = operatorPattern.exec(scanText)) !== null) {
+                            const op = match[0] || '';
+                            const tokenType = (op === '*' || op === '&' || op === '->' || op === '->*') ? 'pointer' : 'operator';
+                            putToken(i, match.index, op.length, tokenType);
+                        }
+
+                        const openCount = (scanText.match(/\{/g) || []).length;
+                        const closeCount = (scanText.match(/\}/g) || []).length;
+                        braceDepth = Math.max(0, braceDepth + openCount - closeCount);
                     }
 
                     const sorted = Array.from(occupied.values()).sort((a, b) => {
@@ -1331,7 +1604,10 @@ class MonacoEditorManager {
             let tabSize = 4;
             let autoCompletionEnabled = true;
             let lineHeightSetting = 0;
-            let syntaxSettings = { syntaxColorsByTheme: this.syntaxColorsByTheme };
+            let syntaxSettings = {
+                syntaxColorsByTheme: this.syntaxColorsByTheme,
+                syntaxFontStyles: this.syntaxStyles
+            };
             try {
                 if (window.electronAPI && window.electronAPI.getAllSettings) {
                     const allSettings = await window.electronAPI.getAllSettings();
@@ -1360,8 +1636,10 @@ class MonacoEditorManager {
                         fontLigaturesEnabled = allSettings.fontLigaturesEnabled !== false;
                         autoCompletionEnabled = allSettings.enableAutoCompletion !== false;
                         this.syntaxColorsByTheme = this.normalizeSyntaxColorsByTheme(allSettings.syntaxColorsByTheme);
+                        this.syntaxStyles = this.normalizeSyntaxStyles(allSettings.syntaxFontStyles);
                         syntaxSettings = {
                             syntaxColorsByTheme: allSettings.syntaxColorsByTheme,
+                            syntaxFontStyles: this.syntaxStyles,
                             syntaxColors: allSettings.syntaxColors
                         };
                         const parsedTabSize = parseInt(allSettings.tabSize, 10);
@@ -2556,6 +2834,9 @@ class MonacoEditorManager {
         if (settings && Object.prototype.hasOwnProperty.call(settings, 'syntaxColorsByTheme')) {
             this.syntaxColorsByTheme = this.normalizeSyntaxColorsByTheme(settings.syntaxColorsByTheme);
         }
+        if (settings && Object.prototype.hasOwnProperty.call(settings, 'syntaxFontStyles')) {
+            this.syntaxStyles = this.normalizeSyntaxStyles(settings.syntaxFontStyles);
+        }
 
         if (this.currentEditor && settings) {
             const updateOptions = {};
@@ -2902,7 +3183,7 @@ class MonacoEditorManager {
             }
         }
         
-        if ((settings.theme !== undefined || settings.syntaxColorsByTheme !== undefined || settings.syntaxColors !== undefined) && typeof monaco !== 'undefined' && monaco.editor) {
+        if ((settings.theme !== undefined || settings.syntaxColorsByTheme !== undefined || settings.syntaxFontStyles !== undefined || settings.syntaxColors !== undefined) && typeof monaco !== 'undefined' && monaco.editor) {
             const fallbackTheme = document?.body?.getAttribute('data-theme') || 'dark';
             const selectedTheme = settings.theme !== undefined ? settings.theme : fallbackTheme;
             const resolvedTheme = this.resolveMonacoTheme(selectedTheme, settings);
