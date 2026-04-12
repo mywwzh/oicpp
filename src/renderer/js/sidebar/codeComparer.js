@@ -252,6 +252,7 @@ class CodeComparer {
         const stopBtn = document.getElementById('compare-stop-btn');
         const resetBtn = document.getElementById('compare-reset-btn');
         const exportBtn = document.getElementById('export-btn');
+        const inputExpandBtn = document.getElementById('input-expand-btn');
         const stdOutputExpandBtn = document.getElementById('std-output-expand-btn');
         const testOutputExpandBtn = document.getElementById('test-output-expand-btn');
 
@@ -266,6 +267,9 @@ class CodeComparer {
         }
         if (exportBtn) {
             exportBtn.addEventListener('click', () => this.exportResults());
+        }
+        if (inputExpandBtn) {
+            inputExpandBtn.addEventListener('click', () => this.toggleErrorOutputExpand('input'));
         }
         if (stdOutputExpandBtn) {
             stdOutputExpandBtn.addEventListener('click', () => this.toggleErrorOutputExpand('std'));
@@ -1367,9 +1371,11 @@ class CodeComparer {
         const testOutputDiff = document.getElementById('test-output-diff');
         const stdOutputDiffLabel = document.getElementById('std-output-diff-label');
         const testOutputDiffLabel = document.getElementById('test-output-diff-label');
+        const inputExpandBtn = document.getElementById('input-expand-btn');
         const stdOutputExpandBtn = document.getElementById('std-output-expand-btn');
         const testOutputExpandBtn = document.getElementById('test-output-expand-btn');
 
+        this.updateErrorOutputExpandButton(inputExpandBtn, errorResult, 'input');
         this.updateErrorOutputExpandButton(stdOutputExpandBtn, errorResult, 'std');
         this.updateErrorOutputExpandButton(testOutputExpandBtn, errorResult, 'test');
 
@@ -1410,7 +1416,8 @@ class CodeComparer {
             }
 
             if (inputDiff) {
-                inputDiff.textContent = errorResult.input;
+                const inputFull = errorResult.input || '';
+                inputDiff.textContent = errorResult.inputExpanded ? inputFull : this.limitOutputLines(inputFull, 100);
             }
 
             if (stdOutputDiff) {
@@ -1501,6 +1508,7 @@ class CodeComparer {
                 }
             }
 
+            this.updateErrorOutputExpandButton(inputExpandBtn, errorResult, 'input');
             this.updateErrorOutputExpandButton(stdOutputExpandBtn, errorResult, 'std');
             this.updateErrorOutputExpandButton(testOutputExpandBtn, errorResult, 'test');
         }
@@ -1680,6 +1688,10 @@ class CodeComparer {
     isErrorOutputTruncated(errorResult, outputType) {
         if (!errorResult) return false;
 
+        if (outputType === 'input') {
+            return this.isLineLimitedOutputTruncated(errorResult.input || '', 100);
+        }
+
         const output = outputType === 'std'
             ? (errorResult.stdOutput || '')
             : (errorResult.testOutput || '');
@@ -1706,7 +1718,14 @@ class CodeComparer {
             button.style.display = 'none';
             return;
         }
-        const expanded = outputType === 'std' ? !!errorResult?.stdOutputExpanded : !!errorResult?.testOutputExpanded;
+        let expanded = false;
+        if (outputType === 'input') {
+            expanded = !!errorResult?.inputExpanded;
+        } else if (outputType === 'std') {
+            expanded = !!errorResult?.stdOutputExpanded;
+        } else {
+            expanded = !!errorResult?.testOutputExpanded;
+        }
         button.style.display = 'inline-flex';
         button.textContent = expanded ? '收起' : '展开';
         button.title = expanded ? '收起输出' : '展开完整输出';
@@ -1719,7 +1738,9 @@ class CodeComparer {
             return;
         }
 
-        const key = outputType === 'std' ? 'stdOutputExpanded' : 'testOutputExpanded';
+        const key = outputType === 'input'
+            ? 'inputExpanded'
+            : (outputType === 'std' ? 'stdOutputExpanded' : 'testOutputExpanded');
         if (!this.isErrorOutputTruncated(errorResult, outputType)) {
             return;
         }
@@ -1730,7 +1751,9 @@ class CodeComparer {
             return;
         }
 
-        const output = outputType === 'std' ? (errorResult.stdOutput || '') : (errorResult.testOutput || '');
+        const output = outputType === 'input'
+            ? (errorResult.input || '')
+            : (outputType === 'std' ? (errorResult.stdOutput || '') : (errorResult.testOutput || ''));
         const sizeMbText = this.getOutputSizeMbText(output);
         const message = `当前输出大小约 ${sizeMbText} MB。<br><br>过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`;
 
