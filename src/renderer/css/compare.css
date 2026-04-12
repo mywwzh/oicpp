@@ -450,6 +450,7 @@
     flex-shrink: 0;
 }
 
+#input-expand-btn,
 #std-output-expand-btn,
 #test-output-expand-btn {
     display: none;
