@@ -110,36 +110,92 @@
                                 <span class="syntax-color-label">关键字</span>
                                 <input type="color" id="syntax-color-keyword" class="syntax-color-input" value="#c586c0" title="关键字颜色">
                                 <input type="text" id="syntax-color-keyword-text" class="syntax-color-text" value="#c586c0" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-keyword-bold"><span>粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-keyword-italic"><span>斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
                                 <span class="syntax-color-label">字符串</span>
                                 <input type="color" id="syntax-color-string" class="syntax-color-input" value="#ce9178" title="字符串颜色">
                                 <input type="text" id="syntax-color-string-text" class="syntax-color-text" value="#ce9178" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-string-bold"><span>粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-string-italic"><span>斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
                                 <span class="syntax-color-label">数字</span>
                                 <input type="color" id="syntax-color-number" class="syntax-color-input" value="#b5cea8" title="数字颜色">
                                 <input type="text" id="syntax-color-number-text" class="syntax-color-text" value="#b5cea8" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-number-bold"><span>粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-number-italic"><span>斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
                                 <span class="syntax-color-label">类型</span>
                                 <input type="color" id="syntax-color-type" class="syntax-color-input" value="#4ec9b0" title="类型颜色">
                                 <input type="text" id="syntax-color-type-text" class="syntax-color-text" value="#4ec9b0" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-type-bold"><span>粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-type-italic"><span>斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
                                 <span class="syntax-color-label">函数</span>
                                 <input type="color" id="syntax-color-function" class="syntax-color-input" value="#dcdcaa" title="函数颜色">
                                 <input type="text" id="syntax-color-function-text" class="syntax-color-text" value="#dcdcaa" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-function-bold"><span>粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-function-italic"><span>斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
                                 <span class="syntax-color-label">类名</span>
                                 <input type="color" id="syntax-color-class" class="syntax-color-input" value="#4ec9b0" title="类名颜色">
                                 <input type="text" id="syntax-color-class-text" class="syntax-color-text" value="#4ec9b0" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-class-bold"><span>粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-class-italic"><span>斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
                                 <span class="syntax-color-label">注释</span>
                                 <input type="color" id="syntax-color-comment" class="syntax-color-input" value="#6a9955" title="注释颜色">
                                 <input type="text" id="syntax-color-comment-text" class="syntax-color-text" value="#6a9955" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-comment-bold"><span>粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-comment-italic" checked><span>斜体</span></label>
+                            </div>
+                            <div class="syntax-color-row">
+                                <span class="syntax-color-label">命名空间</span>
+                                <input type="color" id="syntax-color-namespace" class="syntax-color-input" value="#4fc1ff" title="命名空间颜色">
+                                <input type="text" id="syntax-color-namespace-text" class="syntax-color-text" value="#4fc1ff" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-namespace-bold"><span>粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-namespace-italic"><span>斜体</span></label>
+                            </div>
+                            <div class="syntax-color-row">
+                                <span class="syntax-color-label">预处理指令</span>
+                                <input type="color" id="syntax-color-preprocessor" class="syntax-color-input" value="#c586c0" title="预处理指令颜色">
+                                <input type="text" id="syntax-color-preprocessor-text" class="syntax-color-text" value="#c586c0" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-preprocessor-bold"><span>粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-preprocessor-italic"><span>斜体</span></label>
+                            </div>
+                            <div class="syntax-color-row">
+                                <span class="syntax-color-label">运算符</span>
+                                <input type="color" id="syntax-color-operator" class="syntax-color-input" value="#d4d4d4" title="运算符颜色">
+                                <input type="text" id="syntax-color-operator-text" class="syntax-color-text" value="#d4d4d4" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-operator-bold"><span>粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-operator-italic"><span>斜体</span></label>
+                            </div>
+                            <div class="syntax-color-row">
+                                <span class="syntax-color-label">指针符号</span>
+                                <input type="color" id="syntax-color-pointer" class="syntax-color-input" value="#d4d4d4" title="指针符号颜色">
+                                <input type="text" id="syntax-color-pointer-text" class="syntax-color-text" value="#d4d4d4" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-pointer-bold"><span>粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-pointer-italic"><span>斜体</span></label>
+                            </div>
+                            <div class="syntax-color-row">
+                                <span class="syntax-color-label">局部变量</span>
+                                <input type="color" id="syntax-color-localVariable" class="syntax-color-input" value="#9cdcfe" title="局部变量颜色">
+                                <input type="text" id="syntax-color-localVariable-text" class="syntax-color-text" value="#9cdcfe" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-localVariable-bold"><span>粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-localVariable-italic"><span>斜体</span></label>
+                            </div>
+                            <div class="syntax-color-row">
+                                <span class="syntax-color-label">全局变量</span>
+                                <input type="color" id="syntax-color-globalVariable" class="syntax-color-input" value="#4fc1ff" title="全局变量颜色">
+                                <input type="text" id="syntax-color-globalVariable-text" class="syntax-color-text" value="#4fc1ff" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-globalVariable-bold"><span>粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-globalVariable-italic"><span>斜体</span></label>
                             </div>
                         </div>
                         <div class="input-group syntax-color-actions">
@@ -147,19 +203,23 @@
                         </div>
                         <div class="syntax-preview" aria-label="语法配色实时预览">
                             <div class="syntax-preview-title">实时预览</div>
-                            <pre id="syntax-color-preview" class="syntax-preview-code"><span class="tok-keyword">#include</span> <span class="tok-string">&lt;iostream&gt;</span>
+                            <pre id="syntax-color-preview" class="syntax-preview-code"><span class="tok-preprocessor">#include</span> <span class="tok-string">&lt;iostream&gt;</span>
 
-<span class="tok-keyword">using</span> <span class="tok-keyword">namespace</span> std;
+<span class="tok-keyword">using</span> <span class="tok-keyword">namespace</span> <span class="tok-namespace">std</span>;
+
+<span class="tok-type">int</span> <span class="tok-globalVariable">gCount</span> <span class="tok-operator">=</span> <span class="tok-number">1</span>;
 
 <span class="tok-keyword">class</span> <span class="tok-class">Solver</span> {
 <span class="tok-keyword">public</span>:
     <span class="tok-type">int</span> <span class="tok-function">add</span>(<span class="tok-type">int</span> a, <span class="tok-type">int</span> b) {
+        <span class="tok-type">int</span> <span class="tok-localVariable">sum</span> <span class="tok-operator">=</span> a <span class="tok-operator">+</span> b;
+        <span class="tok-type">int</span> <span class="tok-pointer">*</span><span class="tok-localVariable">p</span> <span class="tok-operator">=</span> <span class="tok-pointer">&</span><span class="tok-localVariable">sum</span>;
         <span class="tok-comment">// test value</span>
-        <span class="tok-keyword">return</span> a + b + <span class="tok-number">10</span>;
+        <span class="tok-keyword">return</span> <span class="tok-pointer">*</span><span class="tok-localVariable">p</span> <span class="tok-operator">+</span> <span class="tok-number">10</span>;
     }
 };</pre>
                         </div>
-                        <div class="hint">可分别设置关键词、字符串、数字等语法颜色，实时预览会同步到主编辑器。</div>
+                        <div class="hint">支持按类别设置颜色与粗体/斜体，包含 namespace、预处理指令、局部/全局变量、指针和运算符，实时预览会同步到主编辑器。</div>
                     </div>
 
                 </div>
