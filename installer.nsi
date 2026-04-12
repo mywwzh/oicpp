@@ -13,12 +13,15 @@
 !include "MUI.nsh"
 !include "nsDialogs.nsh"
 !include "WinMessages.nsh"
+!include "FileFunc.nsh"
 
 Unicode true
 
 Var CPP_ASSOC_CHECKBOX
 Var DESKTOP_SHORTCUT_CHECKBOX
 Var CONTEXT_MENU_CHECKBOX
+Var UPDATE_SILENT_MODE
+Var UPDATE_INSTALL_DIR
 
 SetCompressor lzma
 
@@ -56,6 +59,34 @@ InstallDir "$PROGRAMFILES\OICPP IDE"
 InstallDirRegKey HKLM "${PRODUCT_DIR_REGKEY}" ""
 ShowInstDetails show
 ShowUnInstDetails show
+
+Function .onInit
+  StrCpy $UPDATE_SILENT_MODE "0"
+  StrCpy $UPDATE_INSTALL_DIR ""
+
+  ${GetParameters} $R0
+  ${GetOptions} $R0 "/UPDATE_SILENT=" $R1
+  ${If} $R1 != ""
+    StrCpy $UPDATE_SILENT_MODE $R1
+  ${EndIf}
+
+  ${GetOptions} $R0 "/UPDATE_DIR=" $R2
+  ${If} $R2 != ""
+    StrCpy $UPDATE_INSTALL_DIR $R2
+    StrCpy $INSTDIR $R2
+  ${EndIf}
+
+  ${If} $UPDATE_SILENT_MODE == "1"
+    SetSilent silent
+    SetAutoClose true
+    ${If} $UPDATE_INSTALL_DIR == ""
+      ReadRegStr $R3 HKLM "${PRODUCT_DIR_REGKEY}" ""
+      ${If} $R3 != ""
+        ${GetParent} $R3 $INSTDIR
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
 
 Section "OICPP 主程序" SEC01
   IfFileExists "$PROFILE\.oicpp\settings.json" 0 +3
