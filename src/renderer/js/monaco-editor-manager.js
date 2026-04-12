@@ -42,6 +42,7 @@ class MonacoEditorManager {
     this._fileIncludeCache = new Map();
         this.lineHeightSetting = 0;
         this.syntaxColorsByTheme = {};
+        this._cppSemanticProviders = [];
         
         this.init();
 
@@ -290,6 +291,8 @@ class MonacoEditorManager {
                     this._themesDefined = true;
                 }
             } catch (e) { logWarn('定义自定义主题失败:', e); }
+
+            this.registerCppSemanticHighlightingProviders();
             
             this.isInitialized = true;
             logInfo('Monaco Editor 管理器初始化完成');
@@ -439,19 +442,36 @@ class MonacoEditorManager {
 
     buildSyntaxColorRules(syntaxColors, theme = 'dark') {
         const colors = this.normalizeSyntaxColors(syntaxColors, theme);
+        const cppBuiltinTypeKeywords = [
+            'bool', 'char', 'char8_t', 'char16_t', 'char32_t', 'double', 'float', 'int', 'long', 'short',
+            'signed', 'unsigned', 'void', 'wchar_t', 'size_t', 'ssize_t', 'ptrdiff_t'
+        ];
+        const cppTypeKeywordRules = cppBuiltinTypeKeywords.map((keyword) => ({
+            token: `keyword.${keyword}`,
+            foreground: this.toMonacoColorHex(colors.type)
+        }));
         return [
             { token: 'keyword', foreground: this.toMonacoColorHex(colors.keyword) },
             { token: 'keyword.control', foreground: this.toMonacoColorHex(colors.keyword) },
             { token: 'keyword.operator', foreground: this.toMonacoColorHex(colors.keyword) },
+            ...cppTypeKeywordRules,
             { token: 'string', foreground: this.toMonacoColorHex(colors.string) },
             { token: 'string.escape', foreground: this.toMonacoColorHex(colors.string) },
             { token: 'number', foreground: this.toMonacoColorHex(colors.number) },
             { token: 'constant.numeric', foreground: this.toMonacoColorHex(colors.number) },
             { token: 'type', foreground: this.toMonacoColorHex(colors.type) },
             { token: 'type.identifier', foreground: this.toMonacoColorHex(colors.type) },
+            { token: 'entity.name.type', foreground: this.toMonacoColorHex(colors.type) },
+            { token: 'entity.name.type.class', foreground: this.toMonacoColorHex(colors.class) },
+            { token: 'entity.name.namespace', foreground: this.toMonacoColorHex(colors.type) },
+            { token: 'support.type', foreground: this.toMonacoColorHex(colors.type) },
             { token: 'entity.name.function', foreground: this.toMonacoColorHex(colors.function) },
+            { token: 'entity.name.function.constructor', foreground: this.toMonacoColorHex(colors.function) },
+            { token: 'support.function', foreground: this.toMonacoColorHex(colors.function) },
+            { token: 'support.function.builtin', foreground: this.toMonacoColorHex(colors.function) },
             { token: 'function', foreground: this.toMonacoColorHex(colors.function) },
             { token: 'entity.name.class', foreground: this.toMonacoColorHex(colors.class) },
+            { token: 'support.class', foreground: this.toMonacoColorHex(colors.class) },
             { token: 'class', foreground: this.toMonacoColorHex(colors.class) },
             { token: 'comment', foreground: this.toMonacoColorHex(colors.comment) }
         ];
@@ -473,7 +493,7 @@ class MonacoEditorManager {
             return this.normalizeSyntaxColors(syntaxSettings.syntaxColors, themeKey);
         }
 
-        return null;
+        return this.getDefaultSyntaxColors(themeKey);
     }
 
     getBaseMonacoThemeName(theme) {
@@ -490,10 +510,6 @@ class MonacoEditorManager {
         }
 
         const normalized = this.getThemeSyntaxOverride(theme, syntaxSettings);
-        if (!normalized) {
-            return baseTheme;
-        }
-
         const customThemeName = `${baseTheme}-custom`;
         const themePreset = this.getThemePreset(theme);
         try {
@@ -722,6 +738,112 @@ class MonacoEditorManager {
             };
             checkMonaco();
         });
+    }
+
+    registerCppSemanticHighlightingProviders() {
+        try {
+            if (typeof monaco === 'undefined' || !monaco.languages || !monaco.languages.registerDocumentSemanticTokensProvider) {
+                return;
+            }
+
+            if (Array.isArray(this._cppSemanticProviders) && this._cppSemanticProviders.length > 0) {
+                return;
+            }
+
+            const legend = {
+                tokenTypes: ['type', 'class', 'function'],
+                tokenModifiers: []
+            };
+
+            const typeIndex = {
+                type: 0,
+                class: 1,
+                function: 2
+            };
+
+            const controlKeywords = new Set(['if', 'else', 'for', 'while', 'switch', 'catch', 'return', 'sizeof', 'alignof', 'decltype']);
+            const builtinTypePattern = /\b(?:bool|char|char8_t|char16_t|char32_t|double|float|int|long|short|signed|unsigned|void|wchar_t|size_t|ssize_t|ptrdiff_t|int\d+_t|uint\d+_t)\b/g;
+            const classDeclPattern = /\b(?:class|struct|enum|union)\s+([A-Za-z_]\w*)/g;
+            const functionPattern = /\b([A-Za-z_~]\w*)\s*\([^;{}]*\)\s*(?:const\s*)?(?:noexcept(?:\s*\([^)]*\))?\s*)?(?:\{|;|$)/g;
+
+            const provider = {
+                getLegend: () => legend,
+                provideDocumentSemanticTokens: (model) => {
+                    const lines = model.getLinesContent();
+                    const tokens = [];
+                    const occupied = new Map();
+
+                    const putToken = (line, start, length, tokenType) => {
+                        if (length <= 0) return;
+                        const key = `${line}:${start}`;
+                        const nextType = typeIndex[tokenType] ?? 0;
+                        const prev = occupied.get(key);
+                        if (prev && prev.type >= nextType) {
+                            return;
+                        }
+                        const entry = { line, start, length, type: nextType };
+                        occupied.set(key, entry);
+                    };
+
+                    for (let i = 0; i < lines.length; i++) {
+                        const lineText = lines[i];
+                        if (!lineText || lineText.trim().length === 0) continue;
+
+                        builtinTypePattern.lastIndex = 0;
+                        classDeclPattern.lastIndex = 0;
+                        functionPattern.lastIndex = 0;
+
+                        let match;
+                        while ((match = builtinTypePattern.exec(lineText)) !== null) {
+                            putToken(i, match.index, match[0].length, 'type');
+                        }
+
+                        while ((match = classDeclPattern.exec(lineText)) !== null) {
+                            const className = match[1] || '';
+                            const nameStart = match.index + match[0].lastIndexOf(className);
+                            putToken(i, nameStart, className.length, 'class');
+                        }
+
+                        while ((match = functionPattern.exec(lineText)) !== null) {
+                            const fnName = match[1] || '';
+                            if (!fnName || controlKeywords.has(fnName)) {
+                                continue;
+                            }
+                            const fnStart = match.index + match[0].indexOf(fnName);
+                            putToken(i, fnStart, fnName.length, 'function');
+                        }
+                    }
+
+                    const sorted = Array.from(occupied.values()).sort((a, b) => {
+                        if (a.line !== b.line) return a.line - b.line;
+                        return a.start - b.start;
+                    });
+
+                    let prevLine = 0;
+                    let prevStart = 0;
+                    const data = [];
+                    for (const token of sorted) {
+                        const deltaLine = token.line - prevLine;
+                        const deltaStart = deltaLine === 0 ? token.start - prevStart : token.start;
+                        data.push(deltaLine, deltaStart, token.length, token.type, 0);
+                        prevLine = token.line;
+                        prevStart = token.start;
+                    }
+
+                    return {
+                        data: new Uint32Array(data),
+                        resultId: null
+                    };
+                },
+                releaseDocumentSemanticTokens: () => {}
+            };
+
+            const cppDisposable = monaco.languages.registerDocumentSemanticTokensProvider('cpp', provider);
+            const cDisposable = monaco.languages.registerDocumentSemanticTokensProvider('c', provider);
+            this._cppSemanticProviders = [cppDisposable, cDisposable];
+        } catch (error) {
+            logWarn('注册 C/C++ 语义高亮提供器失败:', error);
+        }
     }
 
     getDefaultKeybindings() {
@@ -1195,6 +1317,7 @@ class MonacoEditorManager {
             if (typeof monaco === 'undefined') {
                 await this.waitForMonaco();
             }
+            this.registerCppSemanticHighlightingProviders();
             
 
 
@@ -1261,6 +1384,7 @@ class MonacoEditorManager {
                 language: this.getLanguageFromFileName(fileName),
                 theme: monacoTheme,
                 automaticLayout: true,
+                'semanticHighlighting.enabled': true,
                 glyphMargin: true,
                     links: true,
                     occurrencesHighlight: true,
@@ -2310,6 +2434,7 @@ class MonacoEditorManager {
             if (typeof monaco === 'undefined') {
                 await this.waitForMonaco();
             }
+            this.registerCppSemanticHighlightingProviders();
 
             const originalPath = options.originalPath || '';
             const modifiedPath = options.modifiedPath || '';
@@ -2331,6 +2456,7 @@ class MonacoEditorManager {
             const diffEditor = monaco.editor.createDiffEditor(container, {
                 renderSideBySide: true,
                 automaticLayout: true,
+                'semanticHighlighting.enabled': true,
                 readOnly: false,
                 originalEditable: false,
                 enableSplitViewResizing: true,
@@ -2433,6 +2559,7 @@ class MonacoEditorManager {
 
         if (this.currentEditor && settings) {
             const updateOptions = {};
+            updateOptions['semanticHighlighting.enabled'] = true;
             let targetFontSize = null;
             if (settings.fontSize !== undefined) {
                 const fontSize = parseInt(settings.fontSize, 10);
@@ -2679,6 +2806,7 @@ class MonacoEditorManager {
     this.editors.forEach((editor, fileName) => {
             if (editor && editor !== this.currentEditor) {
                 const updateOptions = {};
+                updateOptions['semanticHighlighting.enabled'] = true;
                 let targetFontSize = null;
                 if (settings.fontSize !== undefined) {
                     const fontSize = parseInt(settings.fontSize, 10);
