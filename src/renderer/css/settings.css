@@ -328,7 +328,7 @@ body[data-theme="dracula"] {
 
 .syntax-color-row {
     display: grid;
-    grid-template-columns: 96px 42px 1fr;
+    grid-template-columns: 96px 42px 1fr auto auto;
     gap: 10px;
     align-items: center;
 }
@@ -363,6 +363,23 @@ body[data-theme="dracula"] {
     text-transform: uppercase;
 }
 
+.syntax-style-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+    font-size: 12px;
+    color: var(--settings-text-secondary);
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.syntax-style-toggle input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+}
+
 .syntax-color-actions {
     margin-top: 10px;
     justify-content: flex-end;
@@ -394,13 +411,19 @@ body[data-theme="dracula"] {
     color: var(--settings-text);
 }
 
-.syntax-preview-code .tok-keyword { color: var(--syntax-keyword); }
-.syntax-preview-code .tok-string { color: var(--syntax-string); }
-.syntax-preview-code .tok-number { color: var(--syntax-number); }
-.syntax-preview-code .tok-type { color: var(--syntax-type); }
-.syntax-preview-code .tok-function { color: var(--syntax-function); }
-.syntax-preview-code .tok-class { color: var(--syntax-class); }
-.syntax-preview-code .tok-comment { color: var(--syntax-comment); }
+.syntax-preview-code .tok-keyword { color: var(--syntax-keyword); font-weight: var(--syntax-keyword-weight, 400); font-style: var(--syntax-keyword-style, normal); }
+.syntax-preview-code .tok-string { color: var(--syntax-string); font-weight: var(--syntax-string-weight, 400); font-style: var(--syntax-string-style, normal); }
+.syntax-preview-code .tok-number { color: var(--syntax-number); font-weight: var(--syntax-number-weight, 400); font-style: var(--syntax-number-style, normal); }
+.syntax-preview-code .tok-type { color: var(--syntax-type); font-weight: var(--syntax-type-weight, 400); font-style: var(--syntax-type-style, normal); }
+.syntax-preview-code .tok-function { color: var(--syntax-function); font-weight: var(--syntax-function-weight, 400); font-style: var(--syntax-function-style, normal); }
+.syntax-preview-code .tok-class { color: var(--syntax-class); font-weight: var(--syntax-class-weight, 400); font-style: var(--syntax-class-style, normal); }
+.syntax-preview-code .tok-comment { color: var(--syntax-comment); font-weight: var(--syntax-comment-weight, 400); font-style: var(--syntax-comment-style, normal); }
+.syntax-preview-code .tok-namespace { color: var(--syntax-namespace); font-weight: var(--syntax-namespace-weight, 400); font-style: var(--syntax-namespace-style, normal); }
+.syntax-preview-code .tok-preprocessor { color: var(--syntax-preprocessor); font-weight: var(--syntax-preprocessor-weight, 400); font-style: var(--syntax-preprocessor-style, normal); }
+.syntax-preview-code .tok-operator { color: var(--syntax-operator); font-weight: var(--syntax-operator-weight, 400); font-style: var(--syntax-operator-style, normal); }
+.syntax-preview-code .tok-pointer { color: var(--syntax-pointer); font-weight: var(--syntax-pointer-weight, 400); font-style: var(--syntax-pointer-style, normal); }
+.syntax-preview-code .tok-localVariable { color: var(--syntax-localVariable); font-weight: var(--syntax-localVariable-weight, 400); font-style: var(--syntax-localVariable-style, normal); }
+.syntax-preview-code .tok-globalVariable { color: var(--syntax-globalVariable); font-weight: var(--syntax-globalVariable-weight, 400); font-style: var(--syntax-globalVariable-style, normal); }
 
 .setting-group label {
     display: block;

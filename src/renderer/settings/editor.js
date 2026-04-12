@@ -6,6 +6,7 @@ class EditorSettings {
             lineHeight: 0,
             theme: 'dark',
             syntaxColorsByTheme: {},
+            syntaxFontStyles: {},
             tabSize: 4,
             wordWrap: false,
             foldingEnabled: true,
@@ -101,6 +102,24 @@ class EditorSettings {
         return raw;
     }
 
+    getSyntaxTokenKeys() {
+        return [
+            'keyword',
+            'string',
+            'number',
+            'type',
+            'function',
+            'class',
+            'comment',
+            'namespace',
+            'preprocessor',
+            'operator',
+            'pointer',
+            'localVariable',
+            'globalVariable'
+        ];
+    }
+
     getDefaultSyntaxColors(theme = 'dark') {
         const themeKey = this.normalizeThemeKey(theme);
         const presets = {
@@ -111,7 +130,13 @@ class EditorSettings {
                 type: '#4ec9b0',
                 function: '#dcdcaa',
                 class: '#4ec9b0',
-                comment: '#6a9955'
+                comment: '#6a9955',
+                namespace: '#4fc1ff',
+                preprocessor: '#c586c0',
+                operator: '#d4d4d4',
+                pointer: '#d4d4d4',
+                localVariable: '#9cdcfe',
+                globalVariable: '#4fc1ff'
             },
             light: {
                 keyword: '#0000ff',
@@ -120,7 +145,13 @@ class EditorSettings {
                 type: '#267f99',
                 function: '#795e26',
                 class: '#267f99',
-                comment: '#008000'
+                comment: '#008000',
+                namespace: '#0451a5',
+                preprocessor: '#0000ff',
+                operator: '#000000',
+                pointer: '#001080',
+                localVariable: '#001080',
+                globalVariable: '#005cc5'
             },
             monokai: {
                 keyword: '#f92672',
@@ -129,7 +160,13 @@ class EditorSettings {
                 type: '#66d9ef',
                 function: '#a6e22e',
                 class: '#a6e22e',
-                comment: '#75715e'
+                comment: '#75715e',
+                namespace: '#66d9ef',
+                preprocessor: '#f92672',
+                operator: '#f8f8f2',
+                pointer: '#fd971f',
+                localVariable: '#f8f8f2',
+                globalVariable: '#66d9ef'
             },
             'github-light': {
                 keyword: '#d73a49',
@@ -138,7 +175,13 @@ class EditorSettings {
                 type: '#6f42c1',
                 function: '#6f42c1',
                 class: '#6f42c1',
-                comment: '#6a737d'
+                comment: '#6a737d',
+                namespace: '#005cc5',
+                preprocessor: '#d73a49',
+                operator: '#24292e',
+                pointer: '#e36209',
+                localVariable: '#24292e',
+                globalVariable: '#005cc5'
             },
             'github-dark': {
                 keyword: '#ff7b72',
@@ -147,7 +190,13 @@ class EditorSettings {
                 type: '#d2a8ff',
                 function: '#d2a8ff',
                 class: '#d2a8ff',
-                comment: '#6a737d'
+                comment: '#6a737d',
+                namespace: '#79c0ff',
+                preprocessor: '#ff7b72',
+                operator: '#e6edf3',
+                pointer: '#ffa657',
+                localVariable: '#c9d1d9',
+                globalVariable: '#79c0ff'
             },
             'solarized-light': {
                 keyword: '#859900',
@@ -156,7 +205,13 @@ class EditorSettings {
                 type: '#b58900',
                 function: '#b58900',
                 class: '#b58900',
-                comment: '#93a1a1'
+                comment: '#93a1a1',
+                namespace: '#268bd2',
+                preprocessor: '#859900',
+                operator: '#586e75',
+                pointer: '#cb4b16',
+                localVariable: '#657b83',
+                globalVariable: '#268bd2'
             },
             'solarized-dark': {
                 keyword: '#859900',
@@ -165,7 +220,13 @@ class EditorSettings {
                 type: '#b58900',
                 function: '#b58900',
                 class: '#b58900',
-                comment: '#586e75'
+                comment: '#586e75',
+                namespace: '#268bd2',
+                preprocessor: '#859900',
+                operator: '#93a1a1',
+                pointer: '#cb4b16',
+                localVariable: '#93a1a1',
+                globalVariable: '#268bd2'
             },
             dracula: {
                 keyword: '#ff79c6',
@@ -174,10 +235,25 @@ class EditorSettings {
                 type: '#8be9fd',
                 function: '#50fa7b',
                 class: '#50fa7b',
-                comment: '#6272a4'
+                comment: '#6272a4',
+                namespace: '#8be9fd',
+                preprocessor: '#ff79c6',
+                operator: '#f8f8f2',
+                pointer: '#ffb86c',
+                localVariable: '#f8f8f2',
+                globalVariable: '#8be9fd'
             }
         };
         return { ...(presets[themeKey] || presets.dark) };
+    }
+
+    getDefaultSyntaxFontStyles() {
+        const styles = {};
+        this.getSyntaxTokenKeys().forEach((key) => {
+            styles[key] = { bold: false, italic: false };
+        });
+        styles.comment.italic = true;
+        return styles;
     }
 
     normalizeHexColor(color, fallback = '#c586c0') {
@@ -202,6 +278,21 @@ class EditorSettings {
         return normalized;
     }
 
+    normalizeSyntaxFontStyles(raw) {
+        const defaults = this.getDefaultSyntaxFontStyles();
+        const normalized = JSON.parse(JSON.stringify(defaults));
+        if (raw && typeof raw === 'object') {
+            Object.keys(defaults).forEach((key) => {
+                const style = raw[key];
+                if (style && typeof style === 'object') {
+                    normalized[key].bold = !!style.bold;
+                    normalized[key].italic = !!style.italic;
+                }
+            });
+        }
+        return normalized;
+    }
+
     normalizeSyntaxColorsByTheme(raw) {
         const normalized = {};
         if (!raw || typeof raw !== 'object') {
@@ -217,8 +308,13 @@ class EditorSettings {
     }
 
     areSyntaxColorsEqual(left, right) {
-        const keys = ['keyword', 'string', 'number', 'type', 'function', 'class', 'comment'];
+        const keys = this.getSyntaxTokenKeys();
         return keys.every((key) => left[key] === right[key]);
+    }
+
+    areSyntaxFontStylesEqual(left, right) {
+        const keys = this.getSyntaxTokenKeys();
+        return keys.every((key) => !!left[key]?.bold === !!right[key]?.bold && !!left[key]?.italic === !!right[key]?.italic);
     }
 
     getCurrentThemeFromUI() {
@@ -232,6 +328,14 @@ class EditorSettings {
         const byTheme = this.normalizeSyntaxColorsByTheme(syntaxColorsByTheme);
         if (byTheme[themeKey]) {
             return this.normalizeSyntaxColors(byTheme[themeKey], themeKey);
+        }
+        return defaults;
+    }
+
+    getEffectiveSyntaxStyles(syntaxStyles = this.settings.syntaxFontStyles) {
+        const defaults = this.getDefaultSyntaxFontStyles();
+        if (syntaxStyles && typeof syntaxStyles === 'object' && Object.keys(syntaxStyles).length > 0) {
+            return this.normalizeSyntaxFontStyles(syntaxStyles);
         }
         return defaults;
     }
@@ -252,30 +356,52 @@ class EditorSettings {
         return byTheme;
     }
 
+    setSyntaxStyleOverride(styles) {
+        const defaults = this.getDefaultSyntaxFontStyles();
+        const normalizedStyles = this.normalizeSyntaxFontStyles(styles);
+        if (this.areSyntaxFontStylesEqual(normalizedStyles, defaults)) {
+            this.settings.syntaxFontStyles = {};
+        } else {
+            this.settings.syntaxFontStyles = normalizedStyles;
+        }
+        return this.settings.syntaxFontStyles;
+    }
+
     persistCurrentThemeSyntaxColors(theme = this.getCurrentThemeFromUI()) {
         const currentColors = this.getSyntaxColorsFromUI(theme);
+        const currentStyles = this.getSyntaxStylesFromUI(theme);
         this.setThemeSyntaxColorOverride(theme, currentColors);
+        this.setSyntaxStyleOverride(currentStyles);
     }
 
     updateSyntaxColorUI(colors, theme = this.getCurrentThemeFromUI()) {
         const normalized = this.normalizeSyntaxColors(colors, theme);
+        const normalizedStyles = this.getEffectiveSyntaxStyles();
         Object.keys(normalized).forEach((key) => {
             const colorInput = document.getElementById(`syntax-color-${key}`);
             const textInput = document.getElementById(`syntax-color-${key}-text`);
+            const boldInput = document.getElementById(`syntax-style-${key}-bold`);
+            const italicInput = document.getElementById(`syntax-style-${key}-italic`);
             if (colorInput) {
                 colorInput.value = normalized[key];
             }
             if (textInput) {
                 textInput.value = normalized[key].toUpperCase();
             }
+            if (boldInput) {
+                boldInput.checked = !!normalizedStyles[key]?.bold;
+            }
+            if (italicInput) {
+                italicInput.checked = !!normalizedStyles[key]?.italic;
+            }
         });
-        this.updateSyntaxPreview(normalized, theme);
+        this.updateSyntaxPreview(normalized, theme, normalizedStyles);
     }
 
     getSyntaxColorsFromUI(theme = this.getCurrentThemeFromUI()) {
         const defaults = this.getDefaultSyntaxColors(theme);
         const result = { ...defaults };
-        Object.keys(defaults).forEach((key) => {
+        this.getSyntaxTokenKeys().forEach((key) => {
             const textInput = document.getElementById(`syntax-color-${key}-text`);
             const colorInput = document.getElementById(`syntax-color-${key}`);
             const raw = textInput?.value || colorInput?.value;
@@ -284,19 +410,35 @@ class EditorSettings {
         return result;
     }
 
-    updateSyntaxPreview(colors = null, theme = this.getCurrentThemeFromUI()) {
+    getSyntaxStylesFromUI() {
+        const defaults = this.getDefaultSyntaxFontStyles();
+        const result = JSON.parse(JSON.stringify(defaults));
+        this.getSyntaxTokenKeys().forEach((key) => {
+            const boldInput = document.getElementById(`syntax-style-${key}-bold`);
+            const italicInput = document.getElementById(`syntax-style-${key}-italic`);
+            if (boldInput) {
+                result[key].bold = !!boldInput.checked;
+            }
+            if (italicInput) {
+                result[key].italic = !!italicInput.checked;
+            }
+        });
+        return this.normalizeSyntaxFontStyles(result);
+    }
+
+    updateSyntaxPreview(colors = null, theme = this.getCurrentThemeFromUI(), styles = null) {
         const preview = document.getElementById('syntax-color-preview');
         if (!preview) {
             return;
         }
         const normalized = this.normalizeSyntaxColors(colors || this.getSyntaxColorsFromUI(theme), theme);
-        preview.style.setProperty('--syntax-keyword', normalized.keyword);
-        preview.style.setProperty('--syntax-string', normalized.string);
-        preview.style.setProperty('--syntax-number', normalized.number);
-        preview.style.setProperty('--syntax-type', normalized.type);
-        preview.style.setProperty('--syntax-function', normalized.function);
-        preview.style.setProperty('--syntax-class', normalized.class);
-        preview.style.setProperty('--syntax-comment', normalized.comment);
+        const normalizedStyles = this.normalizeSyntaxFontStyles(styles || this.getSyntaxStylesFromUI(theme));
+
+        this.getSyntaxTokenKeys().forEach((key) => {
+            preview.style.setProperty(`--syntax-${key}`, normalized[key]);
+            preview.style.setProperty(`--syntax-${key}-weight`, normalizedStyles[key]?.bold ? '700' : '400');
+            preview.style.setProperty(`--syntax-${key}-style`, normalizedStyles[key]?.italic ? 'italic' : 'normal');
+        });
 
         const fontSelect = document.getElementById('editor-font');
         const fontSizeInput = document.getElementById('editor-font-size');
@@ -314,6 +456,8 @@ class EditorSettings {
         const bindColorPair = (key) => {
             const colorInput = document.getElementById(`syntax-color-${key}`);
             const textInput = document.getElementById(`syntax-color-${key}-text`);
+            const boldInput = document.getElementById(`syntax-style-${key}-bold`);
+            const italicInput = document.getElementById(`syntax-style-${key}-italic`);
             if (!colorInput || !textInput) {
                 return;
             }
@@ -336,6 +480,22 @@ class EditorSettings {
                 this.updateSyntaxPreview(null, currentTheme);
                 this.notifyMainWindowPreview();
             });
+
+            if (boldInput) {
+                boldInput.addEventListener('change', () => {
+                    const currentTheme = this.getCurrentThemeFromUI();
+                    this.updateSyntaxPreview(null, currentTheme);
+                    this.notifyMainWindowPreview();
+                });
+            }
+
+            if (italicInput) {
+                italicInput.addEventListener('change', () => {
+                    const currentTheme = this.getCurrentThemeFromUI();
+                    this.updateSyntaxPreview(null, currentTheme);
+                    this.notifyMainWindowPreview();
+                });
+            }
         };
 
         Object.keys(defaults).forEach(bindColorPair);
@@ -347,6 +507,7 @@ class EditorSettings {
                 const byTheme = this.normalizeSyntaxColorsByTheme(this.settings.syntaxColorsByTheme);
                 delete byTheme[currentTheme];
                 this.settings.syntaxColorsByTheme = byTheme;
+                this.settings.syntaxFontStyles = {};
                 this.updateSyntaxColorUI(this.getDefaultSyntaxColors(currentTheme), currentTheme);
                 this.notifyMainWindowPreview();
             });
@@ -764,6 +925,9 @@ class EditorSettings {
                         }
                         return byTheme;
                     })(),
+                    syntaxFontStyles: (() => {
+                        return this.normalizeSyntaxFontStyles(allSettings.syntaxFontStyles);
+                    })(),
                     tabSize: allSettings.tabSize || 4,
                     fontLigaturesEnabled: allSettings.fontLigaturesEnabled !== false,
                     foldingEnabled: allSettings.foldingEnabled !== false,
@@ -786,6 +950,7 @@ class EditorSettings {
                     lineHeight: 0,
                     theme: 'dark',
                     syntaxColorsByTheme: {},
+                    syntaxFontStyles: {},
                     tabSize: 4,
                     stickyScrollEnabled: true,
                     foldingEnabled: true,
@@ -807,6 +972,7 @@ class EditorSettings {
                 lineHeight: 0,
                 theme: 'dark',
                 syntaxColorsByTheme: {},
+                syntaxFontStyles: {},
                 tabSize: 4,
                 stickyScrollEnabled: true,
                 foldingEnabled: true,
@@ -965,8 +1131,11 @@ class EditorSettings {
         const currentTheme = this.normalizeThemeKey(newSettings.theme || this.settings.theme || 'dark');
         const syntaxColorsByTheme = this.normalizeSyntaxColorsByTheme(this.settings.syntaxColorsByTheme);
         const syntaxColors = this.getSyntaxColorsFromUI(currentTheme);
+        const syntaxFontStyles = this.getSyntaxStylesFromUI();
         this.setThemeSyntaxColorOverride(currentTheme, syntaxColors, syntaxColorsByTheme);
+        this.setSyntaxStyleOverride(syntaxFontStyles);
         newSettings.syntaxColorsByTheme = syntaxColorsByTheme;
+        newSettings.syntaxFontStyles = this.normalizeSyntaxFontStyles(this.settings.syntaxFontStyles);
 
         const defaultKeybindings = this.getDefaultKeybindings();
         const editableKeys = new Set(this.getEditableKeybindingKeys());
@@ -1144,8 +1313,9 @@ class EditorSettings {
         }
         const currentTheme = this.normalizeThemeKey(themeSelect?.value || this.settings.theme || 'dark');
         const effectiveSyntaxColors = this.getEffectiveSyntaxColors(currentTheme, this.settings.syntaxColorsByTheme);
+        const effectiveSyntaxStyles = this.getEffectiveSyntaxStyles(this.settings.syntaxFontStyles);
         this.updateSyntaxColorUI(effectiveSyntaxColors, currentTheme);
-        this.updateSyntaxPreview(effectiveSyntaxColors, currentTheme);
+        this.updateSyntaxPreview(effectiveSyntaxColors, currentTheme, effectiveSyntaxStyles);
         if (foldingCheckbox) {
             foldingCheckbox.checked = this.settings.foldingEnabled !== false;
         }

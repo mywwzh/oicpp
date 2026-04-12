@@ -382,7 +382,7 @@
 }
 
 .empty-state-button {
-    background-color: var(--accent-color, #0e639c);
+    background-color: var(--button-bg, #0e639c);
     color: #ffffff;
     border: none;
     padding: 8px 16px;
@@ -393,11 +393,11 @@
 }
 
 .empty-state-button:hover {
-    background-color: var(--accent-color-hover, #1177bb);
+    background-color: var(--button-hover-bg, #1177bb);
 }
 
 .empty-state-button:active {
-    background-color: var(--accent-color-active, #0a5a8a);
+    background-color: var(--button-hover-bg, #1177bb);
 }
 
 .context-menu {
