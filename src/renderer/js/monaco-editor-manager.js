@@ -1140,7 +1140,8 @@ class MonacoEditorManager {
             debugStepOver: 'F7',
             debugStepInto: 'F8',
             debugStepOut: 'Shift+F8',
-            cloudCompile: 'F12'
+            cloudCompile: 'F12',
+            openTerminal: 'Ctrl+`'
         };
     }
 
@@ -1162,7 +1163,8 @@ class MonacoEditorManager {
             'debugStepOver',
             'debugStepInto',
             'debugStepOut',
-            'cloudCompile'
+            'cloudCompile',
+            'openTerminal'
         ];
     }
 

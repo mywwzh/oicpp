@@ -20,6 +20,7 @@ class OICPPApp {
     this._autoContinueOnStart = false;
     this._debugSessionId = 0;
     this._debugExited = false;
+        this.terminalPanel = null;
         this.updateDownloadState = {
             autoChecking: false,
             downloading: false,
@@ -70,6 +71,12 @@ class OICPPApp {
             this.setupIPC();
             await this.initAccountMenu();
             await this.loadSettings();
+            if (typeof IntegratedTerminalPanel !== 'undefined') {
+                this.terminalPanel = new IntegratedTerminalPanel({
+                    getApp: () => this
+                });
+                await this.terminalPanel.init();
+            }
             await this.restoreStartupWorkspaceIfNeeded();
             this.configureAutoSave();
             this.loadDefaultFiles();
@@ -230,6 +237,9 @@ class OICPPApp {
                 break;
             case 'format-code':
                 this.formatCode();
+                break;
+            case 'open-terminal':
+                await this.openIntegratedTerminal();
                 break;
             case 'cloud-compile':
                 if (!this.ensureLocalFileForFeature('云端编译')) {
@@ -502,6 +512,12 @@ class OICPPApp {
                 this.compileAndRun();
             });
 
+            if (typeof window.electronAPI.onMenuOpenTerminal === 'function') {
+                window.electronAPI.onMenuOpenTerminal(() => {
+                    this.openIntegratedTerminal();
+                });
+            }
+
             window.electronAPI.onMenuDebug(() => {
                 if (this.isDebugging) this.handleDebugContinue();
                 else this.startDebug();
@@ -720,6 +736,10 @@ class OICPPApp {
         }
 
         this.updateMenuShortcutHints();
+
+        if (this.terminalPanel && typeof this.terminalPanel.applyEditorFontSettings === 'function') {
+            this.terminalPanel.applyEditorFontSettings();
+        }
     }
 
     getDefaultKeybindings() {
@@ -743,7 +763,8 @@ class OICPPApp {
             debugStepOver: 'F7',
             debugStepInto: 'F8',
             debugStepOut: 'Shift+F8',
-            cloudCompile: 'F12'
+            cloudCompile: 'F12',
+            openTerminal: 'Ctrl+`'
         };
     }
 
@@ -759,6 +780,7 @@ class OICPPApp {
     updateMenuShortcutHints() {
         const mappings = [
             { action: 'cloud-compile', key: 'cloudCompile' },
+            { action: 'open-terminal', key: 'openTerminal' },
             { action: 'format-code', key: 'formatCode' },
             { action: 'compile', key: 'compileCode' },
             { action: 'run', key: 'runCode' },
@@ -1065,6 +1087,7 @@ class OICPPApp {
             if (matches('cloudCompile') && this.compilerManager && typeof this.compilerManager.cloudCompileCurrentFile === 'function') {
                 return handle(() => this.compilerManager.cloudCompileCurrentFile());
             }
+            if (matches('openTerminal')) return handle(() => this.openIntegratedTerminal());
 
             if (e.shiftKey && e.altKey && e.key === 'F') {
                 e.preventDefault();
@@ -1129,6 +1152,7 @@ class OICPPApp {
             if (matches('cloudCompile') && this.compilerManager && typeof this.compilerManager.cloudCompileCurrentFile === 'function') {
                 return handle(() => this.compilerManager.cloudCompileCurrentFile());
             }
+            if (matches('openTerminal')) return handle(() => this.openIntegratedTerminal());
         }
     }
 
@@ -1707,6 +1731,17 @@ class OICPPApp {
             return false;
         }
         return true;
+    }
+
+    async openIntegratedTerminal(options = {}) {
+        if (!this.terminalPanel) {
+            this.showMessage('内置终端组件未初始化', 'error');
+            return;
+        }
+        await this.terminalPanel.open({
+            createIfNone: true,
+            forceCreate: !!options.forceCreate
+        });
     }
 
     async saveFile() {

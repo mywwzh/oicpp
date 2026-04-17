@@ -35,7 +35,8 @@ class SettingsManager {
                     debugStepOver: 'F7',
                     debugStepInto: 'F8',
                     debugStepOut: 'Shift+F8',
-                    cloudCompile: 'F12'
+                    cloudCompile: 'F12',
+                    openTerminal: 'Ctrl+`'
                 }
             },
             templates: {
@@ -284,6 +285,7 @@ class SettingsManager {
                     debugStepInto: 'F8',
                     debugStepOut: 'Shift+F8',
                     cloudCompile: 'F12',
+                    openTerminal: 'Ctrl+`',
                     runAllSamples: 'Ctrl+Alt+R'
                 }
             },

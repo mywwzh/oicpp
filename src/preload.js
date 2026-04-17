@@ -492,6 +492,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getHomeDir: () => ipcRenderer.invoke('get-home-dir'),
     ensureDir: (dirPath) => ipcRenderer.invoke('ensure-dir', dirPath),
 
+    getTerminalFeatureStatus: () => ipcRenderer.invoke('terminal-feature-status'),
+    createTerminal: (options) => ipcRenderer.invoke('terminal-create', options),
+    writeTerminal: (terminalId, data) => ipcRenderer.invoke('terminal-write', terminalId, data),
+    resizeTerminal: (terminalId, cols, rows) => ipcRenderer.invoke('terminal-resize', terminalId, cols, rows),
+    killTerminal: (terminalId) => ipcRenderer.invoke('terminal-kill', terminalId),
+    listTerminals: () => ipcRenderer.invoke('terminal-list'),
+
     onMenuSaveFile: (callback) => ipcRenderer.on('menu-save-file', callback),
     onApplySettingsPreview: (callback) => ipcRenderer.on('apply-settings-preview', (event, ...args) => callback(...args)),
     onSettingsApplied: (callback) => ipcRenderer.on('settings-applied', (event, ...args) => callback(...args)),
@@ -504,6 +511,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onMenuOpenFile: (callback) => ipcRenderer.on('menu-open-file', callback),
     onMenuOpenFolder: (callback) => ipcRenderer.on('menu-open-folder', callback),
     onMenuSaveAs: (callback) => ipcRenderer.on('menu-save-as', callback),
+    onMenuOpenTerminal: (callback) => ipcRenderer.on('menu-open-terminal', callback),
     onMenuAbout: (callback) => ipcRenderer.on('menu-about', callback),
     onMenuSettings: (callback) => ipcRenderer.on('menu-settings', callback),
     onMenuCheckUpdates: (callback) => ipcRenderer.on('menu-check-updates', callback),
@@ -528,6 +536,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('external-file-changed', listener);
     },
     onSampleTesterCreateProblem: (callback) => ipcRenderer.on('sample-tester-create-problem', (_e, data) => callback && callback(data)),
+    onTerminalData: (callback) => ipcRenderer.on('terminal-data', (_event, payload) => callback && callback(payload)),
+    onTerminalExit: (callback) => ipcRenderer.on('terminal-exit', (_event, payload) => callback && callback(payload)),
 
     getCpuThreads: () => ipcRenderer.invoke('get-cpu-threads'),
 
