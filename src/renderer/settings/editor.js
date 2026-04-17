@@ -49,7 +49,8 @@ class EditorSettings {
             debugStepOver: 'F7',
             debugStepInto: 'F8',
             debugStepOut: 'Shift+F8',
-            cloudCompile: 'F12'
+            cloudCompile: 'F12',
+            openTerminal: 'Ctrl+`'
         };
     }
 
@@ -71,7 +72,8 @@ class EditorSettings {
             'debugStepOver',
             'debugStepInto',
             'debugStepOut',
-            'cloudCompile'
+            'cloudCompile',
+            'openTerminal'
         ];
     }
 
@@ -92,8 +94,9 @@ class EditorSettings {
             { key: 'debugContinue', label: '调试继续 (继续/暂停)' },
             { key: 'debugStepOver', label: '单步跳过' },
             { key: 'debugStepInto', label: '单步进入' },
-                        { key: 'debugStepOut', label: '单步跳出' },
-                        { key: 'cloudCompile', label: '云端编译' }
+            { key: 'debugStepOut', label: '单步跳出' },
+            { key: 'cloudCompile', label: '云端编译' },
+            { key: 'openTerminal', label: '打开内置终端' }
         ];
     }
 
