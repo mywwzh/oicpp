@@ -469,6 +469,36 @@ class SampleTester {
         }
     }
 
+    async handleFileDeleted(filePath) {
+        try {
+            if (!filePath) return;
+            const samplesPath = await this.computeSamplesFilePathForFile(filePath);
+            if (!samplesPath) return;
+
+            const exists = await window.electronAPI.checkFileExists(samplesPath);
+            if (!exists) return;
+
+            const result = await window.electronAPI.deleteFile(samplesPath);
+            if (result && result.success === false) {
+                logWarn('[样例测试器] 删除样例配置失败:', samplesPath, result.error || '未知错误');
+                return;
+            }
+
+            if (this.currentFile === filePath) {
+                this.currentFile = null;
+                this.samplesFilePath = null;
+                this.samples = [];
+                this.nextId = 1;
+                this.statusFilter = null;
+                this.updateUI();
+            }
+
+            logInfo('[样例测试器] 已删除样例配置:', samplesPath);
+        } catch (error) {
+            logWarn('[样例测试器] 删除样例配置失败:', error);
+        }
+    }
+
     async loadSamples() {
         if (!this.samplesFilePath) {
             this.samples = [];

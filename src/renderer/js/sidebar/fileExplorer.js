@@ -1907,6 +1907,11 @@ class FileExplorer {
                                 this.selectedFile = this.getPrimarySelection();
                             }
 
+                            const samplePanel = window.sidebarManager?.panels?.samples;
+                            if (samplePanel && typeof samplePanel.handleFileDeleted === 'function') {
+                                await samplePanel.handleFileDeleted(file.path);
+                            }
+
                             if (window.tabManager) {
                                 const normalizedPath = typeof file.path === 'string' ? file.path.replace(/\\/g, '/') : '';
                                 if (normalizedPath && typeof window.tabManager.closeTabByUniqueKey === 'function') {
