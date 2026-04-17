@@ -16,6 +16,7 @@ try {
 }
 const logger = require('./utils/logger');
 const CONSOLE_PAUSER_SOURCE = require('./utils/consolepauser-source');
+const IntegratedTerminalManager = require('./terminal-manager');
 
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
@@ -34,6 +35,16 @@ function getUserIconPath() {
 let mainWindow;
 let sampleTesterServer = null; // HTTP 服务实例
 let competitiveCompanionServer = null; // Competitive Companion
+const terminalManager = new IntegratedTerminalManager({
+    sendToRenderer: (channel, payload) => {
+        if (!mainWindow || mainWindow.isDestroyed()) {
+            return;
+        }
+        try {
+            mainWindow.webContents.send(channel, payload);
+        } catch (_) { }
+    }
+});
 
 const AUTH_BASE = 'https://auth.mywwzh.top';
 const AUTH_LOGIN_PATH = '/oicpp_ide_login';
@@ -567,7 +578,8 @@ function getDefaultSettings() {
             debugStepOver: 'F7',
             debugStepInto: 'F8',
             debugStepOut: 'Shift+F8',
-            cloudCompile: 'F12'
+            cloudCompile: 'F12',
+            openTerminal: 'Ctrl+`'
         }
     };
 }
@@ -1248,11 +1260,21 @@ function createMenuBar() {
         }
         return fallback;
     };
+    const normalizeAcceleratorForMenu = (value, fallback) => {
+        const source = typeof value === 'string' && value.trim() ? value.trim() : fallback;
+        if (!source) {
+            return fallback;
+        }
+        return source
+            .replace(/^Ctrl\+/i, 'CmdOrCtrl+')
+            .replace(/^Control\+/i, 'CmdOrCtrl+');
+    };
 
     const debugAccelerator = resolveRunMenuAccelerator('toggleDebug', 'F5');
     const compileAccelerator = resolveRunMenuAccelerator('compileCode', 'F9');
     const runAccelerator = resolveRunMenuAccelerator('runCode', 'F10');
     const compileRunAccelerator = resolveRunMenuAccelerator('compileAndRun', 'F11');
+    const openTerminalAccelerator = normalizeAcceleratorForMenu(resolveRunMenuAccelerator('openTerminal', 'Ctrl+`'), 'CmdOrCtrl+`');
     const menuTemplate = [
         {
             label: '文件',
@@ -1348,6 +1370,20 @@ function createMenuBar() {
                     accelerator: compileRunAccelerator,
                     click: () => {
                         mainWindow.webContents.send('menu-compile-run');
+                    }
+                }
+            ]
+        },
+        {
+            label: '工具',
+            submenu: [
+                {
+                    label: '打开内置终端',
+                    accelerator: openTerminalAccelerator,
+                    click: () => {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('menu-open-terminal');
+                        }
                     }
                 }
             ]
@@ -1600,6 +1636,7 @@ function validateSampleTesterPayload(data) {
 app.on('before-quit', () => {
     try { if (sampleTesterServer) { sampleTesterServer.close(); sampleTesterServer = null; } } catch (_) { }
     try { if (competitiveCompanionServer) { competitiveCompanionServer.close(); competitiveCompanionServer = null; } } catch (_) { }
+    try { terminalManager.disposeAll(); } catch (_) { }
 });
 
 function setupWindowControls() {
@@ -1771,6 +1808,45 @@ function setupIPC() {
 
     ipcMain.handle('get-all-settings', () => {
         return settings;
+    });
+
+    ipcMain.handle('terminal-feature-status', () => {
+        return terminalManager.getStatus();
+    });
+
+    ipcMain.handle('terminal-create', (_event, options = {}) => {
+        try {
+            const terminal = terminalManager.createSession(options || {});
+            return {
+                ok: true,
+                ...terminal
+            };
+        } catch (error) {
+            logWarn('[终端] 创建失败:', error?.message || error);
+            return {
+                ok: false,
+                error: error?.message || String(error)
+            };
+        }
+    });
+
+    ipcMain.handle('terminal-write', (_event, terminalId, data) => {
+        const ok = terminalManager.write(terminalId, data);
+        return { ok };
+    });
+
+    ipcMain.handle('terminal-resize', (_event, terminalId, cols, rows) => {
+        const ok = terminalManager.resize(terminalId, cols, rows);
+        return { ok };
+    });
+
+    ipcMain.handle('terminal-kill', (_event, terminalId) => {
+        const ok = terminalManager.kill(terminalId);
+        return { ok };
+    });
+
+    ipcMain.handle('terminal-list', () => {
+        return terminalManager.listSessions();
     });
 
     ipcMain.handle('ide-login-start', async () => {
@@ -6171,6 +6247,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
     stopHeartbeatService();
     disposeAllFileWatchers();
+    try { terminalManager.disposeAll(); } catch (_) { }
     try {
         const tempDir = path.join(os.homedir(), '.oicpp', 'codeTemp');
         fs.rmSync(tempDir, { recursive: true, force: true });

@@ -1,0 +1,163 @@
+.editor-layout {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.integrated-terminal-panel {
+    width: 100%;
+    height: 290px;
+    min-height: 220px;
+    max-height: 65vh;
+    border-top: 1px solid var(--border-color, #3c3c3c);
+    background: var(--card-bg, #1e1e1e);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.integrated-terminal-panel.collapsed {
+    display: none;
+}
+
+.integrated-terminal-resizer {
+    height: 4px;
+    cursor: row-resize;
+    background: transparent;
+    border-bottom: 1px solid transparent;
+}
+
+.integrated-terminal-resizer:hover,
+.integrated-terminal-resizer.dragging {
+    border-bottom-color: var(--primary-color, #007acc);
+}
+
+.integrated-terminal-header {
+    height: 36px;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px 0 10px;
+    border-bottom: 1px solid var(--border-color, #3c3c3c);
+    background: var(--primary-bg, #252526);
+}
+
+.integrated-terminal-title {
+    font-size: 12px;
+    color: var(--text-color, #cccccc);
+    letter-spacing: 0.3px;
+}
+
+.integrated-terminal-header-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.integrated-terminal-tabs {
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--border-color, #3c3c3c);
+    background: var(--tab-bg, #1f1f1f);
+}
+
+.integrated-terminal-tab {
+    border: none;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    cursor: pointer;
+    color: var(--text-color, #cccccc);
+    background: transparent;
+    border-right: 1px solid var(--border-color, #3c3c3c);
+}
+
+.integrated-terminal-tab.active {
+    background: var(--tab-active-bg, #1e1e1e);
+    color: var(--tab-active-fg, #ffffff);
+}
+
+.integrated-terminal-tab.exited .terminal-tab-label {
+    opacity: 0.65;
+}
+
+.integrated-terminal-tab.pending .terminal-tab-label::after {
+    content: '...';
+    margin-left: 2px;
+}
+
+.terminal-tab-label {
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.terminal-tab-close {
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+.integrated-terminal-body {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    background: #111111;
+}
+
+.integrated-terminal-pane {
+    position: absolute;
+    inset: 0;
+    display: none;
+    padding: 6px 8px;
+}
+
+.integrated-terminal-pane.active {
+    display: block;
+}
+
+.integrated-terminal-mount {
+    width: 100%;
+    height: 100%;
+}
+
+.integrated-terminal-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--text-secondary, #9a9a9a);
+    font-size: 12px;
+    padding: 12px;
+    pointer-events: none;
+}
+
+body.theme-light .integrated-terminal-body,
+body[data-theme="light"] .integrated-terminal-body,
+body[data-editor-theme="light"] .integrated-terminal-body {
+    background: #ffffff;
+}
+
+body.theme-light .integrated-terminal-mount .xterm,
+body[data-theme="light"] .integrated-terminal-mount .xterm,
+body[data-editor-theme="light"] .integrated-terminal-mount .xterm {
+    background: #ffffff;
+}
+
+.integrated-terminal-mount .xterm {
+    font-family: var(--editor-font-family, 'Consolas') !important;
+    font-size: var(--editor-font-size, 14px) !important;
+}
+
+@media (max-width: 960px) {
+    .integrated-terminal-panel {
+        height: 240px;
+    }
+}

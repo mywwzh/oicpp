@@ -21,7 +21,9 @@
     <link rel="stylesheet" href="css/debug.css">
     <link rel="stylesheet" href="css/quick-open.css">
     <link rel="stylesheet" href="css/folder-picker.css">
+    <link rel="stylesheet" href="css/terminal.css">
     <link rel="stylesheet" href="../../node_modules/katex/dist/katex.min.css">
+    <link rel="stylesheet" href="../../node_modules/xterm/css/xterm.css">
     <link rel="stylesheet" href="css/markdown.css">
 
 </head>
@@ -73,6 +75,10 @@
                         <div class="menu-dropdown-item" data-action="format-code">
                             <span>格式化代码</span>
                             <span class="menu-shortcut">Alt+Shift+S</span>
+                        </div>
+                        <div class="menu-dropdown-item" data-action="open-terminal">
+                            <span>打开内置终端</span>
+                            <span class="menu-shortcut">Ctrl+`</span>
                         </div>
                     </div>
                 </div>
@@ -543,19 +549,35 @@
         </div>
 
         <div class="editor-container">
-            <div class="editor-terminal-container">
-                <div class="editor-groups" id="editor-groups">
-                    <div class="editor-group" data-group-id="group-1">
-                        <div class="tab-bar" data-group-id="group-1">
+            <div class="editor-layout">
+                <div class="editor-terminal-container">
+                    <div class="editor-groups" id="editor-groups">
+                        <div class="editor-group" data-group-id="group-1">
+                            <div class="tab-bar" data-group-id="group-1">
+                            </div>
+                            <div class="editor-area" data-group-id="group-1" id="editor-area-group-1">
+                            </div>
                         </div>
-                        <div class="editor-area" data-group-id="group-1" id="editor-area-group-1">
-                        </div>
+                    </div>
+
+                    <div class="welcome-container" id="welcome-container">
                     </div>
                 </div>
 
-                <div class="welcome-container" id="welcome-container">
-                </div>
-
+                <aside class="integrated-terminal-panel collapsed" id="integrated-terminal-panel">
+                    <div class="integrated-terminal-resizer" id="integrated-terminal-resizer" title="拖动调整终端高度"></div>
+                    <div class="integrated-terminal-header">
+                        <span class="integrated-terminal-title">终端</span>
+                        <div class="integrated-terminal-header-actions">
+                            <button class="icon-btn" id="integrated-terminal-new" title="新建终端" tabindex="-1">+</button>
+                            <button class="icon-btn" id="integrated-terminal-hide" title="隐藏终端" tabindex="-1">×</button>
+                        </div>
+                    </div>
+                    <div class="integrated-terminal-tabs" id="integrated-terminal-tabs"></div>
+                    <div class="integrated-terminal-body" id="integrated-terminal-body">
+                        <div class="integrated-terminal-empty" id="integrated-terminal-empty">点击“新建终端”开始使用内置终端</div>
+                    </div>
+                </aside>
             </div>
         </div>
     </div>
@@ -600,6 +622,25 @@
     </script>
     <script src="../../node_modules/monaco-editor/min/vs/loader.js"></script>
     <script>
+        (function() {
+            window.__oicppAmdDefine = window.define;
+            window.__oicppAmdRequire = window.require;
+            window.define = undefined;
+        })();
+    </script>
+    <script src="../../node_modules/xterm/lib/xterm.js"></script>
+    <script src="../../node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+    <script>
+        (function() {
+            if (window.__oicppAmdDefine) {
+                window.define = window.__oicppAmdDefine;
+            }
+            if (window.__oicppAmdRequire) {
+                window.require = window.__oicppAmdRequire;
+            }
+        })();
+    </script>
+    <script>
         require.config({ 
             paths: { 
                 vs: '../../node_modules/monaco-editor/min/vs' 
@@ -632,6 +673,7 @@
     <script src="js/sidebar/cloudSync.js"></script>
     <script src="js/sidebar.js"></script>
     <script src="js/tabs.js"></script>
+    <script src="js/terminal-panel.js"></script>
     <script src="js/main.js"></script>
     <script src="js/quick-open.js"></script>
     <script src="js/init.js"></script>
