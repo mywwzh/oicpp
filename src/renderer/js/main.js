@@ -251,6 +251,9 @@ class OICPPApp {
             case 'feedback':
                 this.showFeedback();
                 break;
+            case 'upload-log':
+                await this.uploadClientLogFromMenu();
+                break;
             case 'check-update':
                 this.checkForUpdates();
                 break;
@@ -3032,6 +3035,220 @@ ${data.message || '程序已加载，等待开始执行'}
         this.setFeedbackDialogIcon();
         
         this.setupFeedbackDialogListeners(dialog);
+    }
+
+    async uploadClientLogFromMenu() {
+        if (!window.electronAPI) {
+            this.showMessage('上传日志功能不可用', 'error');
+            return;
+        }
+
+        if (typeof window.electronAPI.listClientLogs !== 'function' || typeof window.electronAPI.uploadClientLog !== 'function') {
+            this.showMessage('当前版本不支持上传日志', 'error');
+            return;
+        }
+
+        try {
+            const listResult = await window.electronAPI.listClientLogs();
+            if (!listResult || listResult.success !== true) {
+                this.showMessage(listResult?.message || '读取日志列表失败', 'error');
+                return;
+            }
+
+            const logs = Array.isArray(listResult.logs) ? listResult.logs : [];
+            if (logs.length === 0) {
+                this.showMessage('当前没有可上传的日志文件', 'info');
+                return;
+            }
+
+            this.showUploadLogPickerDialog(logs);
+        } catch (error) {
+            logError('上传日志失败:', error);
+            this.showMessage('上传日志失败: ' + (error?.message || error), 'error');
+        }
+    }
+
+    showUploadLogPickerDialog(logs) {
+        const dialog = document.createElement('div');
+        dialog.className = 'about-dialog-overlay';
+
+        const formatBytes = (value) => {
+            const n = Number(value) || 0;
+            if (n < 1024) return `${n} B`;
+            if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+            return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+        };
+
+        const formatTime = (ms) => {
+            const date = new Date(Number(ms) || 0);
+            if (Number.isNaN(date.getTime())) return '未知时间';
+            const pad = (v) => String(v).padStart(2, '0');
+            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+        };
+
+        const escapeHtml = (value) => String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+        const rows = logs.map((item, index) => {
+            const safeName = String(item?.name || `日志 ${index + 1}`)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+            const safePath = escapeHtml(item?.path || '');
+            return `
+                <button class="log-picker-item" data-log-path="${safePath}">
+                    <div class="log-picker-item-name">${safeName}</div>
+                    <div class="log-picker-item-meta">${formatTime(item?.mtimeMs)} · ${formatBytes(item?.size)}</div>
+                </button>
+            `;
+        }).join('');
+
+        dialog.innerHTML = `
+            <div class="about-dialog log-picker-dialog">
+                <div class="about-header">
+                    <h2>选择要上传的日志</h2>
+                </div>
+                <div class="about-content">
+                    <div class="feedback-section">
+                        <p class="feedback-description">请点击一条日志开始上传。</p>
+                        <div class="log-picker-list">
+                            ${rows}
+                        </div>
+                    </div>
+                </div>
+                <div class="about-footer">
+                    <button id="pick-log-close-btn">取消</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(dialog);
+
+        const closeDialog = () => dialog.remove();
+        const closeBtn = dialog.querySelector('#pick-log-close-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', closeDialog);
+        }
+
+        dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) {
+                closeDialog();
+            }
+        });
+
+        dialog.querySelectorAll('[data-log-path]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const logPath = btn.getAttribute('data-log-path') || '';
+                if (!logPath) {
+                    this.showMessage('日志路径无效', 'error');
+                    return;
+                }
+
+                try {
+                    this.showMessage('正在上传日志，请稍候...', 'info');
+                    const result = await window.electronAPI.uploadClientLog(logPath);
+                    if (!result || result.success !== true) {
+                        this.showMessage(result?.message || '日志上传失败', 'error');
+                        return;
+                    }
+
+                    closeDialog();
+                    this.showTraceCodeDialog(result.traceCode || '', result.uploadedAt || '');
+                } catch (error) {
+                    logError('上传日志失败:', error);
+                    this.showMessage('上传日志失败: ' + (error?.message || error), 'error');
+                }
+            });
+        });
+    }
+
+    showTraceCodeDialog(traceCode, uploadedAt) {
+        const dialog = document.createElement('div');
+        dialog.className = 'about-dialog-overlay';
+
+        const safeTraceCode = String(traceCode || '').trim() || '未返回追踪码';
+        const uploadedAtText = String(uploadedAt || '').trim();
+
+        dialog.innerHTML = `
+            <div class="about-dialog trace-code-dialog">
+                <div class="about-header">
+                    <h2>日志上传成功</h2>
+                </div>
+                <div class="about-content">
+                    <div class="feedback-section">
+                        <p class="feedback-description">请在反馈问题时附带下方追踪码，方便开发者快速定位日志。</p>
+                        <div class="about-info">
+                            <p><strong>追踪码:</strong> <span id="trace-code-value" class="trace-code-value"></span></p>
+                            ${uploadedAtText ? `<p><strong>上传时间:</strong> ${uploadedAtText}</p>` : ''}
+                        </div>
+                        <div class="feedback-actions">
+                            <button id="copy-trace-code-btn" class="feedback-btn primary">复制追踪码</button>
+                            <button id="open-issue-from-trace-btn" class="feedback-btn">打开反馈</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="about-footer">
+                    <button id="trace-close-btn">关闭</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(dialog);
+
+        const traceNode = dialog.querySelector('#trace-code-value');
+        if (traceNode) {
+            traceNode.textContent = safeTraceCode;
+        }
+
+        const closeDialog = () => dialog.remove();
+        const closeBtn = dialog.querySelector('#trace-close-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', closeDialog);
+        }
+
+        dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) {
+                closeDialog();
+            }
+        });
+
+        const copyBtn = dialog.querySelector('#copy-trace-code-btn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', async () => {
+                try {
+                    if (window.electronAPI && typeof window.electronAPI.clipboardWriteText === 'function') {
+                        await window.electronAPI.clipboardWriteText(safeTraceCode);
+                        this.showMessage('追踪码已复制', 'success');
+                    } else {
+                        this.showMessage('复制功能不可用，请手动复制追踪码', 'warning');
+                    }
+                } catch (error) {
+                    logWarn('复制追踪码失败:', error);
+                    this.showMessage('复制失败，请手动复制追踪码', 'error');
+                }
+            });
+        }
+
+        const openIssueBtn = dialog.querySelector('#open-issue-from-trace-btn');
+        if (openIssueBtn) {
+            openIssueBtn.addEventListener('click', async () => {
+                const url = 'https://github.com/mywwzh/oicpp/issues';
+                try {
+                    if (window.electronAPI && typeof window.electronAPI.openExternal === 'function') {
+                        await window.electronAPI.openExternal(url);
+                    }
+                } catch (error) {
+                    logWarn('打开反馈页失败:', error);
+                }
+                this.showMessage(`反馈时请附带追踪码: ${safeTraceCode}`, 'info');
+                closeDialog();
+            });
+        }
     }
 
     async setFeedbackDialogIcon() {
