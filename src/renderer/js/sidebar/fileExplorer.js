@@ -1895,7 +1895,7 @@ class FileExplorer {
             return await new Promise((resolve) => {
                 window.electronIPC.send('delete-file', file.path);
 
-                const handleFileDeleted = (event, deletedPath, error) => {
+                const handleFileDeleted = async (event, deletedPath, error) => {
                     if (deletedPath === file.path) {
                         if (error) {
                             logError('删除文件失败:', error);

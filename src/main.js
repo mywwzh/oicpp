@@ -6675,6 +6675,7 @@ function generateEncodedToken(username = '') {
 }
 
 const CLOUD_SYNC_BASE = 'https://oicpp.mywwzh.top/api';
+const CLIENT_LOG_UPLOAD_URL = 'https://oicpp.mywwzh.top/api/uploadClientLog';
 const SETTINGS_BACKUP_PATTERN = /^OICPP_user_(\d{8}_\d{6})_(.+?)_settings\.cpp$/i;
 const SETTINGS_BACKUP_DIR = '';
 const AUTO_BACKUP_COOLDOWN_MS = 15000;
@@ -7103,6 +7104,147 @@ function scheduleAutoSettingsBackup(reason = 'auto') {
         });
 }
 
+async function uploadClientLogFile(filePath) {
+    if (!filePath || typeof filePath !== 'string') {
+        return { success: false, message: '日志路径无效' };
+    }
+
+    const normalizedPath = path.normalize(filePath);
+    const ext = path.extname(normalizedPath).toLowerCase();
+    if (ext !== '.log') {
+        return { success: false, message: '仅支持上传 .log 文件' };
+    }
+
+    let stat;
+    try {
+        stat = fs.statSync(normalizedPath);
+    } catch (_) {
+        return { success: false, message: '日志文件不存在或不可读取' };
+    }
+
+    if (!stat.isFile()) {
+        return { success: false, message: '请选择有效的日志文件' };
+    }
+
+    const maxBytes = 5 * 1024 * 1024;
+    if (stat.size > maxBytes) {
+        return { success: false, message: '日志文件超过 5MB 限制' };
+    }
+
+    if (typeof FormData === 'undefined' || typeof Blob === 'undefined') {
+        return { success: false, message: '当前运行环境不支持日志上传' };
+    }
+
+    try {
+        const buffer = fs.readFileSync(normalizedPath);
+        const device = getDeviceInfo();
+        const loginToken = getLoginToken();
+        const currentUser = getLoggedInUser();
+
+        const systemName = (() => {
+            if (process.platform === 'win32') return `Windows ${os.release()}`;
+            if (process.platform === 'linux') return `Linux ${os.release()}`;
+            if (process.platform === 'darwin') return `macOS ${os.release()}`;
+            return `${os.type()} ${os.release()}`;
+        })();
+
+        const form = new FormData();
+        form.append('file', new Blob([buffer], { type: 'text/plain' }), path.basename(normalizedPath));
+        form.append('version', typeof app.getVersion === 'function' ? (app.getVersion() || APP_VERSION) : APP_VERSION);
+        form.append('system', systemName);
+        form.append('device_name', device.deviceName || 'Unknown-Device');
+        form.append('cpu_id', device.cpuId || 'CPU-Unknown');
+
+        if (currentUser?.username) {
+            form.append('username', currentUser.username);
+        }
+        if (currentUser?.uid !== undefined && currentUser?.uid !== null) {
+            form.append('uid', String(currentUser.uid));
+        }
+        if (loginToken) {
+            form.append('login_token', loginToken);
+        }
+
+        const headers = {
+            'X-OICPP-Token': generateEncodedToken(getLoggedInUsername())
+        };
+        if (loginToken) {
+            headers['Authorization'] = `Bearer ${loginToken}`;
+            headers['X-Login-Token'] = loginToken;
+        }
+
+        const response = await fetch(CLIENT_LOG_UPLOAD_URL, {
+            method: 'POST',
+            headers,
+            body: form
+        });
+
+        const text = await response.text();
+        let data = null;
+        try {
+            data = text ? JSON.parse(text) : null;
+        } catch (_) {
+            data = null;
+        }
+
+        if (!response.ok) {
+            return {
+                success: false,
+                message: data?.message || `上传失败（HTTP ${response.status}）`
+            };
+        }
+
+        const traceCode = data?.trace_code || '';
+        if (!traceCode) {
+            return { success: false, message: '上传成功但未返回追踪码，请稍后重试' };
+        }
+
+        return {
+            success: true,
+            traceCode,
+            uploadedAt: data?.uploaded_at || '',
+            message: data?.message || '日志上传成功'
+        };
+    } catch (error) {
+        logWarn('上传客户端日志失败:', error?.message || error);
+        return { success: false, message: error?.message || '日志上传失败' };
+    }
+}
+
+function listClientLogFiles() {
+    const logDir = path.join(os.homedir(), '.oicpp', 'logs');
+    try {
+        if (!fs.existsSync(logDir)) {
+            return { success: true, logs: [] };
+        }
+
+        const logs = fs.readdirSync(logDir)
+            .filter((name) => path.extname(name).toLowerCase() === '.log')
+            .map((name) => {
+                const fullPath = path.join(logDir, name);
+                let stat = null;
+                try {
+                    stat = fs.statSync(fullPath);
+                } catch (_) {
+                    stat = null;
+                }
+                return {
+                    name,
+                    path: fullPath,
+                    size: stat?.isFile() ? stat.size : 0,
+                    mtimeMs: stat?.isFile() ? stat.mtimeMs : 0
+                };
+            })
+            .filter((item) => !!item.path)
+            .sort((a, b) => (b.mtimeMs || 0) - (a.mtimeMs || 0));
+
+        return { success: true, logs };
+    } catch (error) {
+        logWarn('读取日志列表失败:', error?.message || error);
+        return { success: false, logs: [], message: error?.message || '读取日志列表失败' };
+    }
+}
+
 async function sendHeartbeat(type = 'heartbeat', username = '') {
     try {
         const actualUsername = (typeof username === 'string' && username.trim()) ? username.trim() : getLoggedInUsername();
@@ -7179,6 +7321,14 @@ ipcMain.handle('get-encoded-token', () => {
 
 ipcMain.handle('get-device-info', () => {
     return getDeviceInfo();
+});
+
+ipcMain.handle('upload-client-log', async (_event, filePath) => {
+    return uploadClientLogFile(filePath);
+});
+
+ipcMain.handle('list-client-logs', () => {
+    return listClientLogFiles();
 });
 
 ipcMain.handle('get-cpu-threads', () => {
