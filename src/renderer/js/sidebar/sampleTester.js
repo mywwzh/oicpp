@@ -1803,7 +1803,7 @@ class SampleTester {
                 } catch (_) { }
             } else if (runResult.timeout) {
                 status = 'TLE';
-                try { logWarn('[样例测试器][TLE]', { sampleId: sample.id, durationMs: runResult.time, limitMs: sample.timeLimit }); } catch (_) { }
+                try { logInfo('[样例测试器][TLE]', { sampleId: sample.id, durationMs: runResult.time, limitMs: sample.timeLimit }); } catch (_) { }
             } else if (runResult.exitCode !== 0) {
                 status = 'RE';
                 try { logWarn('[样例测试器][RE]', { sampleId: sample.id, exitCode: runResult.exitCode, stderrBytes: (runResult.stderr || '').length, durationMs: runResult.time }); } catch (_) { }
@@ -1953,7 +1953,7 @@ class SampleTester {
                     } catch (_) { }
                 } else if (runResult.timeout) {
                     status = 'TLE';
-                    try { logWarn('[样例测试器][TLE]', { sampleId: sample.id, durationMs: runResult.time, limitMs: sample.timeLimit }); } catch (_) { }
+                    try { logInfo('[样例测试器][TLE]', { sampleId: sample.id, durationMs: runResult.time, limitMs: sample.timeLimit }); } catch (_) { }
                 } else if (runResult.exitCode !== 0) {
                     status = 'RE';
                     try { logWarn('[样例测试器][RE]', { sampleId: sample.id, exitCode: runResult.exitCode, stderrBytes: (runResult.stderr || '').length, durationMs: runResult.time }); } catch (_) { }
