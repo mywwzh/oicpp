@@ -532,6 +532,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getCpuThreads: () => ipcRenderer.invoke('get-cpu-threads'),
 
     sendFeedback: (message) => ipcRenderer.invoke('send-feedback', message),
+    listClientLogs: () => ipcRenderer.invoke('list-client-logs'),
+    uploadClientLog: (filePath) => ipcRenderer.invoke('upload-client-log', filePath),
     getDeviceInfo: () => ipcRenderer.invoke('get-device-info'),
     getEncodedToken: () => ipcRenderer.invoke('get-encoded-token'),
 
