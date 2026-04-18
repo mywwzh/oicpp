@@ -219,7 +219,7 @@ class IntegratedTerminalPanel {
         }
     }
 
-    async createTerminal() {
+    async createTerminal(options = {}) {
         if (!this.status.available) {
             this.renderEmptyState();
             return;
@@ -295,7 +295,8 @@ class IntegratedTerminalPanel {
             terminal,
             fitAddon,
             remoteId: null,
-            cwd: null
+            cwd: null,
+            shell: null
         };
 
         this.sessions.set(tabId, provisionalSession);
@@ -306,7 +307,7 @@ class IntegratedTerminalPanel {
         const createPayload = {
             cols: terminal.cols,
             rows: terminal.rows,
-            cwd: await this.getPreferredCwd()
+            cwd: options.cwd || await this.getPreferredCwd()
         };
 
         let created;
@@ -329,6 +330,7 @@ class IntegratedTerminalPanel {
         const remoteId = created.terminalId;
         provisionalSession.remoteId = remoteId;
         provisionalSession.cwd = created.cwd || null;
+        provisionalSession.shell = created.shell || null;
 
         const labelNode = tab.querySelector('.terminal-tab-label');
         if (labelNode) {
@@ -353,8 +355,120 @@ class IntegratedTerminalPanel {
             window.electronAPI.writeTerminal(provisionalSession.remoteId, data);
         });
 
+        this.setupTerminalClipboardShortcuts(terminal, provisionalSession);
+
         this.fitTerminal(remoteId);
         this.renderEmptyState();
+        return remoteId;
+    }
+
+    setupTerminalClipboardShortcuts(terminal, sessionRef) {
+        if (!terminal || typeof terminal.attachCustomKeyEventHandler !== 'function') {
+            return;
+        }
+
+        terminal.attachCustomKeyEventHandler((event) => {
+            if (!event || event.type !== 'keydown') {
+                return true;
+            }
+
+            const key = String(event.key || '').toLowerCase();
+            const ctrlOrMeta = !!(event.ctrlKey || event.metaKey);
+            if (!ctrlOrMeta) {
+                return true;
+            }
+
+            const hasSelection = typeof terminal.getSelection === 'function' && !!terminal.getSelection();
+            const wantsCopy = key === 'c' && (event.shiftKey || hasSelection);
+            const wantsPaste = key === 'v';
+
+            if (wantsCopy) {
+                event.preventDefault();
+                this.copyTextToClipboard(terminal.getSelection ? terminal.getSelection() : '');
+                return false;
+            }
+
+            if (wantsPaste) {
+                event.preventDefault();
+                const terminalId = sessionRef?.remoteId;
+                if (terminalId) {
+                    this.pasteClipboardToTerminal(terminalId);
+                }
+                return false;
+            }
+
+            return true;
+        });
+    }
+
+    async copyTextToClipboard(text) {
+        const value = String(text || '');
+        if (!value) {
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(value);
+        } catch (_) { }
+    }
+
+    async pasteClipboardToTerminal(terminalId) {
+        try {
+            const text = await navigator.clipboard.readText();
+            if (!text) {
+                return;
+            }
+            await window.electronAPI.writeTerminal(terminalId, text);
+        } catch (_) { }
+    }
+
+    quoteExecutableForShell(executablePath, platform) {
+        const text = String(executablePath || '');
+        if (platform === 'windows') {
+            return `"${text.replace(/"/g, '""')}"`;
+        }
+        return `'${text.replace(/'/g, `'\\''`)}'`;
+    }
+
+    buildRunCommandForShell(executablePath, shellPath, platform) {
+        const shell = String(shellPath || '').toLowerCase();
+        const quoted = this.quoteExecutableForShell(executablePath, platform);
+        if (platform === 'windows' && shell.includes('powershell')) {
+            return `& ${quoted}\r`;
+        }
+        return `${quoted}\r`;
+    }
+
+    async runExecutableInNewTerminal(executablePath, options = {}) {
+        if (!executablePath) {
+            throw new Error('可执行文件路径为空');
+        }
+
+        await this.init();
+        await this.refreshFeatureStatus();
+        this.setVisible(true);
+        if (!this.status.available) {
+            throw new Error(this.status.reason || '终端功能不可用');
+        }
+
+        const cwd = options.workingDirectory || await this.getPreferredCwd();
+        const terminalId = await this.createTerminal({ cwd });
+        if (!terminalId) {
+            throw new Error('创建内置终端失败');
+        }
+
+        this.activateTerminal(terminalId);
+
+        let platform = 'windows';
+        try {
+            if (window.electronAPI?.getPlatform) {
+                platform = await window.electronAPI.getPlatform();
+            }
+        } catch (_) { }
+
+        const session = this.sessions.get(terminalId);
+        const command = this.buildRunCommandForShell(executablePath, session?.shell || '', platform);
+        await window.electronAPI.writeTerminal(terminalId, command);
+        return terminalId;
     }
 
     bindTabEvents(terminalId) {
