@@ -44,6 +44,7 @@ jobs:
           npm install --os=linux --cpu=x64 sharp
 
       - name: Install AppImage dependencies
+        if: github.repository != 'mywwzh/oicpp-dev'
         run: |
           sudo apt-get update
           sudo apt-get install -y libfuse2
@@ -51,7 +52,12 @@ jobs:
       - name: Build Linux packages
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build
+        run: |
+          if [ "${{ github.repository }}" = "mywwzh/oicpp-dev" ]; then
+            npm run build -- --linux deb
+          else
+            npm run build
+          fi
 
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
