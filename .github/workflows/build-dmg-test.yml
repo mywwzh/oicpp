@@ -24,6 +24,7 @@ jobs:
           npm install
           npm install --include=optional sharp
           npm install --os=darwin --cpu=arm64 sharp
+          npm install dmg-license
 
       - name: Build macOS DMG
         env:
