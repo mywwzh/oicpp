@@ -317,6 +317,34 @@ class IntegratedTerminalManager {
     _resolveProcessFallbackSpawnSpec(shellPath, args) {
         const normalizedArgs = Array.isArray(args) ? args : [];
 
+        const quotePosixArg = (value) => {
+            const text = String(value ?? '');
+            if (!text) {
+                return "''";
+            }
+            return `'${text.replace(/'/g, `'"'"'`)}'`;
+        };
+
+        const buildPosixCommand = () => {
+            const chunks = [quotePosixArg(shellPath), ...normalizedArgs.map((item) => quotePosixArg(item))];
+            return chunks.join(' ');
+        };
+
+        if (process.platform === 'linux') {
+            const scriptCandidates = ['/usr/bin/script', '/bin/script'];
+            for (const scriptBin of scriptCandidates) {
+                try {
+                    fs.accessSync(scriptBin, fs.constants.X_OK);
+                    return {
+                        command: scriptBin,
+                        args: ['-q', '-f', '-c', buildPosixCommand(), '/dev/null'],
+                        wrappedWithScript: true
+                    };
+                } catch (_) {
+                }
+            }
+        }
+
         if (process.platform === 'darwin') {
             const scriptBin = '/usr/bin/script';
             try {
