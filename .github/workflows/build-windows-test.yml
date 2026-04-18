@@ -2,6 +2,10 @@ name: Build .exe to test
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Installer version override (e.g., 1.4.0-beta1)"
+        required: false
 
 permissions:
   contents: read
@@ -13,23 +17,57 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set version
+        shell: powershell
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and "${{ github.event.inputs.version }}" -ne '') {
+            $version = "${{ github.event.inputs.version }}"
+          } else {
+            $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
+          Write-Host "Using VERSION=$version"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "npm"
 
+      - name: Install NSIS
+        shell: powershell
+        run: |
+          choco install nsis
+          echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
+
       - name: Install dependencies
         run: npm install
 
-      - name: Build Windows package
+      - name: Build Unpacked App
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build -- --win
+        run: npm run build
 
-      - name: Upload .exe artifact
+      - name: Prepare and Build Installer
+        shell: powershell
+        run: |
+          $version = $env:VERSION
+          Write-Host "Building version: $version"
+          $nsiPath = "installer.nsi"
+          $content = Get-Content $nsiPath -Raw
+
+          $content = $content -replace '!define PRODUCT_VERSION ".*"', "!define PRODUCT_VERSION \"$version\""
+          $content = $content -replace 'OutFile "OICPP-.*-Setup.exe"', "OutFile \"OICPP-$version-Setup.exe\""
+          $content | Set-Content $nsiPath -Encoding UTF8
+
+          Copy-Item "ConsolePauser.exe" -Destination "dist\win-unpacked\" -Force
+          Copy-Item "oicpp.ico" -Destination "dist\win-unpacked\" -Force
+
+          makensis installer.nsi
+
+      - name: Upload NSIS installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-test-artifacts
-          path: dist/*.exe
+          path: OICPP-*-Setup.exe
           if-no-files-found: error
