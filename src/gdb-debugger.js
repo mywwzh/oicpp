@@ -100,7 +100,9 @@ class GDBDebugger extends EventEmitter {
         const env = options.env ? { ...process.env, ...options.env } : { ...process.env };
         const gdbExecutable = options.gdbPath || 'gdb';
         
-        const args = ['-q', '--interpreter=mi2'];
+        const args = Array.isArray(options.miArgs) && options.miArgs.length > 0
+            ? options.miArgs.map((item) => String(item))
+            : ['-q', '--interpreter=mi2'];
         this.gdbProcess = spawn(gdbExecutable, args, {
             stdio: ['pipe', 'pipe', 'pipe'],
             env,
