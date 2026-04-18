@@ -18,6 +18,7 @@ class EditorSettings {
             autoSave: true,
             autoSaveInterval: 60000,
             autoOpenLastWorkspace: true,
+            glassEffectEnabled: false,
             markdownMode: 'split',
             keybindings: this.getDefaultKeybindings()
         };
@@ -663,6 +664,13 @@ class EditorSettings {
             });
         }
 
+        const glassEffectCheckbox = document.getElementById('editor-glass-effect-enabled');
+        if (glassEffectCheckbox) {
+            glassEffectCheckbox.addEventListener('change', () => {
+                this.notifyMainWindowPreview();
+            });
+        }
+
         const browseBgBtn = document.getElementById('browse-bg-image');
         const bgImageInput = document.getElementById('editor-bg-image');
         if (browseBgBtn && bgImageInput) {
@@ -939,6 +947,7 @@ class EditorSettings {
                     autoSave: allSettings.autoSave !== false,
                     autoSaveInterval: typeof allSettings.autoSaveInterval === 'number' ? allSettings.autoSaveInterval : 60000,
                     autoOpenLastWorkspace: allSettings.autoOpenLastWorkspace !== false,
+                    glassEffectEnabled: allSettings.glassEffectEnabled === true,
                     windowOpacity: typeof allSettings.windowOpacity === 'number' ? allSettings.windowOpacity : 1.0,
                     backgroundImage: allSettings.backgroundImage || '',
                     markdownMode,
@@ -961,6 +970,7 @@ class EditorSettings {
                     autoSave: true,
                     autoSaveInterval: 60000,
                     autoOpenLastWorkspace: true,
+                    glassEffectEnabled: false,
                     windowOpacity: 1.0,
                     backgroundImage: '',
                     markdownMode: 'split',
@@ -983,6 +993,7 @@ class EditorSettings {
                 autoSave: true,
                 autoSaveInterval: 60000,
                 autoOpenLastWorkspace: true,
+                glassEffectEnabled: false,
                 windowOpacity: 1.0,
                 backgroundImage: '',
                 markdownMode: 'split',
@@ -1124,6 +1135,11 @@ class EditorSettings {
         const opacityInput = document.getElementById('editor-opacity');
         if (opacityInput) {
             newSettings.windowOpacity = parseFloat(opacityInput.value);
+        }
+
+        const glassEffectCheckbox = document.getElementById('editor-glass-effect-enabled');
+        if (glassEffectCheckbox) {
+            newSettings.glassEffectEnabled = !!glassEffectCheckbox.checked;
         }
 
         const bgImageInput = document.getElementById('editor-bg-image');
@@ -1280,6 +1296,7 @@ class EditorSettings {
         const autoOpenLastWorkspaceCheckbox = document.getElementById('editor-auto-open-last-workspace');
         const opacityInput = document.getElementById('editor-opacity');
         const opacityValue = document.getElementById('editor-opacity-value');
+        const glassEffectCheckbox = document.getElementById('editor-glass-effect-enabled');
         const bgImageInput = document.getElementById('editor-bg-image');
 
         logInfo('更新UI，当前设置:', this.settings);
@@ -1356,6 +1373,10 @@ class EditorSettings {
             const opacity = typeof this.settings.windowOpacity === 'number' ? this.settings.windowOpacity : 1.0;
             opacityInput.value = opacity;
             opacityValue.textContent = Math.round(opacity * 100) + '%';
+        }
+
+        if (glassEffectCheckbox) {
+            glassEffectCheckbox.checked = this.settings.glassEffectEnabled === true;
         }
 
         if (bgImageInput) {

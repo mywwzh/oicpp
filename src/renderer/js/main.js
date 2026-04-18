@@ -9,7 +9,8 @@ class OICPPApp {
             syntaxFontStyles: {},
             tabSize: 4,
             wordWrap: false,
-            enableAutoCompletion: true
+            enableAutoCompletion: true,
+            glassEffectEnabled: false
         };
         this.editorManager = null;
         this.initialized = false;
@@ -719,6 +720,8 @@ class OICPPApp {
         this.updateEditorSettings();
         
         this.applyTheme(this.settings.theme);
+        this.applyGlassEffectSetting();
+        this.applyBackgroundImageSetting();
         
         if (newSettings && (newSettings.fontSize !== undefined || newSettings.font !== undefined)) {
             this.forceRefreshEditor();
@@ -941,6 +944,140 @@ class OICPPApp {
     
     applyThemeSettings() {
         this.applyTheme(this.settings.theme);
+        this.applyGlassEffectSetting();
+    }
+
+    applyGlassEffectSetting() {
+        const enabled = this.settings?.glassEffectEnabled === true;
+        const body = document.body;
+        const root = document.documentElement;
+        if (!body) {
+            return;
+        }
+        body.classList.toggle('glass-effect-enabled', enabled);
+        root?.classList.toggle('glass-effect-enabled', enabled);
+        body.setAttribute('data-glass-effect', enabled ? 'true' : 'false');
+        root?.setAttribute('data-glass-effect', enabled ? 'true' : 'false');
+    }
+
+    applyBackgroundImageSetting() {
+        const body = document.body;
+        if (!body) {
+            return;
+        }
+
+        const rawBackgroundImage = typeof this.settings?.backgroundImage === 'string'
+            ? this.settings.backgroundImage.trim()
+            : '';
+
+        const styleElementId = 'custom-bg-style';
+
+        if (!rawBackgroundImage) {
+            body.style.backgroundImage = '';
+            body.classList.remove('has-custom-bg');
+            const styleEl = document.getElementById(styleElementId);
+            if (styleEl) {
+                styleEl.remove();
+            }
+            return;
+        }
+
+        let bgPath = rawBackgroundImage.replace(/\\/g, '/');
+        if (!bgPath.startsWith('http') && !bgPath.startsWith('file://')) {
+            if (bgPath.startsWith('/')) {
+                bgPath = 'file://' + bgPath;
+            } else {
+                bgPath = 'file:///' + bgPath;
+            }
+        }
+
+        body.style.backgroundImage = `url('${bgPath}')`;
+        body.style.backgroundSize = 'cover';
+        body.style.backgroundRepeat = 'no-repeat';
+        body.style.backgroundPosition = 'center';
+        body.classList.add('has-custom-bg');
+
+        let styleEl = document.getElementById(styleElementId);
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = styleElementId;
+            document.head.appendChild(styleEl);
+        }
+        styleEl.textContent = `
+            body.has-custom-bg .main-container,
+            body.has-custom-bg .editor-container,
+            body.has-custom-bg .monaco-editor-container,
+            body.has-custom-bg .editor-group,
+            body.has-custom-bg .editor-area,
+            body.has-custom-bg .monaco-editor,
+            body.has-custom-bg .monaco-editor-background,
+            body.has-custom-bg .monaco-editor .margin {
+                background-color: transparent !important;
+            }
+
+            body.has-custom-bg .main-container {
+                background-color: transparent !important;
+            }
+            body.has-custom-bg[data-editor-theme="light"] .main-container {
+                background-color: transparent !important;
+            }
+
+            body.has-custom-bg .editor-container {
+                background-color: rgba(30, 30, 30, 0.85) !important;
+            }
+            body.has-custom-bg[data-editor-theme="light"] .editor-container {
+                background-color: rgba(255, 255, 255, 0.85) !important;
+            }
+
+            body.has-custom-bg .sidebar {
+                background-color: rgba(37, 37, 38, 0.4) !important;
+            }
+            body.has-custom-bg[data-editor-theme="light"] .sidebar {
+                background-color: rgba(243, 243, 243, 0.4) !important;
+            }
+
+            body.has-custom-bg .sidebar-icons,
+            body.has-custom-bg .sidebar-panel,
+            body.has-custom-bg .panel-content,
+            body.has-custom-bg .panel-header,
+            body.has-custom-bg .file-tree,
+            body.has-custom-bg .sidebar-resizer {
+                background-color: transparent !important;
+                background: transparent !important;
+            }
+
+            body.has-custom-bg .samples-content,
+            body.has-custom-bg .compare-content,
+            body.has-custom-bg .debug-content {
+                background-color: transparent !important;
+                background: transparent !important;
+            }
+
+            body.has-custom-bg .debug-sidebar,
+            body.has-custom-bg .debug-header,
+            body.has-custom-bg .debug-toolbar,
+            body.has-custom-bg .debug-section,
+            body.has-custom-bg .debug-section h4,
+            body.has-custom-bg .debug-mini-wrap,
+            body.has-custom-bg .variables-panel,
+            body.has-custom-bg .variable-item:hover {
+                background-color: transparent !important;
+                background: transparent !important;
+            }
+
+            body.has-custom-bg .markdown-preview-container,
+            body.has-custom-bg .markdown-body {
+                background-color: transparent !important;
+                background: transparent !important;
+            }
+
+            body.has-custom-bg .titlebar {
+                background-color: rgba(50, 50, 51, 0.8) !important;
+            }
+            body.has-custom-bg[data-editor-theme="light"] .titlebar {
+                background-color: rgba(243, 243, 243, 0.8) !important;
+            }
+        `;
     }
     
     notifyThemeChange(theme) {
