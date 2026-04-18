@@ -522,6 +522,7 @@ function getDefaultSettings() {
         compilerPath: '',
         pythonInterpreterPath: '',
         compilerArgs,
+        runMode: 'popup',
         testlibPath: '', // testlib库路径
         font: 'Consolas',
         fontSize: 14,
@@ -2982,7 +2983,10 @@ function setupIPC() {
 
     ipcMain.handle('run-executable', async (event, options) => {
         try {
-            await runExecutable(options);
+            const result = await runExecutable(options);
+            if (result && typeof result === 'object') {
+                return result;
+            }
             return { success: true };
         } catch (error) {
             throw error;
@@ -5329,7 +5333,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
             let needsSaveAfterMigration = false;
 
             for (const key of validKeys) {
@@ -5384,7 +5388,7 @@ function loadSettings() {
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -5410,7 +5414,7 @@ function updateSettings(settingsType, newSettings) {
     try {
 
         const validKeys = [
-            'compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme',
+            'compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme',
             'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'autoSave', 'autoSaveInterval',
             'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'markdownMode', 'keybindings', 'autoOpenLastWorkspace', 'autoBackupSettings'
         ];
@@ -5970,6 +5974,9 @@ async function runExecutable(options) {
     const path = require('path');
 
     const { executablePath, workingDirectory } = options;
+    const normalizedRunMode = String(settings?.runMode || 'popup').toLowerCase() === 'integrated-terminal'
+        ? 'integrated-terminal'
+        : 'popup';
 
     function decodeBufferAuto(buffer) {
         if (!buffer || buffer.length === 0) return '';
@@ -5999,6 +6006,21 @@ async function runExecutable(options) {
 
         if (!require('fs').existsSync(executablePath)) {
             reject(new Error(`可执行文件不存在: ${executablePath}`));
+            return;
+        }
+
+        if (normalizedRunMode === 'integrated-terminal') {
+            const absoluteExePath = path.resolve(executablePath);
+            const resolvedCwd = workingDirectory
+                ? path.resolve(workingDirectory)
+                : path.dirname(absoluteExePath);
+            resolve({
+                success: true,
+                mode: 'integrated-terminal',
+                executablePath: absoluteExePath,
+                workingDirectory: resolvedCwd,
+                message: '程序已转交内置终端运行'
+            });
             return;
         }
 

@@ -3,6 +3,7 @@ class CompilerManager {
         this.settings = {
             compilerPath: '',
             compilerArgs: '-std=c++14 -O2 -static',
+            runMode: 'popup',
             workingDirectory: ''
         };
         
@@ -167,10 +168,11 @@ class CompilerManager {
 
             ipcRenderer.on('settings-changed', (settingsType, newSettings) => {
                 logInfo('编译管理器收到设置变化通知:', newSettings);
-                if (newSettings && (newSettings.compilerPath !== undefined || newSettings.compilerArgs !== undefined)) {
+                if (newSettings && (newSettings.compilerPath !== undefined || newSettings.compilerArgs !== undefined || newSettings.runMode !== undefined)) {
                     this.updateSettings({
                         compilerPath: newSettings.compilerPath !== undefined ? newSettings.compilerPath : this.settings.compilerPath,
-                        compilerArgs: newSettings.compilerArgs !== undefined ? newSettings.compilerArgs : this.settings.compilerArgs
+                        compilerArgs: newSettings.compilerArgs !== undefined ? newSettings.compilerArgs : this.settings.compilerArgs,
+                        runMode: newSettings.runMode !== undefined ? newSettings.runMode : this.settings.runMode
                     });
                     logInfo('编译管理器设置已更新:', this.settings);
                 }
@@ -189,7 +191,8 @@ class CompilerManager {
                 if (allSettings) {
                     this.updateSettings({
                         compilerPath: allSettings.compilerPath || '',
-                        compilerArgs: allSettings.compilerArgs || '-std=c++14 -O2 -static'
+                        compilerArgs: allSettings.compilerArgs || '-std=c++14 -O2 -static',
+                        runMode: allSettings.runMode || 'popup'
                     });
                     logInfo('编译器设置已加载:', this.settings);
                 }
@@ -200,7 +203,8 @@ class CompilerManager {
                     const parsed = JSON.parse(savedSettings);
                     this.updateSettings({
                         compilerPath: parsed.compilerPath || '',
-                        compilerArgs: parsed.compilerArgs || '-std=c++14 -O2 -static'
+                        compilerArgs: parsed.compilerArgs || '-std=c++14 -O2 -static',
+                        runMode: parsed.runMode || 'popup'
                     });
                     logInfo('从本地存储加载编译器设置:', this.settings);
                 }
@@ -1225,11 +1229,40 @@ class CompilerManager {
 
     handleRunResult(result) {
         this.isRunning = false;
+        if (result && result.mode === 'integrated-terminal') {
+            this.runInIntegratedTerminal(result);
+            return;
+        }
         if (result.success) {
             this.appendOutput('程序已在新窗口中启动\n', 'success');
             this.showMessage('程序已在新窗口中启动', 'success');
         }
         logInfo('程序运行完成:', result);
+    }
+
+    async runInIntegratedTerminal(result) {
+        try {
+            const executablePath = String(result?.executablePath || '').trim();
+            if (!executablePath) {
+                throw new Error('缺少可执行文件路径');
+            }
+
+            const app = window.oicppApp;
+            if (!app || typeof app.openIntegratedTerminalAndRunExecutable !== 'function') {
+                throw new Error('内置终端组件未就绪');
+            }
+
+            await app.openIntegratedTerminalAndRunExecutable(executablePath, {
+                workingDirectory: result?.workingDirectory || undefined
+            });
+
+            this.hideOutput();
+            this.appendOutput('程序已在内置终端中启动\n', 'success');
+            this.showMessage('程序已在内置终端中启动', 'success');
+            logInfo('程序运行完成(内置终端):', result);
+        } catch (error) {
+            this.handleRunError(error?.message || error);
+        }
     }
 
     handleRunError(error) {
