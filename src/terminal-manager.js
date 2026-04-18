@@ -753,7 +753,24 @@ class IntegratedTerminalManager {
         return Number.isInteger(pid) && pid > 0 ? pid : null;
     }
 
-    _resolveLinuxTTYFromPid(pid) {
+    _resolvePosixTTYFromPid(pid) {
+        if (process.platform === 'darwin') {
+            try {
+                const ps = spawnSync('ps', ['-p', String(pid), '-o', 'tty='], { encoding: 'utf8' });
+                if (ps && ps.status === 0) {
+                    const tty = String(ps.stdout || '')
+                        .split(/\r?\n/)
+                        .map((line) => line.trim())
+                        .find((line) => !!line && line !== '?' && line !== '-');
+                    if (tty) {
+                        return tty.startsWith('/dev/') ? tty : `/dev/${tty}`;
+                    }
+                }
+            } catch (_) {
+            }
+            return null;
+        }
+
         if (process.platform !== 'linux') {
             return null;
         }
@@ -800,7 +817,7 @@ class IntegratedTerminalManager {
     }
 
     getSessionTTY(terminalId) {
-        if (process.platform !== 'linux') {
+        if (process.platform !== 'linux' && process.platform !== 'darwin') {
             return null;
         }
 
@@ -814,7 +831,7 @@ class IntegratedTerminalManager {
             return null;
         }
 
-        return this._resolveLinuxTTYFromPid(pid);
+        return this._resolvePosixTTYFromPid(pid);
     }
 
     disposeAll() {

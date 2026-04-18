@@ -1922,13 +1922,32 @@ class OICPPApp {
             this.terminalPanel.setRemoteOutputMuted(terminalId, true);
             this._debugTerminalId = terminalId;
             this._debugTerminalBridgeEnabled = true;
-            this.terminalPanel.writeTerminalOutput(terminalId, '\r\n[调试] 输入已连接到调试器\r\n');
             this.terminalPanel.activateTerminal(terminalId);
             this.terminalPanel.focusTerminal?.(terminalId);
             return true;
         } catch (_) {
             return false;
         }
+    }
+
+    sanitizeDebugTerminalOutput(data) {
+        let text = String(data ?? '');
+        if (!text) {
+            return '';
+        }
+
+        const isWindows = !!(typeof process !== 'undefined' && process.platform === 'win32');
+        if (!isWindows) {
+            return text;
+        }
+
+        // Hide common GDB runtime noise while keeping user program output.
+        text = text
+            .replace(/\[(?:New Thread [^\]\r\n]*)\]\r?\n?/g, '')
+            .replace(/\[(?:Thread [^\]\r\n]* exited(?: with code [^\]\r\n]*)?)\]\r?\n?/g, '')
+            .replace(/\[(?:Inferior [^\]\r\n]* exited[^\]\r\n]*)\]\r?\n?/g, '');
+
+        return text;
     }
 
     unbindDebugTerminalBridge() {
@@ -1945,10 +1964,24 @@ class OICPPApp {
     }
 
     appendDebugTerminalOutput(data) {
-        if (!this.terminalPanel || !this._debugTerminalBridgeEnabled || !this._debugTerminalId) {
+        if (!this.terminalPanel) {
             return;
         }
-        this.terminalPanel.writeTerminalOutput(this._debugTerminalId, String(data ?? ''));
+
+        const text = this.sanitizeDebugTerminalOutput(data);
+        if (!text) {
+            return;
+        }
+
+        let targetTerminalId = this._debugTerminalId;
+        if (!targetTerminalId && this.terminalPanel.activeId) {
+            targetTerminalId = this.terminalPanel.activeId;
+        }
+        if (!targetTerminalId) {
+            return;
+        }
+
+        this.terminalPanel.writeTerminalOutput(targetTerminalId, text);
     }
 
     resolveRunModeForCurrentPlatform() {
@@ -1965,8 +1998,12 @@ class OICPPApp {
         return !!(typeof process !== 'undefined' && process.platform === 'linux');
     }
 
-    async resolveLinuxTerminalTTYForDebug(terminalId) {
-        if (!this.isLinuxPlatform()) {
+    isUnixLikePlatform() {
+        return !!(typeof process !== 'undefined' && (process.platform === 'linux' || process.platform === 'darwin'));
+    }
+
+    async resolveTerminalTTYForDebug(terminalId) {
+        if (!this.isUnixLikePlatform()) {
             return null;
         }
         if (!terminalId || !window.electronAPI || typeof window.electronAPI.getTerminalTTY !== 'function') {
@@ -1996,6 +2033,10 @@ class OICPPApp {
         });
 
         return null;
+    }
+
+    async resolveLinuxTerminalTTYForDebug(terminalId) {
+        return this.resolveTerminalTTYForDebug(terminalId);
     }
 
     async saveFile() {
@@ -2575,25 +2616,40 @@ class OICPPApp {
                 const openedTerminalId = await this.openIntegratedTerminal({ forceCreate: true });
                 const terminalId = openedTerminalId || this.terminalPanel?.activeId || null;
                 this.unbindDebugTerminalBridge();
-                if (terminalId) {
-                    useInputBridge = this.bindDebugTerminalBridge(terminalId);
+                const isUnixLike = this.isUnixLikePlatform();
+
+                if (!terminalId) {
+                    throw new Error('内置终端创建失败：未获取到终端会话ID');
                 }
+
                 if (this.isLinuxPlatform()) {
-                    logInfo('[调试] Linux 调试终端会话:', {
+                    // Linux integrated terminal is more stable with direct input bridge.
+                    useInputBridge = this.bindDebugTerminalBridge(terminalId);
+                    if (!useInputBridge) {
+                        inferiorTTY = await this.resolveTerminalTTYForDebug(terminalId);
+                    }
+                } else {
+                    if (isUnixLike) {
+                        inferiorTTY = await this.resolveTerminalTTYForDebug(terminalId);
+                    }
+
+                    if (!inferiorTTY) {
+                        useInputBridge = this.bindDebugTerminalBridge(terminalId);
+                    }
+                }
+
+                if (!inferiorTTY && !useInputBridge) {
+                    throw new Error('调试终端初始化失败：无法建立TTY绑定或输入桥接');
+                }
+
+                if (isUnixLike) {
+                    logInfo('[调试] Unix 调试终端会话:', {
                         openedTerminalId,
                         activeTerminalId: this.terminalPanel?.activeId || null,
                         resolvedTerminalId: terminalId,
+                        inferiorTTY,
                         useInputBridge
                     });
-                    if (!terminalId) {
-                        throw new Error('内置终端创建失败：未获取到终端会话ID');
-                    }
-                    if (!useInputBridge) {
-                        inferiorTTY = await this.resolveLinuxTerminalTTYForDebug(terminalId);
-                        if (!inferiorTTY) {
-                            throw new Error('无法绑定内置终端 TTY，请关闭当前终端后重试调试');
-                        }
-                    }
                 }
             }
             
