@@ -101,6 +101,14 @@ body {
     background-color: var(--bg-color);
 }
 
+body.glass-effect-enabled .monaco-editor-container,
+body.glass-effect-enabled .monaco-editor,
+body.glass-effect-enabled .monaco-editor-background,
+body.glass-effect-enabled .monaco-editor .margin,
+body.glass-effect-enabled .monaco-editor .monaco-editor-background {
+    background-color: transparent !important;
+}
+
 .editor-area {
     display: flex;
     flex-direction: column;
