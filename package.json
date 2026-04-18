@@ -68,6 +68,9 @@
         ".dll"
       ]
     },
+    "mac": {
+      "icon": "build/icons/png"
+    },
     "linux": {
       "target": [
         "deb",
