@@ -249,6 +249,19 @@
 .titlebar-quickopen .qo-icon { opacity: .9; }
 .titlebar-quickopen .qo-placeholder { opacity: .85; }
 
+body.platform-macos .titlebar-controls {
+    display: none;
+}
+
+body.platform-macos .titlebar-center {
+    padding-right: 88px;
+    box-sizing: border-box;
+}
+
+body.platform-macos .titlebar-drag {
+    flex: 0 0 88px;
+}
+
 @media (max-width: 600px) {
     .titlebar {
         height: 28px;
