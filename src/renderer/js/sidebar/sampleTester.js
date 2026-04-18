@@ -1085,6 +1085,81 @@ class SampleTester {
         };
     }
 
+    getZipLargeSampleThresholdBytes() {
+        return 10 * 1024;
+    }
+
+    getZipEntrySizeBytes(entry) {
+        const sizeBytes = Number(entry?.sizeBytes);
+        if (Number.isFinite(sizeBytes) && sizeBytes >= 0) {
+            return Math.floor(sizeBytes);
+        }
+        return String(entry?.content || '').length;
+    }
+
+    sanitizeZipImportFileName(fileName, fallback = 'sample.txt') {
+        const raw = String(fileName || '').trim();
+        let safe = raw
+            .replace(/[\x00-\x1F]/g, '')
+            .replace(/[<>:"/\\|?*]/g, '_')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .replace(/[. ]+$/g, '');
+
+        if (!safe) {
+            safe = fallback;
+        }
+
+        const reserved = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+        if (reserved.test(safe)) {
+            safe = `_${safe}`;
+        }
+
+        if (!/\.[A-Za-z0-9]+$/.test(safe)) {
+            const fallbackMatch = String(fallback || '').match(/\.[A-Za-z0-9]+$/);
+            const fallbackExt = fallbackMatch ? fallbackMatch[0] : '.txt';
+            safe += fallbackExt;
+        }
+
+        return safe;
+    }
+
+    async prepareZipLargeSampleImportDir(zipPath) {
+        const workspacePath = window.sidebarManager?.panels?.files?.workspacePath;
+        if (!workspacePath) {
+            throw new Error('未打开工作区，无法写入大样例文件');
+        }
+
+        const rootDir = await window.electronAPI.pathJoin(workspacePath, '.oicpp', 'sampleTester', 'zip-imports');
+        await window.electronAPI.ensureDirectory(rootDir);
+
+        let zipBaseName = 'zip';
+        try {
+            const info = await window.electronAPI.getPathInfo(zipPath);
+            zipBaseName = this.sanitizeZipImportFileName(info?.basenameWithoutExt || 'zip', 'zip').replace(/\.[A-Za-z0-9]+$/, '');
+        } catch (_) {
+            zipBaseName = 'zip';
+        }
+
+        const uniqueTag = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const targetDir = await window.electronAPI.pathJoin(rootDir, `${zipBaseName}_${uniqueTag}`);
+        await window.electronAPI.ensureDirectory(targetDir);
+        return targetDir;
+    }
+
+    async writeZipEntryToWorkspace(entry, targetDir, fallbackName) {
+        const entryPath = String(entry?.path || '');
+        const rawName = entryPath.split(/[\\/]/).pop() || fallbackName;
+        const fileName = this.sanitizeZipImportFileName(rawName, fallbackName);
+        const targetPath = await window.electronAPI.pathJoin(targetDir, fileName);
+        const content = String(entry?.content || '');
+        const created = await window.electronAPI.createFile(targetPath, content);
+        if (!created || !created.success) {
+            throw new Error(created?.error || `写入样例文件失败: ${fileName}`);
+        }
+        return created.filePath || targetPath;
+    }
+
     async importSamplesFromZip() {
         if (!this.currentFile) {
             logWarn('[样例测试器] 无活动文件，无法导入压缩包样例');
@@ -1118,7 +1193,13 @@ class SampleTester {
                 return;
             }
 
-            const previewMessage = `识别到 ${pairs.length} 组可导入样例。<br>识别文件数：${importPlan.recognizedCount}，未配对文件：${importPlan.unmatchedCount}。<br><br>是否继续导入？`;
+            const thresholdBytes = this.getZipLargeSampleThresholdBytes();
+            const largePairCount = pairs.filter((pair) => {
+                const totalBytes = this.getZipEntrySizeBytes(pair?.input) + this.getZipEntrySizeBytes(pair?.output);
+                return totalBytes > thresholdBytes;
+            }).length;
+
+            const previewMessage = `识别到 ${pairs.length} 组可导入样例。<br>识别文件数：${importPlan.recognizedCount}，未配对文件：${importPlan.unmatchedCount}。<br>大样例组（>${Math.floor(thresholdBytes / 1024)}KB）：${largePairCount}。<br><br>是否继续导入？`;
             let shouldImport = true;
             if (window.dialogManager?.showActionDialog) {
                 const action = await window.dialogManager.showActionDialog('导入样例预览', previewMessage, [
@@ -1138,22 +1219,50 @@ class SampleTester {
                 return;
             }
 
+            let largeSamplesDir = null;
             let maxId = this.samples.length > 0 ? Math.max(...this.samples.map(s => s.id)) : 0;
             for (const pair of pairs) {
                 maxId += 1;
-                this.samples.push({
-                    id: maxId,
-                    inputType: 'userinput',
-                    outputType: 'userinput',
-                    input: pair.input?.content || '',
-                    output: pair.output?.content || '',
-                    timeLimit: 1000,
-                    freopenInputFile: freopenOptions.freopenInputFile || '',
-                    freopenOutputFile: freopenOptions.freopenOutputFile || '',
-                    useTestlib: false,
-                    spjPath: '',
-                    result: null
-                });
+                const inputBytes = this.getZipEntrySizeBytes(pair?.input);
+                const outputBytes = this.getZipEntrySizeBytes(pair?.output);
+                const shouldUseFileMode = (inputBytes + outputBytes) > thresholdBytes;
+
+                if (shouldUseFileMode) {
+                    if (!largeSamplesDir) {
+                        largeSamplesDir = await this.prepareZipLargeSampleImportDir(zipPath);
+                    }
+
+                    const inputFilePath = await this.writeZipEntryToWorkspace(pair.input, largeSamplesDir, `sample_${maxId}.in`);
+                    const outputFilePath = await this.writeZipEntryToWorkspace(pair.output, largeSamplesDir, `sample_${maxId}.out`);
+
+                    this.samples.push({
+                        id: maxId,
+                        inputType: 'file',
+                        outputType: 'file',
+                        input: inputFilePath,
+                        output: outputFilePath,
+                        timeLimit: 1000,
+                        freopenInputFile: freopenOptions.freopenInputFile || '',
+                        freopenOutputFile: freopenOptions.freopenOutputFile || '',
+                        useTestlib: false,
+                        spjPath: '',
+                        result: null
+                    });
+                } else {
+                    this.samples.push({
+                        id: maxId,
+                        inputType: 'userinput',
+                        outputType: 'userinput',
+                        input: pair.input?.content || '',
+                        output: pair.output?.content || '',
+                        timeLimit: 1000,
+                        freopenInputFile: freopenOptions.freopenInputFile || '',
+                        freopenOutputFile: freopenOptions.freopenOutputFile || '',
+                        useTestlib: false,
+                        spjPath: '',
+                        result: null
+                    });
+                }
             }
 
             this.nextId = maxId + 1;
@@ -1162,7 +1271,7 @@ class SampleTester {
             this.updateUI();
             setTimeout(() => this.expandAllSamples(), 100);
 
-            logInfo(`[样例测试器] 从压缩包导入样例成功，共 ${pairs.length} 组`);
+            logInfo(`[样例测试器] 从压缩包导入样例成功，共 ${pairs.length} 组，其中大样例组 ${largePairCount} 组`);
         } catch (error) {
             logError('[样例测试器] 导入压缩包样例失败:', error);
         }

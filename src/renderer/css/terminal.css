@@ -185,6 +185,35 @@ body[data-editor-theme="light"] .integrated-terminal-mount .xterm {
     background: transparent !important;
 }
 
+.integrated-terminal-panel.terminal-theme-light .integrated-terminal-header {
+    background: rgba(255, 255, 255, 0.84);
+    border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+.integrated-terminal-panel.terminal-theme-light .integrated-terminal-title {
+    color: #2b2f36;
+}
+
+.integrated-terminal-panel.terminal-theme-light .integrated-terminal-tabs {
+    background: rgba(255, 255, 255, 0.76);
+    border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+.integrated-terminal-panel.terminal-theme-light .integrated-terminal-tab {
+    color: #3d434c;
+    background: rgba(0, 0, 0, 0.03);
+    border-right-color: rgba(0, 0, 0, 0.08);
+}
+
+.integrated-terminal-panel.terminal-theme-light .integrated-terminal-tab.active {
+    color: #111827;
+    background: rgba(11, 87, 208, 0.14);
+}
+
+.integrated-terminal-panel.terminal-theme-light .integrated-terminal-empty {
+    color: #57606a;
+}
+
 @media (max-width: 960px) {
     .integrated-terminal-panel {
         height: 240px;
