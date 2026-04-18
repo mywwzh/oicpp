@@ -2,12 +2,6 @@ name: Build .deb to test
 
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Branch, tag, or commit to build (default: current branch)"
-        required: false
-        default: ""
-        type: string
 
 permissions:
   contents: read
@@ -18,8 +12,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.ref != '' && github.event.inputs.ref || github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
