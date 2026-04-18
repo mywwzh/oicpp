@@ -1,5 +1,6 @@
 class SettingsManager {
     constructor() {
+        const compileAndRunShortcut = this.getDefaultCompileAndRunShortcut();
         this.settings = {
             compiler: {
                 compilerPath: '',
@@ -29,7 +30,7 @@ class SettingsManager {
                     cut: 'Ctrl+X',
                     compileCode: 'F9',
                     runCode: 'F10',
-                    compileAndRun: 'F11',
+                    compileAndRun: compileAndRunShortcut,
                     toggleDebug: 'F5',
                     debugContinue: 'F6',
                     debugStepOver: 'F7',
@@ -55,6 +56,15 @@ class SettingsManager {
         this.isInitialized = false;
 
         this.init();
+    }
+
+    getDefaultCompileAndRunShortcut() {
+        try {
+            const platform = String(window.process?.platform || navigator?.platform || '').toLowerCase();
+            return (platform.includes('darwin') || platform.includes('mac')) ? 'Ctrl+F11' : 'F11';
+        } catch (_) {
+            return 'F11';
+        }
     }
 
     async init() {
@@ -278,7 +288,7 @@ class SettingsManager {
                     cut: 'Ctrl+X',
                     compileCode: 'F9',
                     runCode: 'F10',
-                    compileAndRun: 'F11',
+                    compileAndRun: this.getDefaultCompileAndRunShortcut(),
                     toggleDebug: 'F5',
                     debugContinue: 'F6',
                     debugStepOver: 'F7',

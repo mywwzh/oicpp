@@ -517,6 +517,7 @@ let pendingStartupWorkspaceToOpen = null;
 function getDefaultSettings() {
     let compilerArgs = '-std=c++14 -O2 -static';
     let cppTemplate = '';
+    const compileAndRunShortcut = process.platform === 'darwin' ? 'Ctrl+F11' : 'F11';
 
     return {
         compilerPath: '',
@@ -574,7 +575,7 @@ function getDefaultSettings() {
             cut: 'Ctrl+X',
             compileCode: 'F9',
             runCode: 'F10',
-            compileAndRun: 'F11',
+            compileAndRun: compileAndRunShortcut,
             toggleDebug: 'F5',
             debugContinue: 'F6',
             debugStepOver: 'F7',
@@ -1111,9 +1112,35 @@ function requestCloseWithoutSave(context = '关闭窗口') {
     }
 }
 
+function applyMacWindowButtonPosition(targetWindow) {
+    if (process.platform !== 'darwin' || !targetWindow || targetWindow.isDestroyed()) {
+        return;
+    }
+
+    const setButtonPosition = typeof targetWindow.setWindowButtonPosition === 'function'
+        ? targetWindow.setWindowButtonPosition.bind(targetWindow)
+        : (typeof targetWindow.setTrafficLightPosition === 'function'
+            ? targetWindow.setTrafficLightPosition.bind(targetWindow)
+            : null);
+
+    if (!setButtonPosition) {
+        return;
+    }
+
+    try {
+        const [contentWidth] = targetWindow.getContentSize();
+        const clusterWidth = 64;
+        const rightInset = 12;
+        const x = Math.max(0, contentWidth - clusterWidth - rightInset);
+        setButtonPosition({ x, y: 8 });
+    } catch (_) {
+    }
+}
+
 function createWindow() {
     loadSettings();
     pendingStartupWorkspaceToOpen = null;
+    const isMacPlatform = process.platform === 'darwin';
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
@@ -1130,9 +1157,17 @@ function createWindow() {
         icon: getUserIconPath(),
         frame: false,
         titleBarStyle: 'hidden',
+        trafficLightPosition: isMacPlatform ? { x: 1124, y: 8 } : undefined,
         opacity: settings.windowOpacity || 1.0,
         show: false
     });
+
+    if (isMacPlatform) {
+        applyMacWindowButtonPosition(mainWindow);
+        mainWindow.on('resize', () => {
+            applyMacWindowButtonPosition(mainWindow);
+        });
+    }
 
     mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
         callback({
@@ -1292,7 +1327,7 @@ function createMenuBar() {
     const debugAccelerator = resolveRunMenuAccelerator('toggleDebug', 'F5');
     const compileAccelerator = resolveRunMenuAccelerator('compileCode', 'F9');
     const runAccelerator = resolveRunMenuAccelerator('runCode', 'F10');
-    const compileRunAccelerator = resolveRunMenuAccelerator('compileAndRun', 'F11');
+    const compileRunAccelerator = resolveRunMenuAccelerator('compileAndRun', defaultKeybindings.compileAndRun || 'F11');
     const openTerminalAccelerator = normalizeAcceleratorForMenu(resolveRunMenuAccelerator('openTerminal', 'Ctrl+`'), 'CmdOrCtrl+`');
     const menuTemplate = [
         {
@@ -5441,7 +5476,23 @@ function loadSettings() {
         if (process.platform === 'darwin') {
             const normalizedRunMode = normalizeRunModeForPlatform(settings.runMode, 'darwin');
             const normalizedCompilerArgs = normalizeCompilerArgsForPlatform(settings.compilerArgs, 'darwin');
-            if (settings.runMode !== normalizedRunMode || settings.compilerArgs !== normalizedCompilerArgs) {
+            const normalizedCompileAndRunShortcut = 'Ctrl+F11';
+            const existingKeybindings = settings.keybindings && typeof settings.keybindings === 'object'
+                ? settings.keybindings
+                : {};
+            const existingCompileAndRun = typeof existingKeybindings.compileAndRun === 'string'
+                ? existingKeybindings.compileAndRun.trim()
+                : '';
+            const shouldMigrateCompileAndRun = !existingCompileAndRun || existingCompileAndRun.toUpperCase() === 'F11';
+
+            if (shouldMigrateCompileAndRun) {
+                settings.keybindings = {
+                    ...existingKeybindings,
+                    compileAndRun: normalizedCompileAndRunShortcut
+                };
+            }
+
+            if (settings.runMode !== normalizedRunMode || settings.compilerArgs !== normalizedCompilerArgs || shouldMigrateCompileAndRun) {
                 settings.runMode = normalizedRunMode;
                 settings.compilerArgs = normalizedCompilerArgs;
                 saveSettings();

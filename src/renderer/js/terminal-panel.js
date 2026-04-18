@@ -435,6 +435,9 @@ class IntegratedTerminalPanel {
         if (platform === 'windows' && shell.includes('powershell')) {
             return `& ${quoted}\r`;
         }
+        if (platform === 'macos') {
+            return `${quoted}; printf '\\n'\r`;
+        }
         return `${quoted}\r`;
     }
 
