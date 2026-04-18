@@ -74,6 +74,55 @@ jobs:
             curl -sS -X POST -H "Authorization: Bearer $UPLOAD_TOKEN" -F "file=@$f" -F "version=$VERSION" -F "platform=linux" "$UPLOAD_API"
           done
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build macOS DMG
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build -- --mac dmg
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: dist/*.dmg
+
+      - name: Upload macOS package to remote
+        env:
+          UPLOAD_API: ${{ secrets.UPLOAD_API }}
+          UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+        run: |
+          VERSION=$VERSION
+          VERSION=${VERSION#v}
+          echo "Uploading packages for version $VERSION to $UPLOAD_API"
+          for f in dist/*.dmg; do
+            [ -f "$f" ] || continue
+            echo "Uploading $f"
+            curl -sS -X POST -H "Authorization: Bearer $UPLOAD_TOKEN" -F "file=@$f" -F "version=$VERSION" -F "platform=macos" "$UPLOAD_API"
+          done
+
   build-windows:
     runs-on: windows-latest
     steps:
@@ -147,7 +196,7 @@ jobs:
           curl -s -X POST -H "Authorization: Bearer $UPLOAD_TOKEN" -F "file=@$FILE" -F "version=$VERSION" -F "platform=windows" "$UPLOAD_API"
 
   release:
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
