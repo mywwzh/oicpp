@@ -7803,22 +7803,24 @@ function runCommandVersionProbe(command, args = [], options = {}) {
     }
 }
 
-function resolveMacLLDBMIPath() {
+function resolveMacLLDBPath() {
     if (process.platform !== 'darwin') {
         return null;
     }
 
     const envCandidates = [
+        process.env.OICPP_LLDB,
+        process.env.LLDB_PATH,
         process.env.OICPP_LLDB_MI,
         process.env.LLDB_MI_PATH
     ].filter(Boolean).map(x => String(x).trim()).filter(Boolean);
 
     const absoluteCandidates = [
         ...envCandidates,
-        '/usr/bin/lldb-mi',
-        '/opt/homebrew/opt/llvm/bin/lldb-mi',
-        '/usr/local/opt/llvm/bin/lldb-mi',
-        '/Library/Developer/CommandLineTools/usr/bin/lldb-mi'
+        '/usr/bin/lldb',
+        '/opt/homebrew/opt/llvm/bin/lldb',
+        '/usr/local/opt/llvm/bin/lldb',
+        '/Library/Developer/CommandLineTools/usr/bin/lldb'
     ];
 
     for (const candidate of absoluteCandidates) {
@@ -7829,7 +7831,7 @@ function resolveMacLLDBMIPath() {
         } catch (_) { }
     }
 
-    const xcrunProbe = runCommandVersionProbe('xcrun', ['--find', 'lldb-mi']);
+    const xcrunProbe = runCommandVersionProbe('xcrun', ['--find', 'lldb']);
     if (xcrunProbe.ok) {
         const resolved = String(xcrunProbe.output || '').split(/\r?\n/).map(s => s.trim()).find(Boolean);
         if (resolved) {
@@ -7841,9 +7843,9 @@ function resolveMacLLDBMIPath() {
         }
     }
 
-    const pathProbe = runCommandVersionProbe('lldb-mi', ['--version']);
+    const pathProbe = runCommandVersionProbe('lldb', ['--version']);
     if (pathProbe.ok) {
-        return 'lldb-mi';
+        return 'lldb';
     }
 
     return null;
@@ -7851,13 +7853,13 @@ function resolveMacLLDBMIPath() {
 
 function resolveDebuggerLaunchConfig() {
     if (process.platform === 'darwin') {
-        const lldbMiPath = resolveMacLLDBMIPath();
-        if (!lldbMiPath) {
-            throw new Error('未检测到 lldb-mi。请安装 LLVM/LLDB（含 lldb-mi）并确保可执行文件在 PATH 中。');
+        const lldbPath = resolveMacLLDBPath();
+        if (!lldbPath) {
+            throw new Error('未检测到 lldb。请安装 Xcode Command Line Tools 或 LLVM，并确保 lldb 在 PATH 中。');
         }
         return {
             kind: 'lldb',
-            command: lldbMiPath,
+            command: lldbPath,
             relaxedInit: true
         };
     }
@@ -7872,7 +7874,7 @@ function resolveDebuggerLaunchConfig() {
 
 async function checkGDBAvailability() {
     if (process.platform === 'darwin') {
-        logInfo('[主进程] 检查 macOS 调试环境 (clang + lldb + lldb-mi)...');
+        logInfo('[主进程] 检查 macOS 调试环境 (clang + lldb)...');
 
         const clangProbe = runCommandVersionProbe('clang++', ['--version']);
         if (!clangProbe.ok) {
@@ -7892,21 +7894,21 @@ async function checkGDBAvailability() {
             };
         }
 
-        const lldbMiPath = resolveMacLLDBMIPath();
-        if (!lldbMiPath) {
+        const lldbPath = resolveMacLLDBPath();
+        if (!lldbPath) {
             return {
                 available: false,
                 debugger: 'lldb',
-                message: '已检测到 clang/lldb，但缺少 lldb-mi。请安装 LLVM/LLDB（含 lldb-mi）并加入 PATH。'
+                message: '已检测到 clang，但未找到 lldb。请安装 Xcode Command Line Tools 或 LLVM，并将 lldb 加入 PATH。'
             };
         }
 
-        const lldbMiProbe = runCommandVersionProbe(lldbMiPath, ['--version']);
-        if (!lldbMiProbe.ok) {
+        const lldbResolvedProbe = runCommandVersionProbe(lldbPath, ['--version']);
+        if (!lldbResolvedProbe.ok) {
             return {
                 available: false,
                 debugger: 'lldb',
-                message: `lldb-mi 不可用：${lldbMiProbe.message}`
+                message: `lldb 不可用：${lldbResolvedProbe.message}`
             };
         }
 
@@ -7915,7 +7917,7 @@ async function checkGDBAvailability() {
         return {
             available: true,
             debugger: 'lldb',
-            debuggerPath: lldbMiPath,
+            debuggerPath: lldbPath,
             version: lldbVersionLine,
             message: `LLDB可用: ${lldbVersionLine}；编译器: ${clangVersionLine}`
         };
