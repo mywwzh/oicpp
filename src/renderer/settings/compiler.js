@@ -3,7 +3,8 @@ class CompilerSettings {
         this.settings = {
             compilerPath: '',
             pythonInterpreterPath: '',
-            compilerArgs: '-std=c++14 -O2 -static'
+            compilerArgs: '-std=c++14 -O2 -static',
+            runMode: 'popup'
         }
         
         this.init();
@@ -228,6 +229,15 @@ class CompilerSettings {
                 this.testTestlib();
             });
         }
+
+        const runModeSelect = document.getElementById('run-mode');
+        if (runModeSelect) {
+            runModeSelect.addEventListener('change', (e) => {
+                this.settings.runMode = e.target.value === 'integrated-terminal'
+                    ? 'integrated-terminal'
+                    : 'popup';
+            });
+        }
         
         const closeDialogBtn = document.getElementById('close-install-dialog');
         if (closeDialogBtn) {
@@ -246,6 +256,7 @@ class CompilerSettings {
                     compilerPath: allSettings.compilerPath || '',
                     pythonInterpreterPath: allSettings.pythonInterpreterPath || '',
                     compilerArgs: allSettings.compilerArgs || '-std=c++14 -O2 -static',
+                    runMode: allSettings.runMode || 'popup',
                     testlibPath: allSettings.testlibPath || ''
                 };
             }
@@ -259,11 +270,13 @@ class CompilerSettings {
         const compilerPathInput = document.getElementById('compiler-path');
         const pythonInterpreterPathInput = document.getElementById('python-interpreter-path');
         const compilerOptionsInput = document.getElementById('compiler-options');
+        const runModeSelect = document.getElementById('run-mode');
         const testlibPathInput = document.getElementById('testlib-path');
         
         if (compilerPathInput) compilerPathInput.value = this.settings.compilerPath || '';
         if (pythonInterpreterPathInput) pythonInterpreterPathInput.value = this.settings.pythonInterpreterPath || '';
         if (compilerOptionsInput) compilerOptionsInput.value = this.settings.compilerArgs || '-std=c++14 -O2 -static';
+        if (runModeSelect) runModeSelect.value = this.settings.runMode || 'popup';
         if (testlibPathInput) testlibPathInput.value = this.settings.testlibPath || '';
     }
 
@@ -470,11 +483,16 @@ class CompilerSettings {
             const compilerPath = document.getElementById('compiler-path').value;
             const pythonInterpreterPath = document.getElementById('python-interpreter-path').value;
             const compilerArgs = document.getElementById('compiler-options').value;
+            const runModeSelect = document.getElementById('run-mode');
+            const runMode = runModeSelect && runModeSelect.value === 'integrated-terminal'
+                ? 'integrated-terminal'
+                : 'popup';
             
             const newSettings = {
                 compilerPath: compilerPath,
                 pythonInterpreterPath: pythonInterpreterPath,
-                compilerArgs: compilerArgs
+                compilerArgs: compilerArgs,
+                runMode: runMode
             };
             
             logInfo('准备保存编译器设置:', newSettings);
