@@ -40,6 +40,7 @@ jobs:
           npm install
           npm install --include=optional sharp
           npm install --os=darwin --cpu=arm64 sharp
+          npm install dmg-license
           npm install --os=linux --cpu=x64 sharp
 
       - name: Install AppImage dependencies
