@@ -24,28 +24,38 @@ class GDBDebugger extends EventEmitter {
         
         // Linux TTY
         this._ttyProcess = null;
+        this._ttyProcessPid = 0;
         this._ttyPath = null;
         this._ttyPromise = null;
         this._linuxTTYOptions = {};
         this._ttyShellPid = null;
         this._expectingRunning = false;
+        this._commandChain = Promise.resolve();
+        this._lastResumeAt = 0;
 
         this._shortPathCache = new Map();
     }
 
+    _enqueueCommand(task) {
+        const run = this._commandChain.then(() => task());
+        // Keep the chain alive even if one command fails.
+        this._commandChain = run.catch(() => {});
+        return run;
+    }
+
     _send(cmd) {
-        return new Promise((resolve, reject) => {
+        return this._enqueueCommand(() => new Promise((resolve, reject) => {
             if (!this.gdbProcess) return reject(new Error('GDB process not started'));
             const token = this.seq++;
             this.pending.set(token, { resolve, reject, cmd });
             const line = `${token}-${cmd}\n`;
             try { global.logInfo?.('[GDB<<]', line.trim()); } catch (_) { }
             this.gdbProcess.stdin.write(line);
-        });
+        }));
     }
 
     async _sendCLI(cmd) {
-        return new Promise((resolve, reject) => {
+        return this._enqueueCommand(() => new Promise((resolve, reject) => {
             if (!this.gdbProcess) return reject(new Error('GDB not started'));
             const token = this.seq++;
             
@@ -70,7 +80,7 @@ class GDBDebugger extends EventEmitter {
             const line = `${token}-interpreter-exec console "${cmd.replace(/"/g, '\\"')}"\n`;
             try { global.logInfo?.('[GDB<<]', line.trim()); } catch (_) { }
             this.gdbProcess.stdin.write(line);
-        });
+        }));
     }
 
     _unescapeMIString(str) {
@@ -102,6 +112,9 @@ class GDBDebugger extends EventEmitter {
             try { global.logWarn?.('[GDB-STDERR]', d.toString()); } catch (_) { }
         });
         this.gdbProcess.on('exit', (code, signal) => {
+            if (this.buffer && this.buffer.length > 0) {
+                this._onData('\n');
+            }
             this.isRunning = false;
             this.programExited = true;
             this._inferiorRunning = false;
@@ -128,12 +141,16 @@ class GDBDebugger extends EventEmitter {
         await runInitCommand('gdb-set print elements 200');
         
         if (process.platform === 'win32') {
-            await runInitCommand('gdb-set new-console on');
+            const disableNewConsole = !!options.noNewConsole;
+            await runInitCommand(`gdb-set new-console ${disableNewConsole ? 'off' : 'on'}`);
         } else if (process.platform === 'linux') {
              const opts = options || {};
              this._linuxTTYOptions = {
                  inferiorTTY: typeof opts.inferiorTTY === 'string' ? opts.inferiorTTY : undefined,
-                 noNewConsole: !!opts.noNewConsole
+                 noNewConsole: !!opts.noNewConsole,
+                 consoleTerminalTemplate: typeof opts.consoleTerminalTemplate === 'string'
+                     ? opts.consoleTerminalTemplate
+                     : ''
              };
              await this._cleanupLinuxTTY();
              if (this._linuxTTYOptions.inferiorTTY) {
@@ -181,6 +198,7 @@ class GDBDebugger extends EventEmitter {
         }
 
         this._expectingRunning = true;
+        this._lastResumeAt = Date.now();
         await this._send('exec-run');
         this._inferiorLaunched = true;
         this._inferiorRunning = true;
@@ -192,6 +210,7 @@ class GDBDebugger extends EventEmitter {
         if (!this._inferiorLaunched) return this.run();
         
         this._expectingRunning = true;
+        this._lastResumeAt = Date.now();
         try {
             await this._send('exec-continue');
             // MI 的 *running 事件在少数环境可能延迟/丢失，先乐观打开输入窗口，后续由 *stopped 回收状态。
@@ -208,14 +227,17 @@ class GDBDebugger extends EventEmitter {
 
     async stepOver() { 
         this._expectingRunning = true;
+        this._lastResumeAt = Date.now();
         try { await this._send('exec-next'); } catch(e) { this._expectingRunning = false; throw e; }
     }
     async stepInto() { 
         this._expectingRunning = true;
+        this._lastResumeAt = Date.now();
         try { await this._send('exec-step'); } catch(e) { this._expectingRunning = false; throw e; }
     }
     async stepOut() { 
         this._expectingRunning = true;
+        this._lastResumeAt = Date.now();
         try { await this._send('exec-finish'); } catch(e) { this._expectingRunning = false; throw e; }
     }
 
@@ -259,7 +281,8 @@ class GDBDebugger extends EventEmitter {
         if (!this.gdbProcess || !this.gdbProcess.stdin) {
             return false;
         }
-        if (!this._inferiorRunning && !this._expectingRunning) {
+        const resumeWindowActive = this._lastResumeAt > 0 && (Date.now() - this._lastResumeAt) <= 3000;
+        if (!this._inferiorRunning && !this._expectingRunning && !resumeWindowActive) {
             return false;
         }
 
@@ -483,121 +506,191 @@ class GDBDebugger extends EventEmitter {
         };
     }
 
+    _isCompleteMIStreamRecord(text) {
+        if (!text || text.length < 3) {
+            return false;
+        }
+
+        const lead = text[0];
+        if ((lead !== '~' && lead !== '@' && lead !== '&') || text[1] !== '"') {
+            return false;
+        }
+
+        let escaped = false;
+        for (let i = 2; i < text.length; i += 1) {
+            const ch = text[i];
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (ch === '\\') {
+                escaped = true;
+                continue;
+            }
+            if (ch === '"') {
+                return i === text.length - 1;
+            }
+        }
+
+        return false;
+    }
+
+    _handleOutputLine(line, hasLineBreak = false) {
+        const { raw, mi } = this._splitRawOutputAndMI(line);
+        if (raw) {
+            this._emitTargetOutput(hasLineBreak ? `${raw}\n` : raw);
+        }
+
+        const trimmed = mi.trim();
+        if (!trimmed) return;
+        
+        // Suppress "Failed to set controlling terminal" warning which is expected when hijacking TTY
+        if (trimmed.includes('Failed to set controlling terminal')) {
+            return;
+        }
+
+        try { global.logInfo?.('[GDB>>]', trimmed); } catch (_) { }
+
+        if (mi.startsWith('@')) {
+            try {
+                const text = this._unescapeMIString(mi.substring(1));
+                this._emitTargetOutput(text);
+            } catch (_) { }
+            return;
+        }
+
+        if (mi.startsWith('~')) {
+            for (const req of this.pending.values()) {
+                if (req.captureOutput) {
+                    req.captureOutput(mi);
+                    break; 
+                }
+            }
+        }
+
+        const tokenMatch = mi.match(/^(\d+)\^([a-zA-Z\-]+)(.*)$/);
+        if (tokenMatch) {
+            const [, tokenStr, status, rest] = tokenMatch;
+            const token = parseInt(tokenStr, 10);
+            const req = this.pending.get(token);
+            if (req) {
+                this.pending.delete(token);
+                if (status === 'done' || status === 'running' || status === 'connected' || status === 'exit') {
+                    req.resolve(this._parseMIResult(rest));
+                } else {
+                    const err = this._parseMIResult(rest);
+                    req.reject(new Error(err.msg || 'GDB Error'));
+                }
+            }
+            return;
+        }
+
+        if (mi.startsWith('*stopped')) {
+            this._inferiorRunning = false;
+            this._expectingRunning = false;
+            this._lastResumeAt = 0;
+            try { global.logInfo?.('[GDB] 状态: 停止'); } catch (_) { }
+            const data = this._parseMIResult(mi.substring(8));
+            const reason = data.reason;
+            const frame = data.frame || {};
+            
+            this.emit('stopped', { 
+                reason, 
+                frame: {
+                    file: this._normalizePath(frame.fullname || frame.file),
+                    line: parseInt(frame.line, 10),
+                    function: frame.func
+                }
+            });
+        } else if (mi.startsWith('*running')) {
+            try { global.logInfo?.(`[GDB] 接收到 *running。期望=${this._expectingRunning}`); } catch (_) { }
+            const wasRunning = !!this._inferiorRunning;
+            if (this._expectingRunning) {
+                this._inferiorRunning = true;
+                try { global.logInfo?.('[GDB] 状态: 运行'); } catch (_) { }
+                if (!wasRunning) {
+                    this.emit('running');
+                }
+            } else {
+                try { global.logInfo?.('[GDB] 警告: 收到意外的 *running 事件，已同步状态'); } catch (_) { }
+                this._inferiorRunning = true;
+                if (!wasRunning) {
+                    this.emit('running');
+                }
+            }
+        } else if (mi.startsWith('=thread-group-exited')) {
+            const exitedData = this._parseMIResult(mi.substring('=thread-group-exited'.length));
+            const exitCodeRaw = exitedData?.['exit-code'] ?? exitedData?.exitCode;
+            const parsedExitCode = typeof exitCodeRaw === 'string' && /^0x[0-9a-f]+$/i.test(exitCodeRaw)
+                ? parseInt(exitCodeRaw, 16)
+                : Number.parseInt(String(exitCodeRaw ?? ''), 10);
+            this.programExited = true;
+            this._inferiorRunning = false;
+            this._expectingRunning = false;
+            this.emit('program-exited', {
+                exitCode: Number.isFinite(parsedExitCode) ? parsedExitCode : undefined
+            });
+        }
+    }
+
+    _processBufferedOutput(force = false) {
+        if (!this.buffer) {
+            return;
+        }
+
+        if (force) {
+            const pending = this.buffer;
+            this.buffer = '';
+            this._handleOutputLine(pending);
+            return;
+        }
+
+        let miStart = this._findMIRecordStart(this.buffer);
+        if (miStart > 0) {
+            const rawPrefix = this.buffer.substring(0, miStart);
+            if (rawPrefix) {
+                this._emitTargetOutput(rawPrefix);
+            }
+            this.buffer = this.buffer.substring(miStart);
+        }
+
+        if (!this.buffer) {
+            return;
+        }
+
+        if (this.buffer.includes('(gdb)')) {
+            const parts = this.buffer.split('(gdb)');
+            this.buffer = parts.pop() || '';
+            for (const part of parts) {
+                this._handleOutputLine(`${part}(gdb)`);
+            }
+            return;
+        }
+
+        miStart = this._findMIRecordStart(this.buffer);
+        if (miStart === -1) {
+            this._emitTargetOutput(this.buffer);
+            this.buffer = '';
+            return;
+        }
+
+        if (miStart === 0 && this._isCompleteMIStreamRecord(this.buffer)) {
+            const record = this.buffer;
+            this.buffer = '';
+            this._handleOutputLine(record);
+        }
+    }
+
     _onData(chunk) {
         this.buffer += chunk;
         const lines = this.buffer.split(/\r?\n/);
         this.buffer = lines.pop() || '';
 
         for (const line of lines) {
-            const { raw, mi } = this._splitRawOutputAndMI(line);
-            if (raw) {
-                this._emitTargetOutput(raw);
-            }
-
-            const trimmed = mi.trim();
-            if (!trimmed) continue;
-            
-            // Suppress "Failed to set controlling terminal" warning which is expected when hijacking TTY
-            if (trimmed.includes('Failed to set controlling terminal')) {
-                continue;
-            }
-
-            try { global.logInfo?.('[GDB>>]', trimmed); } catch (_) { }
-
-            if (mi.startsWith('@')) {
-                try {
-                    const text = this._unescapeMIString(mi.substring(1));
-                    this._emitTargetOutput(text);
-                } catch (_) { }
-                continue;
-            }
-
-            if (mi.startsWith('~')) {
-                try {
-                    const text = this._unescapeMIString(mi.substring(1));
-                    this._emitTargetOutput(text);
-                } catch (_) { }
-            }
-
-            if (mi.startsWith('~')) {
-                for (const req of this.pending.values()) {
-                    if (req.captureOutput) {
-                        req.captureOutput(mi);
-                        break; 
-                    }
-                }
-            }
-
-            const tokenMatch = mi.match(/^(\d+)\^([a-zA-Z\-]+)(.*)$/);
-            if (tokenMatch) {
-                const [, tokenStr, status, rest] = tokenMatch;
-                const token = parseInt(tokenStr, 10);
-                const req = this.pending.get(token);
-                if (req) {
-                    this.pending.delete(token);
-                    if (status === 'done' || status === 'running' || status === 'connected' || status === 'exit') {
-                        req.resolve(this._parseMIResult(rest));
-                    } else {
-                        const err = this._parseMIResult(rest);
-                        req.reject(new Error(err.msg || 'GDB Error'));
-                    }
-                }
-                continue;
-            }
-
-            if (mi.startsWith('*stopped')) {
-                this._inferiorRunning = false;
-                this._expectingRunning = false;
-                try { global.logInfo?.('[GDB] 状态: 停止'); } catch (_) { }
-                const data = this._parseMIResult(mi.substring(8));
-                const reason = data.reason;
-                const frame = data.frame || {};
-                
-                this.emit('stopped', { 
-                    reason, 
-                    frame: {
-                        file: this._normalizePath(frame.fullname || frame.file),
-                        line: parseInt(frame.line, 10),
-                        function: frame.func
-                    }
-                });
-
-                const reasonText = String(reason || '').toLowerCase();
-                const isExitStop = reasonText.startsWith('exited');
-                if (!isExitStop && !this.programExited) {
-                    this.updateVariables();
-                    this.updateCallStack();
-                }
-            } else if (mi.startsWith('*running')) {
-                try { global.logInfo?.(`[GDB] 接收到 *running。期望=${this._expectingRunning}`); } catch (_) { }
-                const wasRunning = !!this._inferiorRunning;
-                if (this._expectingRunning) {
-                    this._inferiorRunning = true;
-                    try { global.logInfo?.('[GDB] 状态: 运行'); } catch (_) { }
-                    if (!wasRunning) {
-                        this.emit('running');
-                    }
-                } else {
-                    try { global.logInfo?.('[GDB] 警告: 收到意外的 *running 事件，已同步状态'); } catch (_) { }
-                    this._inferiorRunning = true;
-                    if (!wasRunning) {
-                        this.emit('running');
-                    }
-                }
-            } else if (mi.startsWith('=thread-group-exited')) {
-                const exitedData = this._parseMIResult(mi.substring('=thread-group-exited'.length));
-                const exitCodeRaw = exitedData?.['exit-code'] ?? exitedData?.exitCode;
-                const parsedExitCode = typeof exitCodeRaw === 'string' && /^0x[0-9a-f]+$/i.test(exitCodeRaw)
-                    ? parseInt(exitCodeRaw, 16)
-                    : Number.parseInt(String(exitCodeRaw ?? ''), 10);
-                this.programExited = true;
-                this._inferiorRunning = false;
-                this._expectingRunning = false;
-                this.emit('program-exited', {
-                    exitCode: Number.isFinite(parsedExitCode) ? parsedExitCode : undefined
-                });
-            }
+            this._handleOutputLine(line, true);
         }
+
+        this._processBufferedOutput(false);
     }
 
     _parseMIResult(str) {
@@ -779,6 +872,9 @@ class GDBDebugger extends EventEmitter {
     }
     
     async _cleanupLinuxTTY() {
+        if (this._ttyProcessPid) {
+            try { process.kill(this._ttyProcessPid, 'SIGTERM'); } catch (_) { }
+        }
         if (this._ttyProcess) {
             try { this._ttyProcess.kill(); } catch (_) { }
         }
@@ -786,7 +882,9 @@ class GDBDebugger extends EventEmitter {
             try { process.kill(this._ttyShellPid, 'SIGTERM'); } catch (_) { }
         }
         this._ttyProcess = null;
+        this._ttyProcessPid = 0;
         this._ttyPath = null;
+        this._ttyShellPid = null;
     }
 
     async _ensureLinuxTTY() {
@@ -794,76 +892,108 @@ class GDBDebugger extends EventEmitter {
         if (this._linuxTTYOptions.noNewConsole) return null;
         if (this._linuxTTYOptions.inferiorTTY) return { ttyPath: this._linuxTTYOptions.inferiorTTY };
 
-        const { exec } = require('child_process');
-        const util = require('util');
-        const execPromise = util.promisify(exec);
-        const sleepTime = 80000000 + Math.floor(Math.random() * 100000);
-        const sleepCmd = `sleep ${sleepTime}`;
-        let terminalApp = null;
-        let args = [];
-        const candidates = [
-            { cmd: 'gnome-terminal', args: ['--', 'bash', '-c', sleepCmd] },
-            { cmd: 'konsole', args: ['-e', 'bash', '-c', sleepCmd] },
-            { cmd: 'xfce4-terminal', args: ['-T', 'Program Console', '-x', 'bash', '-c', sleepCmd] },
-            { cmd: 'x-terminal-emulator', args: ['-e', 'bash', '-c', sleepCmd] },
-            { cmd: 'xterm', args: ['-T', 'Program Console', '-e', sleepCmd] }
-        ];
-
-        for (const c of candidates) {
-            try {
-                await execPromise(`which ${c.cmd}`);
-                terminalApp = c.cmd;
-                args = c.args;
-                break;
-            } catch (e) {
-            }
+        const hasDisplay = !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY || process.env.MIR_SOCKET);
+        if (!hasDisplay) {
+            global.logWarn?.('[GDB] 当前不是图形会话，无法创建外部调试终端');
+            return null;
         }
 
-        if (!terminalApp) {
-            terminalApp = 'xterm';
-            args = ['-T', 'Program Console', '-e', sleepCmd];
+        const defaultTemplate = 'xterm -T $TITLE -e';
+        const templateRaw = String(this._linuxTTYOptions.consoleTerminalTemplate || defaultTemplate).trim() || defaultTemplate;
+        const sleepToken = 80000000 + Math.floor(Math.random() * 100000);
+        const sleepCmd = `sleep ${sleepToken}`;
+
+        let command = templateRaw;
+        command = command.replace(/\$TITLE/g, "'Program Console'");
+        if (command.includes('$SCRIPT')) {
+            command = command.replace(/\$SCRIPT/g, sleepCmd);
+        } else {
+            command = `${command} ${sleepCmd}`;
         }
+
         try {
-            this._ttyProcess = spawn(terminalApp, args, {
+            this._ttyProcess = spawn('/bin/sh', ['-c', command], {
                 detached: true,
-                stdio: 'ignore'
+                stdio: 'ignore',
+                env: { ...process.env }
             });
-            this._ttyProcess.unref(); 
+            this._ttyProcessPid = this._ttyProcess.pid || 0;
+            this._ttyProcess.unref();
         } catch (e) {
             global.logWarn?.('[GDB] 启动终端失败', e);
             return null;
         }
-        for (let i = 0; i < 50; i++) {
+
+        for (let i = 0; i < 100; i++) {
             await new Promise(r => setTimeout(r, 200));
-            
+
+            let psOut = '';
             try {
-                const { stdout } = await execPromise('ps x -o tty,pid,command');
-                const lines = stdout.split('\n');
-                for (const line of lines) {
-                    if (line.includes(sleepCmd) && !line.includes('ps x') && !line.includes(terminalApp)) {
-                        const parts = line.trim().split(/\s+/);
-                        if (parts.length >= 3) {
-                            let tty = parts[0];
-                            const pid = parts[1];
-                            
-                            if (tty === '?' || tty === '-') continue; 
-                            
-                            if (!tty.startsWith('/dev/')) {
-                                tty = '/dev/' + tty;
-                            }
-                            
-                            this._ttyPath = tty;
-                            this._ttyShellPid = parseInt(pid, 10);
-                            try { global.logInfo?.(`[GDB] 找到 TTY: ${tty} (PID: ${pid})`); } catch (_) { }
-                            return { ttyPath: this._ttyPath };
-                        }
+                const ps = spawnSync('ps', ['x', '-o', 'tty,pid,command'], { encoding: 'utf8' });
+                if (ps && ps.status === 0) {
+                    psOut = String(ps.stdout || '');
+                }
+            } catch (_) {
+            }
+
+            if (!psOut) {
+                continue;
+            }
+
+            const lines = psOut.split(/\r?\n/);
+            for (const line of lines) {
+                if (!line || !line.includes(sleepCmd) || line.includes('ps x -o tty,pid,command')) {
+                    continue;
+                }
+
+                const match = line.trim().match(/^(\S+)\s+(\d+)\s+(.+)$/);
+                if (!match) {
+                    continue;
+                }
+
+                const ttyRaw = match[1];
+                const pidRaw = match[2];
+                const pidForLine = Number.parseInt(pidRaw, 10);
+                if (!Number.isInteger(pidForLine) || pidForLine <= 0) {
+                    continue;
+                }
+
+                if (this._ttyProcessPid > 0 && pidForLine === this._ttyProcessPid) {
+                    continue;
+                }
+
+                if (!ttyRaw || ttyRaw === '?' || ttyRaw === '-') {
+                    continue;
+                }
+
+                const ttyPath = ttyRaw.startsWith('/dev/') ? ttyRaw : `/dev/${ttyRaw}`;
+                this._ttyPath = ttyPath;
+                this._ttyShellPid = pidForLine;
+
+                try {
+                    if (this._ttyProcessPid > 0) {
+                        process.kill(this._ttyProcessPid, 0);
+                    }
+                } catch (err) {
+                    if (err && err.code === 'ESRCH') {
+                        this._ttyProcessPid = pidForLine;
                     }
                 }
-            } catch (e) {
+
+                try { global.logInfo?.(`[GDB] 找到 TTY: ${ttyPath} (PID: ${pidForLine})`); } catch (_) { }
+                return { ttyPath };
             }
         }
-        
+
         global.logWarn?.('[GDB] 找不到终端的 TTY');
+        try {
+            if (this._ttyProcessPid > 0) {
+                process.kill(this._ttyProcessPid, 'SIGTERM');
+            }
+        } catch (_) { }
+        this._ttyProcessPid = 0;
+        this._ttyShellPid = null;
+        this._ttyPath = null;
         return null;
     }
 }

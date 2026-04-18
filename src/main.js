@@ -809,6 +809,24 @@ function normalizeRunModeForPlatform(inputRunMode, platform = process.platform) 
         : 'popup';
 }
 
+function resolveLinuxConsoleTerminalTemplate() {
+    const envTemplate = String(process.env.OICPP_DEBUG_CONSOLE_TEMPLATE || '').trim();
+    if (envTemplate) {
+        return envTemplate;
+    }
+
+    const settingsTemplate = String(
+        settings?.consoleTerminalTemplate
+        || settings?.debugConsoleTerminal
+        || ''
+    ).trim();
+    if (settingsTemplate) {
+        return settingsTemplate;
+    }
+
+    return 'xterm -T $TITLE -e';
+}
+
 let debugProcess = null;
 let debugSession = null;
 let breakpoints = new Map();
@@ -8269,21 +8287,22 @@ async function startDebugSession(filePath, options = {}) {
             }
         } catch (e) { logWarn('[主进程] 构造 GDB 环境失败:', e?.message || String(e)); }
         try {
-            const startOptions = useMacDebugger
-                ? {
-                    env: gdbEnv,
-                    gdbPath: debuggerConfig.command,
-                    relaxedInit: !!debuggerConfig.relaxedInit
-                }
-                : {
-                    env: gdbEnv,
-                    ...(process.platform === 'linux' ? {
-                        noNewConsole: shouldUseIntegratedTerminal,
-                        ...((requestedInferiorTTY && !useInputBridge)
-                            ? { inferiorTTY: requestedInferiorTTY }
-                            : {})
-                    } : {})
-                };
+            const startOptions = {
+                env: gdbEnv,
+                noNewConsole: shouldUseIntegratedTerminal,
+                ...((requestedInferiorTTY && !useInputBridge)
+                    ? { inferiorTTY: requestedInferiorTTY }
+                    : {}),
+                ...(process.platform === 'linux'
+                    ? { consoleTerminalTemplate: resolveLinuxConsoleTerminalTemplate() }
+                    : {})
+            };
+
+            if (useMacDebugger) {
+                startOptions.gdbPath = debuggerConfig.command;
+                startOptions.relaxedInit = !!debuggerConfig.relaxedInit;
+            }
+
             await gdbDebugger.start(executablePath, filePath, startOptions);
         } catch (err) {
             logError('[主进程] 调试器启动失败:', err);
@@ -8686,7 +8705,7 @@ async function sendDebugInput(input) {
                 lastDebugInputRejectedNoticeTs = now;
                 try {
                     mainWindow.webContents.send('debug-terminal-output', {
-                        data: '\r\n[调试] 当前处于暂停态，按 F6 继续运行后再输入\r\n'
+                        data: '\r\n[调试] 当前处于暂停态，请点击继续运行后再输入\r\n'
                     });
                 } catch (_) { }
             }
