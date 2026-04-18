@@ -186,6 +186,7 @@ class CompilerManager {
 
     async loadSettings() {
         try {
+            const isIntegratedOnlyPlatform = !!(typeof window !== 'undefined' && window.process && (window.process.platform === 'darwin' || window.process.platform === 'linux'));
             const isMacPlatform = !!(typeof window !== 'undefined' && window.process && window.process.platform === 'darwin');
             if (window.electronAPI && window.electronAPI.getAllSettings) {
                 const allSettings = await window.electronAPI.getAllSettings();
@@ -196,7 +197,7 @@ class CompilerManager {
                         compilerArgs: isMacPlatform
                             ? loadedCompilerArgs.replace(/\s-static\b/g, ' ').replace(/\s+/g, ' ').trim()
                             : loadedCompilerArgs,
-                        runMode: isMacPlatform ? 'integrated-terminal' : (allSettings.runMode || 'popup')
+                        runMode: isIntegratedOnlyPlatform ? 'integrated-terminal' : (allSettings.runMode || 'popup')
                     });
                     logInfo('编译器设置已加载:', this.settings);
                 }
@@ -211,7 +212,7 @@ class CompilerManager {
                         compilerArgs: isMacPlatform
                             ? loadedCompilerArgs.replace(/\s-static\b/g, ' ').replace(/\s+/g, ' ').trim()
                             : loadedCompilerArgs,
-                        runMode: isMacPlatform ? 'integrated-terminal' : (parsed.runMode || 'popup')
+                        runMode: isIntegratedOnlyPlatform ? 'integrated-terminal' : (parsed.runMode || 'popup')
                     });
                     logInfo('从本地存储加载编译器设置:', this.settings);
                 }
