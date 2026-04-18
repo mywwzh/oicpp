@@ -7837,49 +7837,94 @@ function runCommandVersionProbe(command, args = [], options = {}) {
     }
 }
 
-function resolveMacLLDBPath() {
+function resolveMacMIDebuggerLaunchConfig() {
     if (process.platform !== 'darwin') {
         return null;
     }
 
-    const envCandidates = [
-        process.env.OICPP_LLDB,
-        process.env.LLDB_PATH,
+    const candidates = [];
+    const seen = new Set();
+    const pushCandidate = (kind, command, miArgs, relaxedInit = false) => {
+        const normalized = String(command || '').trim();
+        if (!normalized || seen.has(normalized)) {
+            return;
+        }
+        seen.add(normalized);
+        candidates.push({
+            kind,
+            command: normalized,
+            miArgs: Array.isArray(miArgs) ? miArgs.slice() : ['-q', '--interpreter=mi2'],
+            relaxedInit: !!relaxedInit
+        });
+    };
+
+    const envGdbCandidates = [
+        process.env.OICPP_GDB,
+        process.env.GDB_PATH
+    ].filter(Boolean).map(x => String(x).trim()).filter(Boolean);
+
+    const envLldbMiCandidates = [
         process.env.OICPP_LLDB_MI,
         process.env.LLDB_MI_PATH
     ].filter(Boolean).map(x => String(x).trim()).filter(Boolean);
 
-    const absoluteCandidates = [
-        ...envCandidates,
-        '/usr/bin/lldb',
-        '/opt/homebrew/opt/llvm/bin/lldb',
-        '/usr/local/opt/llvm/bin/lldb',
-        '/Library/Developer/CommandLineTools/usr/bin/lldb'
-    ];
+    for (const candidate of envGdbCandidates) {
+        pushCandidate('gdb', candidate, ['-q', '--interpreter=mi2'], false);
+    }
 
-    for (const candidate of absoluteCandidates) {
+    for (const candidate of envLldbMiCandidates) {
+        pushCandidate('lldb-mi', candidate, ['--interpreter=mi'], true);
+    }
+
+    const absoluteGdbCandidates = [
+        '/opt/homebrew/bin/gdb',
+        '/usr/local/bin/gdb',
+        '/usr/bin/gdb'
+    ];
+    for (const candidate of absoluteGdbCandidates) {
         try {
             if (fs.existsSync(candidate)) {
-                return candidate;
+                pushCandidate('gdb', candidate, ['-q', '--interpreter=mi2'], false);
             }
         } catch (_) { }
     }
 
-    const xcrunProbe = runCommandVersionProbe('xcrun', ['--find', 'lldb']);
-    if (xcrunProbe.ok) {
-        const resolved = String(xcrunProbe.output || '').split(/\r?\n/).map(s => s.trim()).find(Boolean);
-        if (resolved) {
-            try {
-                if (fs.existsSync(resolved)) {
-                    return resolved;
-                }
-            } catch (_) { }
-        }
+    const absoluteLldbMiCandidates = [
+        '/opt/homebrew/opt/llvm/bin/lldb-mi',
+        '/usr/local/opt/llvm/bin/lldb-mi',
+        '/Library/Developer/CommandLineTools/usr/bin/lldb-mi'
+    ];
+    for (const candidate of absoluteLldbMiCandidates) {
+        try {
+            if (fs.existsSync(candidate)) {
+                pushCandidate('lldb-mi', candidate, ['--interpreter=mi'], true);
+            }
+        } catch (_) { }
     }
 
-    const pathProbe = runCommandVersionProbe('lldb', ['--version']);
-    if (pathProbe.ok) {
-        return 'lldb';
+    const gdbPathProbe = runCommandVersionProbe('gdb', ['--version']);
+    if (gdbPathProbe.ok) {
+        pushCandidate('gdb', 'gdb', ['-q', '--interpreter=mi2'], false);
+    }
+
+    const lldbMiPathProbe = runCommandVersionProbe('lldb-mi', ['--version']);
+    if (lldbMiPathProbe.ok) {
+        pushCandidate('lldb-mi', 'lldb-mi', ['--interpreter=mi'], true);
+    }
+
+    for (const candidate of candidates) {
+        const probe = runCommandVersionProbe(candidate.command, ['--version']);
+        if (!probe.ok) {
+            continue;
+        }
+        const versionLine = String(probe.output || '')
+            .split(/\r?\n/)
+            .map(s => s.trim())
+            .find(Boolean) || candidate.command;
+        return {
+            ...candidate,
+            version: versionLine
+        };
     }
 
     return null;
@@ -7887,15 +7932,11 @@ function resolveMacLLDBPath() {
 
 function resolveDebuggerLaunchConfig() {
     if (process.platform === 'darwin') {
-        const lldbPath = resolveMacLLDBPath();
-        if (!lldbPath) {
-            throw new Error('未检测到 lldb。请安装 Xcode Command Line Tools 或 LLVM，并确保 lldb 在 PATH 中。');
+        const debuggerConfig = resolveMacMIDebuggerLaunchConfig();
+        if (!debuggerConfig) {
+            throw new Error('未检测到可用的 MI 调试器。请安装 gdb（推荐）或 lldb-mi，并确保其在 PATH 中，或通过 OICPP_GDB/OICPP_LLDB_MI 指定路径。');
         }
-        return {
-            kind: 'lldb',
-            command: lldbPath,
-            relaxedInit: true
-        };
+        return debuggerConfig;
     }
 
     return {
@@ -7908,52 +7949,34 @@ function resolveDebuggerLaunchConfig() {
 
 async function checkGDBAvailability() {
     if (process.platform === 'darwin') {
-        logInfo('[主进程] 检查 macOS 调试环境 (clang + lldb)...');
+        logInfo('[主进程] 检查 macOS 调试环境 (clang + MI 调试器)...');
 
         const clangProbe = runCommandVersionProbe('clang++', ['--version']);
         if (!clangProbe.ok) {
             return {
                 available: false,
-                debugger: 'lldb',
+                debugger: 'mi-debugger',
                 message: `未检测到 clang++：${clangProbe.message}`
             };
         }
 
-        const lldbProbe = runCommandVersionProbe('lldb', ['--version']);
-        if (!lldbProbe.ok) {
+        const debuggerConfig = resolveMacMIDebuggerLaunchConfig();
+        if (!debuggerConfig) {
             return {
                 available: false,
-                debugger: 'lldb',
-                message: `未检测到 lldb：${lldbProbe.message}`
-            };
-        }
-
-        const lldbPath = resolveMacLLDBPath();
-        if (!lldbPath) {
-            return {
-                available: false,
-                debugger: 'lldb',
-                message: '已检测到 clang，但未找到 lldb。请安装 Xcode Command Line Tools 或 LLVM，并将 lldb 加入 PATH。'
-            };
-        }
-
-        const lldbResolvedProbe = runCommandVersionProbe(lldbPath, ['--version']);
-        if (!lldbResolvedProbe.ok) {
-            return {
-                available: false,
-                debugger: 'lldb',
-                message: `lldb 不可用：${lldbResolvedProbe.message}`
+                debugger: 'mi-debugger',
+                message: '已检测到 clang，但未找到可用的 MI 调试器。请安装 gdb（推荐）或 lldb-mi，并将其加入 PATH。'
             };
         }
 
         const clangVersionLine = String(clangProbe.output || '').split(/\r?\n/).find(Boolean) || 'clang++';
-        const lldbVersionLine = String(lldbProbe.output || '').split(/\r?\n/).find(Boolean) || 'lldb';
+        const debuggerVersionLine = String(debuggerConfig.version || debuggerConfig.command || debuggerConfig.kind || 'debugger');
         return {
             available: true,
-            debugger: 'lldb',
-            debuggerPath: lldbPath,
-            version: lldbVersionLine,
-            message: `LLDB可用: ${lldbVersionLine}；编译器: ${clangVersionLine}`
+            debugger: debuggerConfig.kind,
+            debuggerPath: debuggerConfig.command,
+            version: debuggerVersionLine,
+            message: `调试器可用: ${debuggerVersionLine}；编译器: ${clangVersionLine}`
         };
     }
 
@@ -8301,6 +8324,9 @@ async function startDebugSession(filePath, options = {}) {
             if (useMacDebugger) {
                 startOptions.gdbPath = debuggerConfig.command;
                 startOptions.relaxedInit = !!debuggerConfig.relaxedInit;
+                startOptions.miArgs = Array.isArray(debuggerConfig.miArgs)
+                    ? debuggerConfig.miArgs.slice()
+                    : undefined;
             }
 
             await gdbDebugger.start(executablePath, filePath, startOptions);
