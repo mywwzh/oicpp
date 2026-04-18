@@ -20,7 +20,10 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm install
+          npm install --include=optional sharp
+          npm install --os=darwin --cpu=arm64 sharp
 
       - name: Build macOS DMG
         env:
