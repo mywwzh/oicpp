@@ -1881,6 +1881,13 @@ class OICPPApp {
         });
     }
 
+    async openIntegratedTerminalAndRunExecutable(executablePath, options = {}) {
+        if (!this.terminalPanel) {
+            throw new Error('内置终端组件未初始化');
+        }
+        return this.terminalPanel.runExecutableInNewTerminal(executablePath, options);
+    }
+
     async saveFile() {
         if (this.editorManager && this.editorManager.currentEditor) {
             const content = this.editorManager.currentEditor.getValue();
