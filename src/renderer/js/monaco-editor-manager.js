@@ -1120,6 +1120,15 @@ class MonacoEditorManager {
     }
 
     getDefaultKeybindings() {
+        const isMacPlatform = (() => {
+            try {
+                const platform = String(window.process?.platform || navigator?.platform || '').toLowerCase();
+                return platform.includes('darwin') || platform.includes('mac');
+            } catch (_) {
+                return false;
+            }
+        })();
+
         return {
             formatCode: 'Alt+Shift+S',
             showFunctionPicker: 'Ctrl+Shift+G',
@@ -1134,7 +1143,7 @@ class MonacoEditorManager {
             cut: 'Ctrl+X',
             compileCode: 'F9',
             runCode: 'F10',
-            compileAndRun: 'F11',
+            compileAndRun: isMacPlatform ? 'Ctrl+F11' : 'F11',
             toggleDebug: 'F5',
             debugContinue: 'F6',
             debugStepOver: 'F7',
@@ -1263,7 +1272,7 @@ class MonacoEditorManager {
 
         parts.forEach((part) => {
             const lower = part.toLowerCase();
-            if (lower === 'ctrl' || lower === 'cmd' || lower === 'ctrlcmd' || lower === 'cmdorctrl' || lower === 'ctrlorcmd') {
+            if (lower === 'ctrl' || lower === 'control' || lower === 'cmd' || lower === 'ctrlcmd' || lower === 'cmdorctrl' || lower === 'ctrlorcmd') {
                 result.ctrlOrCmd = true;
                 return;
             }
