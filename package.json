@@ -58,6 +58,11 @@
       "node_modules/**/*",
       "oicpp.ico"
     ],
+    "asarUnpack": [
+      "node_modules/node-pty/prebuilds/**/*.node",
+      "node_modules/node-pty/build/Release/**/*.node",
+      "node_modules/node-pty/build/Debug/**/*.node"
+    ],
     "artifactName": "${productName}-${version}-Setup.${ext}",
     "win": {
       "target": "nsis",

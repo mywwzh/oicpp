@@ -579,9 +579,7 @@ class IntegratedTerminalPanel {
 
         if (!this.status.available) {
             this.empty.style.display = 'flex';
-            this.empty.textContent = this.status.detail
-                ? `${this.status.reason}。${this.status.detail}`
-                : (this.status.reason || '终端功能不可用');
+            this.empty.textContent = this.formatUnavailableStatusText();
             return;
         }
 
@@ -592,6 +590,22 @@ class IntegratedTerminalPanel {
         }
 
         this.empty.style.display = 'none';
+    }
+
+    formatUnavailableStatusText() {
+        const reason = String(this.status?.reason || '终端功能不可用').trim();
+        const detailRaw = this.status?.detail == null ? '' : String(this.status.detail).trim();
+
+        if (!detailRaw) {
+            return reason;
+        }
+
+        let detail = detailRaw
+            .replace(/\s*Require stack:\s*/i, '\nRequire stack:\n')
+            .replace(/\s+-\s+/g, '\n- ')
+            .replace(/\s+尝试位置:\s*/g, '\n尝试位置: ');
+
+        return `${reason}\n${detail}`;
     }
 
     fitActiveTerminal() {
