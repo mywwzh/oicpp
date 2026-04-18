@@ -24,15 +24,10 @@ jobs:
           npm install
           npm install --os=linux --cpu=x64 sharp
 
-      - name: Install AppImage dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfuse2
-
       - name: Build Linux packages
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build
+        run: npm run build -- --linux deb
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
