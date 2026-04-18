@@ -27,12 +27,36 @@ class DebugPanel {
         wrap.className = 'debug-mini-wrap';
         wrap.innerHTML = `
       <div class="debug-toolbar">
-        <button id="dbg-start" class="icon-btn" title="开始">▶</button>
-        <button id="dbg-continue" class="icon-btn" title="继续(F6)">⏵</button>
-        <button id="dbg-step-over" class="icon-btn" title="步过(F7)">⤼</button>
-        <button id="dbg-step-into" class="icon-btn" title="步入(F8)">↳</button>
-        <button id="dbg-step-out" class="icon-btn" title="步出(Shift+F8)">↰</button>
-        <button id="dbg-stop" class="icon-btn" title="停止">■</button>
+                <button id="dbg-start" class="icon-btn" title="开始" aria-label="开始">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+                        <path fill="currentColor" d="M4.8 3.2v9.6L12.6 8 4.8 3.2z"/>
+                    </svg>
+                </button>
+                <button id="dbg-continue" class="icon-btn" title="继续(F6)" aria-label="继续">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+                        <path fill="currentColor" d="M4.8 3.2v9.6L12.6 8 4.8 3.2z"/>
+                    </svg>
+                </button>
+                <button id="dbg-step-over" class="icon-btn" title="步过(F7)" aria-label="步过">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+                        <path fill="currentColor" d="M2 3h1.4v10H2V3zm2.8 5 6.6-3.8v7.6L4.8 8z"/>
+                    </svg>
+                </button>
+                <button id="dbg-step-into" class="icon-btn" title="步入(F8)" aria-label="步入">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+                        <path fill="currentColor" d="M3 4h8V2l3 3-3 3V6H3V4zm4 4h2v4h3l-4 4-4-4h3V8z"/>
+                    </svg>
+                </button>
+                <button id="dbg-step-out" class="icon-btn" title="步出(Shift+F8)" aria-label="步出">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+                        <path fill="currentColor" d="M3 4h8V2l3 3-3 3V6H3V4zm8 8H8V8H6v4H3l4 4 4-4z"/>
+                    </svg>
+                </button>
+                <button id="dbg-stop" class="icon-btn" title="停止" aria-label="停止">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+                        <rect x="3" y="3" width="10" height="10" rx="1.2" fill="currentColor"/>
+                    </svg>
+                </button>
         <div class="flex-spacer"></div>
         <input id="dbg-watch-input" class="debug-watch-input" placeholder="添加监视表达式..."/>
         <button id="dbg-add-watch" class="icon-btn" title="添加监视">＋</button>

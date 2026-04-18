@@ -166,19 +166,19 @@ class IntegratedTerminalPanel {
 
         if (!this.status.available) {
             this.renderEmptyState();
-            return;
+            return null;
         }
 
         const forceCreate = !!options.forceCreate;
         const createIfNone = options.createIfNone !== false;
 
         if (forceCreate || (createIfNone && this.sessions.size === 0)) {
-            await this.createTerminal();
-            return;
+            return await this.createTerminal();
         }
 
         this.renderEmptyState();
         this.fitActiveTerminal();
+        return this.activeId || null;
     }
 
     setVisible(visible) {
@@ -296,7 +296,9 @@ class IntegratedTerminalPanel {
             fitAddon,
             remoteId: null,
             cwd: null,
-            shell: null
+            shell: null,
+            inputBridge: null,
+            muteRemoteOutput: false
         };
 
         this.sessions.set(tabId, provisionalSession);
@@ -350,6 +352,14 @@ class IntegratedTerminalPanel {
 
         terminal.onData((data) => {
             if (!provisionalSession.remoteId) {
+                return;
+            }
+            if (typeof provisionalSession.inputBridge === 'function') {
+                this.echoBridgedInput(provisionalSession, String(data || ''));
+                try {
+                    provisionalSession.inputBridge(String(data || ''));
+                } catch (_) {
+                }
                 return;
             }
             window.electronAPI.writeTerminal(provisionalSession.remoteId, data);
@@ -504,6 +514,50 @@ class IntegratedTerminalPanel {
         this.fitActiveTerminal();
     }
 
+    focusTerminal(terminalId) {
+        const session = this.sessions.get(terminalId);
+        if (!session || !session.terminal) {
+            return false;
+        }
+        try {
+            session.terminal.focus();
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    echoBridgedInput(session, data) {
+        if (!session || !session.terminal || typeof data !== 'string' || !data) {
+            return;
+        }
+
+        let out = '';
+        for (const ch of data) {
+            if (ch === '\r' || ch === '\n') {
+                out += '\r\n';
+                continue;
+            }
+            if (ch === '\u007f' || ch === '\b') {
+                out += '\b \b';
+                continue;
+            }
+            const code = ch.charCodeAt(0);
+            if (code >= 0x20 || ch === '\t') {
+                out += ch;
+            }
+        }
+
+        if (!out) {
+            return;
+        }
+
+        try {
+            session.terminal.write(out);
+        } catch (_) {
+        }
+    }
+
     handleTerminalData(payload) {
         const terminalId = payload?.terminalId;
         const data = payload?.data;
@@ -516,7 +570,46 @@ class IntegratedTerminalPanel {
             return;
         }
 
+        if (session.muteRemoteOutput) {
+            return;
+        }
+
         session.terminal.write(data);
+    }
+
+    setInputBridge(terminalId, bridgeHandler) {
+        const session = this.sessions.get(terminalId);
+        if (!session) {
+            return false;
+        }
+        session.inputBridge = typeof bridgeHandler === 'function' ? bridgeHandler : null;
+        return true;
+    }
+
+    clearInputBridge(terminalId) {
+        return this.setInputBridge(terminalId, null);
+    }
+
+    setRemoteOutputMuted(terminalId, muted) {
+        const session = this.sessions.get(terminalId);
+        if (!session) {
+            return false;
+        }
+        session.muteRemoteOutput = !!muted;
+        return true;
+    }
+
+    writeTerminalOutput(terminalId, data) {
+        const session = this.sessions.get(terminalId);
+        if (!session) {
+            return false;
+        }
+        try {
+            session.terminal.write(String(data ?? ''));
+            return true;
+        } catch (_) {
+            return false;
+        }
     }
 
     handleTerminalExit(payload) {
