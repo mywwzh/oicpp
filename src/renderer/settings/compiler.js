@@ -7,6 +7,7 @@ class CompilerSettings {
             runMode: 'popup'
         }
         this.isMacPlatform = false;
+        this.isIntegratedOnlyPlatform = false;
         
         this.init();
     }
@@ -39,7 +40,8 @@ class CompilerSettings {
         }
         await this.loadSettings();
         this.isMacPlatform = await this.detectMacPlatform();
-        if (this.isMacPlatform) {
+        this.isIntegratedOnlyPlatform = await this.detectIntegratedOnlyPlatform();
+        if (this.isIntegratedOnlyPlatform) {
             this.settings.runMode = 'integrated-terminal';
         }
         this.setupEventListeners();
@@ -238,7 +240,7 @@ class CompilerSettings {
         const runModeSelect = document.getElementById('run-mode');
         if (runModeSelect) {
             runModeSelect.addEventListener('change', (e) => {
-                if (this.isMacPlatform) {
+                if (this.isIntegratedOnlyPlatform) {
                     e.target.value = 'integrated-terminal';
                     this.settings.runMode = 'integrated-terminal';
                     return;
@@ -260,8 +262,11 @@ class CompilerSettings {
 
     async loadSettings() {
         try {
-            const isMacPlatform = await this.detectMacPlatform();
+            const platform = await this.getCurrentPlatform();
+            const isMacPlatform = platform === 'macos' || platform === 'darwin' || platform === 'mac';
+            const isIntegratedOnlyPlatform = isMacPlatform || platform === 'linux';
             this.isMacPlatform = isMacPlatform;
+            this.isIntegratedOnlyPlatform = isIntegratedOnlyPlatform;
             const allSettings = await window.electronAPI.getAllSettings();
             if (allSettings) {
                 const loadedCompilerArgs = allSettings.compilerArgs || (isMacPlatform ? '-std=c++14 -O2' : '-std=c++14 -O2 -static');
@@ -271,7 +276,7 @@ class CompilerSettings {
                     compilerArgs: isMacPlatform
                         ? loadedCompilerArgs.replace(/\s-static\b/g, ' ').replace(/\s+/g, ' ').trim()
                         : loadedCompilerArgs,
-                    runMode: isMacPlatform ? 'integrated-terminal' : (allSettings.runMode || 'popup'),
+                    runMode: isIntegratedOnlyPlatform ? 'integrated-terminal' : (allSettings.runMode || 'popup'),
                     testlibPath: allSettings.testlibPath || ''
                 };
             }
@@ -294,11 +299,11 @@ class CompilerSettings {
         if (runModeSelect) {
             const popupOption = runModeSelect.querySelector('option[value="popup"]');
             const runModeHint = runModeSelect.parentElement ? runModeSelect.parentElement.querySelector('.hint') : null;
-            if (this.isMacPlatform) {
+            if (this.isIntegratedOnlyPlatform) {
                 if (popupOption) popupOption.disabled = true;
                 runModeSelect.value = 'integrated-terminal';
                 if (runModeHint) {
-                    runModeHint.textContent = 'macOS 仅支持内置终端运行';
+                    runModeHint.textContent = 'macOS/Linux 仅支持内置终端运行';
                 }
             } else {
                 if (popupOption) popupOption.disabled = false;
@@ -515,7 +520,7 @@ class CompilerSettings {
             const pythonInterpreterPath = document.getElementById('python-interpreter-path').value;
             let compilerArgs = document.getElementById('compiler-options').value;
             const runModeSelect = document.getElementById('run-mode');
-            const runMode = this.isMacPlatform
+            const runMode = this.isIntegratedOnlyPlatform
                 ? 'integrated-terminal'
                 : (runModeSelect && runModeSelect.value === 'integrated-terminal'
                 ? 'integrated-terminal'
@@ -595,6 +600,11 @@ class CompilerSettings {
     async detectMacPlatform() {
         const platform = await this.getCurrentPlatform();
         return platform === 'macos' || platform === 'darwin' || platform === 'mac';
+    }
+
+    async detectIntegratedOnlyPlatform() {
+        const platform = await this.getCurrentPlatform();
+        return platform === 'linux' || platform === 'macos' || platform === 'darwin' || platform === 'mac';
     }
 
     async getDownloadedVersions() {

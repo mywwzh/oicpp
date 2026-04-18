@@ -14,11 +14,19 @@ class UnifiedSettingsManager {
                 return false;
             }
         })();
+        const isIntegratedOnlyPlatform = (() => {
+            try {
+                const platform = String((typeof process !== 'undefined' ? process.platform : '') || navigator?.platform || '').toLowerCase();
+                return platform.includes('darwin') || platform.includes('mac') || platform.includes('linux');
+            } catch (_) {
+                return false;
+            }
+        })();
 
         return {
             compilerPath: '',
             compilerArgs: '-std=c++14 -O2 -static',
-            runMode: 'popup',
+            runMode: isIntegratedOnlyPlatform ? 'integrated-terminal' : 'popup',
             font: 'Consolas',
             fontSize: 14,
             lineHeight: 0,
