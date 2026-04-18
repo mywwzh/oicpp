@@ -4,14 +4,33 @@ class TitlebarManager {
         this.currentTitle = 'OICPP IDE';
         this.isMaximized = false;
         this._closeConfirmInProgress = false;
+        this.isMacPlatform = this.detectMacPlatform();
         this.init();
     }
 
     init() {
         this.setupTitlebar();
+        this.applyPlatformLayout();
         this.setupWindowControls();
         this.setupElectronEvents();
         logInfo('标题栏管理器已初始化');
+    }
+
+    detectMacPlatform() {
+        try {
+            const platform = String(window.process?.platform || navigator?.platform || '').toLowerCase();
+            return platform.includes('darwin') || platform.includes('mac');
+        } catch (_) {
+            return false;
+        }
+    }
+
+    applyPlatformLayout() {
+        if (this.isMacPlatform) {
+            try {
+                document.body.classList.add('platform-macos');
+            } catch (_) { }
+        }
     }
 
     setupTitlebar() {
@@ -46,6 +65,11 @@ class TitlebarManager {
             logWarn('不在 Electron 环境中，跳过窗口控制设置');
             return;
         }
+
+        if (this.isMacPlatform) {
+            return;
+        }
+
         setTimeout(() => {
             const minimizeBtn = document.getElementById('minimize-btn');
             if (minimizeBtn) {

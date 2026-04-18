@@ -36,6 +36,7 @@ class OICPPApp {
     };
     this.supportedDropTextExtensions = new Set(['cpp', 'c', 'cc', 'cxx', 'h', 'hpp', 'hh', 'txt', 'in', 'out', 'ans', 'md', 'json']);
         this._isWindowsPlatform = undefined;
+        this._isMacPlatform = undefined;
     }
 
     async init() {
@@ -746,6 +747,7 @@ class OICPPApp {
     }
 
     getDefaultKeybindings() {
+        const compileAndRunShortcut = this.isMacPlatform() ? 'Ctrl+F11' : 'F11';
         return {
             formatCode: 'Alt+Shift+S',
             showFunctionPicker: 'Ctrl+Shift+G',
@@ -760,7 +762,7 @@ class OICPPApp {
             cut: 'Ctrl+X',
             compileCode: 'F9',
             runCode: 'F10',
-            compileAndRun: 'F11',
+            compileAndRun: compileAndRunShortcut,
             toggleDebug: 'F5',
             debugContinue: 'F6',
             debugStepOver: 'F7',
@@ -1591,6 +1593,19 @@ class OICPPApp {
             this._isWindowsPlatform = false;
         }
         return this._isWindowsPlatform;
+    }
+
+    isMacPlatform() {
+        if (this._isMacPlatform !== undefined) {
+            return this._isMacPlatform;
+        }
+        try {
+            const platform = (window.process?.platform || navigator?.platform || '').toLowerCase();
+            this._isMacPlatform = platform.includes('darwin') || platform.includes('mac');
+        } catch (_) {
+            this._isMacPlatform = false;
+        }
+        return this._isMacPlatform;
     }
 
     normalizeFilePathCandidate(candidate) {
