@@ -205,6 +205,51 @@ class IntegratedTerminalPanel {
         return { fontFamily, fontSize };
     }
 
+    getCurrentThemeName() {
+        const app = this.getApp ? this.getApp() : null;
+        const theme = app?.settings?.theme;
+        return typeof theme === 'string' && theme.trim() ? theme.trim() : 'dark';
+    }
+
+    isLightThemeActive() {
+        return this.getCurrentThemeName().toLowerCase().includes('light');
+    }
+
+    resolveTerminalTheme() {
+        if (this.isLightThemeActive()) {
+            return {
+                background: 'rgba(0,0,0,0)',
+                foreground: '#1f2328',
+                cursor: '#0b57d0',
+                cursorAccent: '#ffffff',
+                selectionBackground: 'rgba(9, 105, 218, 0.24)'
+            };
+        }
+
+        return {
+            background: 'rgba(0,0,0,0)',
+            foreground: '#d0d0d0',
+            cursor: '#c8c8c8',
+            cursorAccent: '#111111',
+            selectionBackground: 'rgba(255, 255, 255, 0.18)'
+        };
+    }
+
+    applyThemeSettings() {
+        const lightTheme = this.isLightThemeActive();
+        if (this.panel) {
+            this.panel.classList.toggle('terminal-theme-light', lightTheme);
+        }
+
+        const xtermTheme = this.resolveTerminalTheme();
+        for (const session of this.sessions.values()) {
+            try {
+                session.terminal.options.theme = xtermTheme;
+                session.terminal.refresh(0, session.terminal.rows - 1);
+            } catch (_) { }
+        }
+    }
+
     applyEditorFontSettings() {
         const { fontFamily, fontSize } = this.resolveEditorFontOptions();
         for (const session of this.sessions.values()) {
@@ -277,10 +322,7 @@ class IntegratedTerminalPanel {
             convertEol: true,
             scrollback: 8000,
             allowTransparency: true,
-            theme: {
-                background: 'rgba(0,0,0,0)',
-                foreground: '#d0d0d0'
-            }
+            theme: this.resolveTerminalTheme()
         });
         const fitAddon = new fitAddonCtor();
         terminal.loadAddon(fitAddon);
@@ -368,6 +410,7 @@ class IntegratedTerminalPanel {
         this.setupTerminalClipboardShortcuts(terminal, provisionalSession);
 
         this.fitTerminal(remoteId);
+        this.applyThemeSettings();
         this.renderEmptyState();
         return remoteId;
     }
