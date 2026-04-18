@@ -746,6 +746,9 @@ class OICPPApp {
         if (this.terminalPanel && typeof this.terminalPanel.applyEditorFontSettings === 'function') {
             this.terminalPanel.applyEditorFontSettings();
         }
+        if (this.terminalPanel && typeof this.terminalPanel.applyThemeSettings === 'function') {
+            this.terminalPanel.applyThemeSettings();
+        }
     }
 
     getDefaultKeybindings() {

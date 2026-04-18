@@ -2754,7 +2754,8 @@ function setupIPC() {
 
                 files.push({
                     path: normalizedEntryName,
-                    content
+                    content,
+                    sizeBytes: Number.isFinite(entry?.size) ? Math.max(0, Number(entry.size)) : Buffer.byteLength(content || '', 'utf8')
                 });
             }
 
