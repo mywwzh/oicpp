@@ -38,6 +38,8 @@ jobs:
       - name: Install dependencies
         run: |
           npm install
+          npm install --include=optional sharp
+          npm install --os=darwin --cpu=arm64 sharp
           npm install --os=linux --cpu=x64 sharp
 
       - name: Install AppImage dependencies
@@ -60,6 +62,7 @@ jobs:
             dist/*.AppImage
 
       - name: Upload Linux packages to remote
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
           UPLOAD_API: ${{ secrets.UPLOAD_API }}
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
@@ -109,6 +112,7 @@ jobs:
           path: dist/*.dmg
 
       - name: Upload macOS package to remote
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
           UPLOAD_API: ${{ secrets.UPLOAD_API }}
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
@@ -182,6 +186,7 @@ jobs:
           path: OICPP-*-Setup.exe
 
       - name: Upload Windows installer to remote
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
           UPLOAD_API: ${{ secrets.UPLOAD_API }}
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
