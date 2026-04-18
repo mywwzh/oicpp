@@ -21,6 +21,8 @@ class OICPPApp {
     this._autoContinueOnStart = false;
     this._debugSessionId = 0;
     this._debugExited = false;
+    this._debugTerminalId = null;
+    this._debugTerminalBridgeEnabled = false;
         this.terminalPanel = null;
         this.updateDownloadState = {
             autoChecking: false,
@@ -1890,7 +1892,7 @@ class OICPPApp {
             this.showMessage('内置终端组件未初始化', 'error');
             return;
         }
-        await this.terminalPanel.open({
+        return await this.terminalPanel.open({
             createIfNone: true,
             forceCreate: !!options.forceCreate
         });
@@ -1901,6 +1903,99 @@ class OICPPApp {
             throw new Error('内置终端组件未初始化');
         }
         return this.terminalPanel.runExecutableInNewTerminal(executablePath, options);
+    }
+
+    bindDebugTerminalBridge(terminalId) {
+        if (!this.terminalPanel || !terminalId || typeof require === 'undefined') {
+            return false;
+        }
+
+        try {
+            const { ipcRenderer } = require('electron');
+            const ok = this.terminalPanel.setInputBridge(terminalId, (data) => {
+                ipcRenderer.send('debug-send-input', data);
+            });
+            if (!ok) {
+                return false;
+            }
+
+            this.terminalPanel.setRemoteOutputMuted(terminalId, true);
+            this._debugTerminalId = terminalId;
+            this._debugTerminalBridgeEnabled = true;
+            this.terminalPanel.writeTerminalOutput(terminalId, '\r\n[调试] 输入已连接到调试器\r\n');
+            this.terminalPanel.activateTerminal(terminalId);
+            this.terminalPanel.focusTerminal?.(terminalId);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    unbindDebugTerminalBridge() {
+        if (!this.terminalPanel || !this._debugTerminalId) {
+            this._debugTerminalBridgeEnabled = false;
+            this._debugTerminalId = null;
+            return;
+        }
+
+        this.terminalPanel.clearInputBridge(this._debugTerminalId);
+        this.terminalPanel.setRemoteOutputMuted(this._debugTerminalId, false);
+        this._debugTerminalBridgeEnabled = false;
+        this._debugTerminalId = null;
+    }
+
+    appendDebugTerminalOutput(data) {
+        if (!this.terminalPanel || !this._debugTerminalBridgeEnabled || !this._debugTerminalId) {
+            return;
+        }
+        this.terminalPanel.writeTerminalOutput(this._debugTerminalId, String(data ?? ''));
+    }
+
+    resolveRunModeForCurrentPlatform() {
+        const platform = String((typeof process !== 'undefined' ? process.platform : '') || '').toLowerCase();
+        if (platform === 'darwin' || platform === 'linux') {
+            return 'integrated-terminal';
+        }
+        return String(this.settings?.runMode || '').toLowerCase() === 'integrated-terminal'
+            ? 'integrated-terminal'
+            : 'popup';
+    }
+
+    isLinuxPlatform() {
+        return !!(typeof process !== 'undefined' && process.platform === 'linux');
+    }
+
+    async resolveLinuxTerminalTTYForDebug(terminalId) {
+        if (!this.isLinuxPlatform()) {
+            return null;
+        }
+        if (!terminalId || !window.electronAPI || typeof window.electronAPI.getTerminalTTY !== 'function') {
+            return null;
+        }
+
+        const maxAttempts = 12;
+        let lastResult = null;
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            try {
+                const result = await window.electronAPI.getTerminalTTY(terminalId);
+                lastResult = result || null;
+                const tty = String(result?.tty || '').trim();
+                if (tty) {
+                    logInfo(`[调试] 已获取内置终端TTY: ${tty} (terminalId=${terminalId})`);
+                    return tty;
+                }
+            } catch (_) {
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 120));
+        }
+
+        logWarn('[调试] 获取内置终端TTY失败:', {
+            terminalId,
+            lastResult
+        });
+
+        return null;
     }
 
     async saveFile() {
@@ -2394,6 +2489,14 @@ class OICPPApp {
                     this.onCallStackUpdated(callStack);
                 });
 
+                ipcRenderer.on('debug-terminal-output', (_event, payload) => {
+                    const text = typeof payload === 'string'
+                        ? payload
+                        : String(payload?.data ?? '');
+                    if (!text) return;
+                    this.appendDebugTerminalOutput(text);
+                });
+
 
                 ipcRenderer.on('goto-source-location', async (event, frame) => {
                     try {
@@ -2461,6 +2564,38 @@ class OICPPApp {
 
             logInfo('开始编译代码...');
             await this.compileBeforeDebug();
+
+            const debugRunMode = this.resolveRunModeForCurrentPlatform();
+            let inferiorTTY = '';
+            let useInputBridge = false;
+            if (debugRunMode === 'integrated-terminal') {
+                try {
+                    this.compilerManager?.hideOutput?.();
+                } catch (_) { }
+                const openedTerminalId = await this.openIntegratedTerminal({ forceCreate: true });
+                const terminalId = openedTerminalId || this.terminalPanel?.activeId || null;
+                this.unbindDebugTerminalBridge();
+                if (terminalId) {
+                    useInputBridge = this.bindDebugTerminalBridge(terminalId);
+                }
+                if (this.isLinuxPlatform()) {
+                    logInfo('[调试] Linux 调试终端会话:', {
+                        openedTerminalId,
+                        activeTerminalId: this.terminalPanel?.activeId || null,
+                        resolvedTerminalId: terminalId,
+                        useInputBridge
+                    });
+                    if (!terminalId) {
+                        throw new Error('内置终端创建失败：未获取到终端会话ID');
+                    }
+                    if (!useInputBridge) {
+                        inferiorTTY = await this.resolveLinuxTerminalTTYForDebug(terminalId);
+                        if (!inferiorTTY) {
+                            throw new Error('无法绑定内置终端 TTY，请关闭当前终端后重试调试');
+                        }
+                    }
+                }
+            }
             
             const isWin = navigator.platform.toLowerCase().includes('win');
             let executablePath = currentFile.replace(/\.(cpp|cc|cxx|c)$/i, isWin ? '.exe' : '');
@@ -2473,11 +2608,16 @@ class OICPPApp {
             await new Promise(resolve => setTimeout(resolve, 500));
 
             this._autoContinueOnStart = true;
-            this.startDebugSession(currentFile);
+            this.startDebugSession(currentFile, {
+                runMode: debugRunMode,
+                useInputBridge,
+                ...(inferiorTTY ? { inferiorTTY } : {})
+            });
             
         } catch (error) {
-            logError('编译失败:', error);
-            this.showMessage('编译失败，无法启动调试。请查看下方编译输出面板。', 'warning');
+            this.unbindDebugTerminalBridge();
+            logError('启动调试准备失败:', error);
+            this.showMessage(`启动调试失败：${this.stringifyError(error)}`, 'warning');
         }
     }
 
@@ -2604,7 +2744,7 @@ class OICPPApp {
         });
     }
 
-    startDebugSession(currentFile) {
+    startDebugSession(currentFile, options = {}) {
         if (typeof require !== 'undefined') {
             try {
                 const { ipcRenderer } = require('electron');
@@ -2612,9 +2752,18 @@ class OICPPApp {
                 
                 const breakpoints = this.getBreakpoints();
                 logInfo('当前断点:', breakpoints);
+
+                const runMode = options?.runMode || this.resolveRunModeForCurrentPlatform();
+                const inferiorTTY = typeof options?.inferiorTTY === 'string'
+                    ? options.inferiorTTY.trim()
+                    : '';
+                const useInputBridge = !!options?.useInputBridge;
                 
                 ipcRenderer.send('start-debug', currentFile, {
-                    breakpoints: breakpoints
+                    breakpoints: breakpoints,
+                    runMode,
+                    useInputBridge,
+                    ...(inferiorTTY ? { inferiorTTY } : {})
                 });
                 
                 this.updateDebugControlsState(true);
@@ -2700,6 +2849,7 @@ class OICPPApp {
         if (isExit) {
             this.isDebugging = false;
             this._debugExited = true;
+            this.unbindDebugTerminalBridge();
             this.updateDebugControlsState(false);
             this.updateDebugStatus(`程序运行完成，退出码: ${data.exitCode ?? data.code ?? 0}`);
             this.showDebugInfo(`程序运行完成，退出码: ${data.exitCode ?? data.code ?? 0}\n\n程序输出应该在终端窗口中显示。`);
@@ -2756,6 +2906,7 @@ class OICPPApp {
         logInfo('[前端] 程序已退出:', data);
         this.updateDebugStatus(`程序执行完成，退出码: ${data.exitCode}`);
         this.showDebugInfo(`程序执行完成，退出码: ${data.exitCode}`);
+    this.unbindDebugTerminalBridge();
     this.isDebugging = false;
     }
 
@@ -2849,6 +3000,7 @@ ${data.message || '程序已加载，等待开始执行'}
             this.updateDebugStatus('程序正在运行...');
             return;
         }
+        this.unbindDebugTerminalBridge();
         logError('调试错误:', error);
         this.showMessage('调试错误: ' + msg, 'error');
         this.updateDebugControlsState(false);
@@ -3162,6 +3314,7 @@ ${data.message || '程序已加载，等待开始执行'}
             const { ipcRenderer } = require('electron');
             ipcRenderer.send('stop-debug');
         }
+        this.unbindDebugTerminalBridge();
     }
 
     handleAddWatch() {

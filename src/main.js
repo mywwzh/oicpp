@@ -590,7 +590,7 @@ function getDefaultSettings() {
         compilerPath: '',
         pythonInterpreterPath: '',
         compilerArgs,
-        runMode: 'popup',
+        runMode: normalizeRunModeForPlatform('popup'),
         testlibPath: '', // testlib库路径
         font: 'Consolas',
         fontSize: 14,
@@ -801,7 +801,7 @@ function normalizeCompilerArgsForPlatform(inputArgs, platform = process.platform
 }
 
 function normalizeRunModeForPlatform(inputRunMode, platform = process.platform) {
-    if (platform === 'darwin') {
+    if (platform === 'darwin' || platform === 'linux') {
         return 'integrated-terminal';
     }
     return String(inputRunMode || '').toLowerCase() === 'integrated-terminal'
@@ -1978,6 +1978,23 @@ function setupIPC() {
         return terminalManager.listSessions();
     });
 
+    ipcMain.handle('terminal-get-tty', (_event, terminalId) => {
+        try {
+            const tty = terminalManager.getSessionTTY(terminalId);
+            return {
+                ok: !!tty,
+                tty: tty || null
+            };
+        } catch (error) {
+            logWarn('[终端] 获取 TTY 失败:', error?.message || error);
+            return {
+                ok: false,
+                tty: null,
+                error: error?.message || String(error)
+            };
+        }
+    });
+
     ipcMain.handle('ide-login-start', async () => {
         return startIdeLoginFlow();
     });
@@ -2225,7 +2242,7 @@ function setupIPC() {
 
     ipcMain.on('debug-send-input', (event, input) => {
         sendDebugInput(input).then(result => {
-            event.reply('debug-output', { message: `输入已发送: ${input}`, type: 'input' });
+            void result;
         }).catch(error => {
             event.reply('debug-error', error.message);
         });
@@ -5556,9 +5573,12 @@ function loadSettings() {
             }
         }
 
-        if (process.platform === 'darwin') {
-            const normalizedRunMode = normalizeRunModeForPlatform(settings.runMode, 'darwin');
-            const normalizedCompilerArgs = normalizeCompilerArgsForPlatform(settings.compilerArgs, 'darwin');
+        const isIntegratedOnlyPlatform = process.platform === 'darwin' || process.platform === 'linux';
+        if (isIntegratedOnlyPlatform) {
+            const normalizedRunMode = normalizeRunModeForPlatform(settings.runMode, process.platform);
+            const normalizedCompilerArgs = process.platform === 'darwin'
+                ? normalizeCompilerArgsForPlatform(settings.compilerArgs, 'darwin')
+                : settings.compilerArgs;
             const normalizedCompileAndRunShortcut = 'Ctrl+F11';
             const existingKeybindings = settings.keybindings && typeof settings.keybindings === 'object'
                 ? settings.keybindings
@@ -5566,7 +5586,8 @@ function loadSettings() {
             const existingCompileAndRun = typeof existingKeybindings.compileAndRun === 'string'
                 ? existingKeybindings.compileAndRun.trim()
                 : '';
-            const shouldMigrateCompileAndRun = !existingCompileAndRun || existingCompileAndRun.toUpperCase() === 'F11';
+            const shouldMigrateCompileAndRun = process.platform === 'darwin'
+                && (!existingCompileAndRun || existingCompileAndRun.toUpperCase() === 'F11');
 
             if (shouldMigrateCompileAndRun) {
                 settings.keybindings = {
@@ -6183,12 +6204,7 @@ async function runExecutable(options) {
     const path = require('path');
 
     const { executablePath, workingDirectory } = options;
-    const requestedRunMode = String(settings?.runMode || 'popup').toLowerCase() === 'integrated-terminal'
-        ? 'integrated-terminal'
-        : 'popup';
-    const normalizedRunMode = process.platform === 'darwin'
-        ? 'integrated-terminal'
-        : requestedRunMode;
+    const normalizedRunMode = normalizeRunModeForPlatform(settings?.runMode, process.platform);
 
     function decodeBufferAuto(buffer) {
         if (!buffer || buffer.length === 0) return '';
@@ -8003,6 +8019,8 @@ async function checkGDBAvailability() {
 
 let gdbDebugger = null;
 let pendingWatchExprs = new Set();
+let lastDebugInputRejectedNoticeTs = 0;
+let autoStoppingOnProgramExit = false;
 
 function buildPendingWatchPayload(message = '(等待调试开始)') {
     const watchesObj = {};
@@ -8090,6 +8108,28 @@ async function startDebugSession(filePath, options = {}) {
     try {
         logInfo('[主进程] 开始调试会话:', filePath);
         logInfo('[主进程] 调试选项:', options);
+
+        const requestedInferiorTTY = typeof options?.inferiorTTY === 'string'
+            ? options.inferiorTTY.trim()
+            : '';
+        const useInputBridge = !!options?.useInputBridge;
+        const normalizedRunMode = normalizeRunModeForPlatform(
+            options?.runMode !== undefined ? options.runMode : settings?.runMode,
+            process.platform
+        );
+        const shouldUseIntegratedTerminal = normalizedRunMode === 'integrated-terminal';
+        if (process.platform === 'linux' && shouldUseIntegratedTerminal && !requestedInferiorTTY && !useInputBridge) {
+            throw new Error('Linux 内置终端调试初始化失败：未获取到终端 TTY，请先重试调试启动。');
+        }
+        if (process.platform === 'linux') {
+            logInfo('[主进程] Linux 调试运行模式:', normalizedRunMode);
+            if (requestedInferiorTTY) {
+                logInfo('[主进程] Linux 调试绑定 TTY:', requestedInferiorTTY);
+            }
+            if (useInputBridge) {
+                logInfo('[主进程] Linux 调试输入桥接模式已启用');
+            }
+        }
 
         const supportedPlatforms = new Set(['win32', 'linux', 'darwin']);
         if (!supportedPlatforms.has(process.platform)) {
@@ -8235,7 +8275,15 @@ async function startDebugSession(filePath, options = {}) {
                     gdbPath: debuggerConfig.command,
                     relaxedInit: !!debuggerConfig.relaxedInit
                 }
-                : { env: gdbEnv };
+                : {
+                    env: gdbEnv,
+                    ...(process.platform === 'linux' ? {
+                        noNewConsole: shouldUseIntegratedTerminal,
+                        ...((requestedInferiorTTY && !useInputBridge)
+                            ? { inferiorTTY: requestedInferiorTTY }
+                            : {})
+                    } : {})
+                };
             await gdbDebugger.start(executablePath, filePath, startOptions);
         } catch (err) {
             logError('[主进程] 调试器启动失败:', err);
@@ -8285,7 +8333,8 @@ async function startDebugSession(filePath, options = {}) {
             success: true,
             file: filePath,
             executable: executablePath,
-            process: gdbDebugger.gdbProcess ? gdbDebugger.gdbProcess.pid : null
+            process: gdbDebugger.gdbProcess ? gdbDebugger.gdbProcess.pid : null,
+            mode: normalizedRunMode
         };
 
     } catch (error) {
@@ -8314,6 +8363,7 @@ async function startDebugSession(filePath, options = {}) {
 async function stopDebugSession() {
     try {
         logInfo('停止调试会话');
+        autoStoppingOnProgramExit = false;
 
         if (gdbDebugger && gdbDebugger.isRunning) {
             await gdbDebugger.stop();
@@ -8333,6 +8383,7 @@ async function stopDebugSession() {
 
     } catch (error) {
         logError('停止调试会话失败:', error);
+        autoStoppingOnProgramExit = false;
         isDebugging = false;
         gdbDebugger = null;
         debugSessionRootDir = null;
@@ -8461,6 +8512,15 @@ function setupDebuggerEvents() {
         }
     });
 
+    gdbDebugger.on('target-output', (text) => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        try {
+            mainWindow.webContents.send('debug-terminal-output', {
+                data: typeof text === 'string' ? text : String(text ?? '')
+            });
+        } catch (_) { }
+    });
+
     gdbDebugger.on('error', (error) => {
         logError('[主进程] 调试器错误:', error);
         if (mainWindow) {
@@ -8546,6 +8606,17 @@ function setupDebuggerEvents() {
                 });
             }, 100);
         }
+
+        if (!autoStoppingOnProgramExit) {
+            autoStoppingOnProgramExit = true;
+            setTimeout(() => {
+                stopDebugSession().catch((err) => {
+                    logWarn('[主进程] 程序退出后自动停止调试失败:', err?.message || String(err));
+                }).finally(() => {
+                    autoStoppingOnProgramExit = false;
+                });
+            }, 150);
+        }
     });
 
     logInfo('[主进程] 调试器事件监听已设置完成');
@@ -8608,8 +8679,19 @@ async function sendDebugInput(input) {
     }
 
     try {
-        await gdbDebugger.sendInput(input);
-        return { success: true };
+        const accepted = await gdbDebugger.sendInput(input);
+        if (!accepted && mainWindow && !mainWindow.isDestroyed()) {
+            const now = Date.now();
+            if (now - lastDebugInputRejectedNoticeTs > 1200) {
+                lastDebugInputRejectedNoticeTs = now;
+                try {
+                    mainWindow.webContents.send('debug-terminal-output', {
+                        data: '\r\n[调试] 当前处于暂停态，按 F6 继续运行后再输入\r\n'
+                    });
+                } catch (_) { }
+            }
+        }
+        return { success: true, accepted };
 
     } catch (error) {
         logError('发送调试输入失败:', error);

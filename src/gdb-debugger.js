@@ -180,10 +180,10 @@ class GDBDebugger extends EventEmitter {
             }
         }
 
+        this._expectingRunning = true;
         await this._send('exec-run');
         this._inferiorLaunched = true;
         this._inferiorRunning = true;
-        this._expectingRunning = true;
         this.emit('running');
     }
 
@@ -194,6 +194,9 @@ class GDBDebugger extends EventEmitter {
         this._expectingRunning = true;
         try {
             await this._send('exec-continue');
+            // MI 的 *running 事件在少数环境可能延迟/丢失，先乐观打开输入窗口，后续由 *stopped 回收状态。
+            this._inferiorRunning = true;
+            this.emit('running');
         } catch (e) {
             this._expectingRunning = false;
             if (e.message.includes('not stopped')) {
@@ -252,9 +255,30 @@ class GDBDebugger extends EventEmitter {
         this.emit('variables-updated', this._variables);
     }
 
+    async sendInput(input) {
+        if (!this.gdbProcess || !this.gdbProcess.stdin) {
+            return false;
+        }
+        if (!this._inferiorRunning && !this._expectingRunning) {
+            return false;
+        }
+
+        try {
+            let text = String(input ?? '');
+            if (!text) {
+                return false;
+            }
+            text = text.replace(/\r/g, '\n');
+            this.gdbProcess.stdin.write(text);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
     async updateVariables() {
-        if (!this.isRunning || this._inferiorRunning) {
-            try { global.logInfo?.(`[GDB] updateVariables 跳过: isRunning=${this.isRunning}, inferiorRunning=${this._inferiorRunning}`); } catch (_) { }
+        if (!this.isRunning || this._inferiorRunning || this.programExited) {
+            try { global.logInfo?.(`[GDB] updateVariables 跳过: isRunning=${this.isRunning}, inferiorRunning=${this._inferiorRunning}, programExited=${this.programExited}`); } catch (_) { }
             return;
         }
 
@@ -277,7 +301,7 @@ class GDBDebugger extends EventEmitter {
             global.logWarn?.('[GDB] 更新局部变量失败', e);
         }
 
-        if (!this.isRunning || this._inferiorRunning) return;
+        if (!this.isRunning || this._inferiorRunning || this.programExited) return;
 
         try {
             const argsOutput = await this._sendCLI('info args');
@@ -296,7 +320,7 @@ class GDBDebugger extends EventEmitter {
              global.logWarn?.('[GDB] 更新参数失败', e);
         }
 
-        if (!this.isRunning || this._inferiorRunning) return;
+        if (!this.isRunning || this._inferiorRunning || this.programExited) return;
 
         this._variables.watches = {};
         for (const expr of this._watchExpressions) {
@@ -328,6 +352,9 @@ class GDBDebugger extends EventEmitter {
     }
     
     async updateCallStack() {
+        if (!this.isRunning || this._inferiorRunning || this.programExited) {
+            return;
+        }
         try {
             const res = await this._send('stack-list-frames');
             const stack = res.stack || res.frames || [];
@@ -416,13 +443,58 @@ class GDBDebugger extends EventEmitter {
         return {};
     }
 
+    _emitTargetOutput(text) {
+        const output = typeof text === 'string' ? text : String(text ?? '');
+        if (!output) return;
+        this.emit('target-output', output);
+    }
+
+    _findMIRecordStart(line) {
+        if (!line) return -1;
+
+        const candidates = [];
+        const streamMatch = /[~@&]"/.exec(line);
+        if (streamMatch) candidates.push(streamMatch.index);
+
+        const tokenMatch = /\d+\^[a-zA-Z\-]+/.exec(line);
+        if (tokenMatch) candidates.push(tokenMatch.index);
+
+        const asyncMatch = /(?:\*stopped|\*running|=thread-|=library-|=breakpoint-)/.exec(line);
+        if (asyncMatch) candidates.push(asyncMatch.index);
+
+        const promptIdx = line.indexOf('(gdb)');
+        if (promptIdx !== -1) candidates.push(promptIdx);
+
+        if (candidates.length === 0) return -1;
+        return Math.min(...candidates);
+    }
+
+    _splitRawOutputAndMI(line) {
+        const miStart = this._findMIRecordStart(line);
+        if (miStart === -1) {
+            return { raw: line, mi: '' };
+        }
+        if (miStart <= 0) {
+            return { raw: '', mi: line };
+        }
+        return {
+            raw: line.substring(0, miStart),
+            mi: line.substring(miStart)
+        };
+    }
+
     _onData(chunk) {
         this.buffer += chunk;
         const lines = this.buffer.split(/\r?\n/);
         this.buffer = lines.pop() || '';
 
         for (const line of lines) {
-            const trimmed = line.trim();
+            const { raw, mi } = this._splitRawOutputAndMI(line);
+            if (raw) {
+                this._emitTargetOutput(raw);
+            }
+
+            const trimmed = mi.trim();
             if (!trimmed) continue;
             
             // Suppress "Failed to set controlling terminal" warning which is expected when hijacking TTY
@@ -432,16 +504,31 @@ class GDBDebugger extends EventEmitter {
 
             try { global.logInfo?.('[GDB>>]', trimmed); } catch (_) { }
 
-            if (line.startsWith('~')) {
+            if (mi.startsWith('@')) {
+                try {
+                    const text = this._unescapeMIString(mi.substring(1));
+                    this._emitTargetOutput(text);
+                } catch (_) { }
+                continue;
+            }
+
+            if (mi.startsWith('~')) {
+                try {
+                    const text = this._unescapeMIString(mi.substring(1));
+                    this._emitTargetOutput(text);
+                } catch (_) { }
+            }
+
+            if (mi.startsWith('~')) {
                 for (const req of this.pending.values()) {
                     if (req.captureOutput) {
-                        req.captureOutput(line);
+                        req.captureOutput(mi);
                         break; 
                     }
                 }
             }
 
-            const tokenMatch = line.match(/^(\d+)\^([a-zA-Z\-]+)(.*)$/);
+            const tokenMatch = mi.match(/^(\d+)\^([a-zA-Z\-]+)(.*)$/);
             if (tokenMatch) {
                 const [, tokenStr, status, rest] = tokenMatch;
                 const token = parseInt(tokenStr, 10);
@@ -458,11 +545,11 @@ class GDBDebugger extends EventEmitter {
                 continue;
             }
 
-            if (line.startsWith('*stopped')) {
+            if (mi.startsWith('*stopped')) {
                 this._inferiorRunning = false;
                 this._expectingRunning = false;
                 try { global.logInfo?.('[GDB] 状态: 停止'); } catch (_) { }
-                const data = this._parseMIResult(line.substring(8));
+                const data = this._parseMIResult(mi.substring(8));
                 const reason = data.reason;
                 const frame = data.frame || {};
                 
@@ -474,24 +561,41 @@ class GDBDebugger extends EventEmitter {
                         function: frame.func
                     }
                 });
-                
-                this.updateVariables();
-                this.updateCallStack();
-            } else if (line.startsWith('*running')) {
+
+                const reasonText = String(reason || '').toLowerCase();
+                const isExitStop = reasonText.startsWith('exited');
+                if (!isExitStop && !this.programExited) {
+                    this.updateVariables();
+                    this.updateCallStack();
+                }
+            } else if (mi.startsWith('*running')) {
                 try { global.logInfo?.(`[GDB] 接收到 *running。期望=${this._expectingRunning}`); } catch (_) { }
+                const wasRunning = !!this._inferiorRunning;
                 if (this._expectingRunning) {
                     this._inferiorRunning = true;
                     try { global.logInfo?.('[GDB] 状态: 运行'); } catch (_) { }
-                    this.emit('running');
+                    if (!wasRunning) {
+                        this.emit('running');
+                    }
                 } else {
                     try { global.logInfo?.('[GDB] 警告: 收到意外的 *running 事件，已同步状态'); } catch (_) { }
                     this._inferiorRunning = true;
-                    this.emit('running');
+                    if (!wasRunning) {
+                        this.emit('running');
+                    }
                 }
-            } else if (line.startsWith('=thread-group-exited')) {
+            } else if (mi.startsWith('=thread-group-exited')) {
+                const exitedData = this._parseMIResult(mi.substring('=thread-group-exited'.length));
+                const exitCodeRaw = exitedData?.['exit-code'] ?? exitedData?.exitCode;
+                const parsedExitCode = typeof exitCodeRaw === 'string' && /^0x[0-9a-f]+$/i.test(exitCodeRaw)
+                    ? parseInt(exitCodeRaw, 16)
+                    : Number.parseInt(String(exitCodeRaw ?? ''), 10);
                 this.programExited = true;
                 this._inferiorRunning = false;
-                this.emit('program-exited', {});
+                this._expectingRunning = false;
+                this.emit('program-exited', {
+                    exitCode: Number.isFinite(parsedExitCode) ? parsedExitCode : undefined
+                });
             }
         }
     }

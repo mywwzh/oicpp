@@ -498,6 +498,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     resizeTerminal: (terminalId, cols, rows) => ipcRenderer.invoke('terminal-resize', terminalId, cols, rows),
     killTerminal: (terminalId) => ipcRenderer.invoke('terminal-kill', terminalId),
     listTerminals: () => ipcRenderer.invoke('terminal-list'),
+    getTerminalTTY: (terminalId) => ipcRenderer.invoke('terminal-get-tty', terminalId),
 
     onMenuSaveFile: (callback) => ipcRenderer.on('menu-save-file', callback),
     onApplySettingsPreview: (callback) => ipcRenderer.on('apply-settings-preview', (event, ...args) => callback(...args)),

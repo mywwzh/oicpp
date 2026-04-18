@@ -742,6 +742,81 @@ class IntegratedTerminalManager {
         }));
     }
 
+    _resolveSessionPid(session) {
+        if (!session) {
+            return null;
+        }
+
+        const pid = session.backend === 'process'
+            ? session.process?.pid
+            : session.pty?.pid;
+        return Number.isInteger(pid) && pid > 0 ? pid : null;
+    }
+
+    _resolveLinuxTTYFromPid(pid) {
+        if (process.platform !== 'linux') {
+            return null;
+        }
+
+        let candidateFds = [0, 1, 2];
+        try {
+            const fdDir = `/proc/${pid}/fd`;
+            const dynamicFds = fs.readdirSync(fdDir)
+                .map((name) => Number.parseInt(name, 10))
+                .filter((n) => Number.isInteger(n) && n >= 0);
+            candidateFds = Array.from(new Set([...candidateFds, ...dynamicFds])).sort((a, b) => a - b);
+        } catch (_) {
+        }
+
+        for (const fd of candidateFds) {
+            try {
+                const fdPath = `/proc/${pid}/fd/${fd}`;
+                let linkPath = fs.readlinkSync(fdPath);
+                if (!linkPath) {
+                    continue;
+                }
+
+                if (linkPath.startsWith('/dev/')) {
+                    if (/^\/dev\/(pts\/\d+|tty\d+|tty)$/.test(linkPath)) {
+                        return linkPath;
+                    }
+                    if (linkPath === '/dev/ptmx') {
+                        continue;
+                    }
+                }
+
+                try {
+                    const realPath = fs.realpathSync(linkPath);
+                    if (/^\/dev\/(pts\/\d+|tty\d+|tty)$/.test(realPath)) {
+                        return realPath;
+                    }
+                } catch (_) {
+                }
+            } catch (_) {
+            }
+        }
+
+        return null;
+    }
+
+    getSessionTTY(terminalId) {
+        if (process.platform !== 'linux') {
+            return null;
+        }
+
+        const session = this.sessions.get(terminalId);
+        if (!session) {
+            return null;
+        }
+
+        const pid = this._resolveSessionPid(session);
+        if (!pid) {
+            return null;
+        }
+
+        return this._resolveLinuxTTYFromPid(pid);
+    }
+
     disposeAll() {
         for (const [id] of this.sessions.entries()) {
             this.kill(id);
