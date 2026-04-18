@@ -55,7 +55,7 @@ body:
     attributes:
       label: 操作系统
       description: 你使用的操作系统
-      placeholder: 例如：Windows 11, Windows 10
+      placeholder: 例如：Windows 11, NOI Linux 2.0
     validations:
       required: true
   
@@ -73,11 +73,8 @@ body:
     attributes:
       label: 日志
       description: |
-        非必需，建议上传，有助于开发者快速定位 bug
-        路径为：C:\Users\<你的用户名>\.oicpp\logs
-        请上传记录发生问题时的 OICPP 的日志
-        文件名最后的 x-y-z 表示该 OICPP 窗口打开于 x 时 y 分 z 秒
-      placeholder: 粘贴日志内容或拖放日志文件
+        请在 OICPP 菜单栏-关于-日志上传 中选择出现问题时段的日志，并点击上传。在此填写追踪码。
+      placeholder: 请填写追踪码
     validations:
       required: false
   
