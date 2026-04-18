@@ -215,6 +215,40 @@ body[data-editor-theme="light"] .pdf-viewer-container {
     overflow: hidden;
 }
 
+body.glass-effect-enabled .editor-container {
+    background-color: var(--glass-surface, rgba(16, 19, 27, 0.42));
+    border-left: 1px solid var(--glass-border, rgba(255, 255, 255, 0.14));
+    box-shadow: var(--glass-shadow, 0 16px 44px rgba(0, 0, 0, 0.38));
+    -webkit-backdrop-filter: blur(var(--glass-blur, 18px)) saturate(130%);
+    backdrop-filter: blur(var(--glass-blur, 18px)) saturate(130%);
+}
+
+body.glass-effect-enabled .editor-group {
+    background-color: transparent;
+}
+
+body.glass-effect-enabled .tab-bar {
+    background-color: var(--glass-tab, rgba(255, 255, 255, 0.05));
+    -webkit-backdrop-filter: blur(calc(var(--glass-blur, 18px) * 0.7));
+    backdrop-filter: blur(calc(var(--glass-blur, 18px) * 0.7));
+}
+
+body.glass-effect-enabled .tab {
+    background-color: transparent;
+}
+
+body.glass-effect-enabled .tab.active {
+    background-color: var(--glass-surface-strong, rgba(14, 18, 24, 0.62));
+    box-shadow: inset 0 0 0 1px var(--glass-border, rgba(255, 255, 255, 0.14));
+}
+
+body.glass-effect-enabled .editor-area,
+body.glass-effect-enabled .monaco-editor-container,
+body.glass-effect-enabled .welcome-container,
+body.glass-effect-enabled .welcome-page {
+    background-color: transparent;
+}
+
 
 
 .code-area {

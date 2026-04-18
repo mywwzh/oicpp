@@ -18,6 +18,21 @@
     min-height: 0;
 }
 
+body.glass-effect-enabled .integrated-terminal-panel {
+    background: var(--glass-surface, rgba(16, 19, 27, 0.42));
+    -webkit-backdrop-filter: blur(calc(var(--glass-blur, 18px) * 0.65));
+    backdrop-filter: blur(calc(var(--glass-blur, 18px) * 0.65));
+}
+
+body.glass-effect-enabled .integrated-terminal-header,
+body.glass-effect-enabled .integrated-terminal-tabs {
+    background: var(--glass-tab, rgba(255, 255, 255, 0.05));
+}
+
+body.glass-effect-enabled .integrated-terminal-body {
+    background: transparent;
+}
+
 .integrated-terminal-panel.collapsed {
     display: none;
 }
