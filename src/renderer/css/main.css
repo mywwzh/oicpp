@@ -11,6 +11,7 @@ body {
     color: #cccccc;
     background-color: #1e1e1e;
     overflow: hidden;
+    position: relative;
     
     --bg-color: #1e1e1e;
     --text-color: #cccccc;
@@ -43,6 +44,12 @@ body {
     --tab-close-color: #a0a0a0;
     --tab-close-hover-bg: #464647;
     --tab-close-hover-fg: #ffffff;
+    --glass-surface: rgba(16, 19, 27, 0.42);
+    --glass-surface-strong: rgba(14, 18, 24, 0.62);
+    --glass-border: rgba(255, 255, 255, 0.14);
+    --glass-tab: rgba(255, 255, 255, 0.05);
+    --glass-shadow: 0 16px 44px rgba(0, 0, 0, 0.38);
+    --glass-blur: 18px;
     --menu-bg: #2d2d30;
     --secondary-bg: #444444;
     --secondary-bg-hover: #555555;
@@ -68,6 +75,14 @@ body {
     --list-selection-bg: #37373d;
     --list-active-bg: #2d2d30;
     --list-selection-fg: #ffffff;
+}
+
+body.glass-effect-enabled {
+    background-image:
+        radial-gradient(1100px 720px at 8% 6%, rgba(88, 128, 255, 0.2) 0%, rgba(88, 128, 255, 0) 60%),
+        radial-gradient(860px 560px at 92% 16%, rgba(255, 154, 97, 0.18) 0%, rgba(255, 154, 97, 0) 58%),
+        radial-gradient(980px 620px at 56% 88%, rgba(85, 221, 175, 0.14) 0%, rgba(85, 221, 175, 0) 62%);
+    background-attachment: fixed;
 }
 
 .main-container {
@@ -298,6 +313,12 @@ body[data-editor-theme="light"] {
     --tab-close-color: #5c6270;
     --tab-close-hover-bg: #e3e7ef;
     --tab-close-hover-fg: #1f2328;
+    --glass-surface: rgba(255, 255, 255, 0.46);
+    --glass-surface-strong: rgba(255, 255, 255, 0.68);
+    --glass-border: rgba(255, 255, 255, 0.55);
+    --glass-tab: rgba(255, 255, 255, 0.38);
+    --glass-shadow: 0 16px 36px rgba(17, 24, 39, 0.14);
+    --glass-blur: 14px;
     --menu-bg: #ffffff;
     --secondary-bg: #f8f9fa;
     --secondary-bg-hover: #e9ecef;
@@ -323,6 +344,15 @@ body[data-editor-theme="light"] {
     --list-selection-bg: #eff5ff;
     --list-active-bg: #f0f0f0;
     --list-selection-fg: #162033;
+}
+
+body.theme-light.glass-effect-enabled,
+body[data-theme="light"].glass-effect-enabled,
+body[data-editor-theme="light"].glass-effect-enabled {
+    background-image:
+        radial-gradient(900px 620px at 10% 10%, rgba(77, 124, 255, 0.18) 0%, rgba(77, 124, 255, 0) 62%),
+        radial-gradient(760px 520px at 92% 14%, rgba(255, 160, 120, 0.16) 0%, rgba(255, 160, 120, 0) 56%),
+        radial-gradient(880px 580px at 52% 90%, rgba(92, 214, 176, 0.14) 0%, rgba(92, 214, 176, 0) 60%);
 }
 
 body.theme-light .titlebar,
@@ -438,6 +468,12 @@ body[data-editor-theme="dark"] {
     --tab-close-color: #a0a0a0;
     --tab-close-hover-bg: #464647;
     --tab-close-hover-fg: #ffffff;
+    --glass-surface: rgba(16, 19, 27, 0.42);
+    --glass-surface-strong: rgba(14, 18, 24, 0.62);
+    --glass-border: rgba(255, 255, 255, 0.14);
+    --glass-tab: rgba(255, 255, 255, 0.05);
+    --glass-shadow: 0 16px 44px rgba(0, 0, 0, 0.38);
+    --glass-blur: 18px;
 }
 
 body.theme-dark .titlebar,

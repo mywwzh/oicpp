@@ -555,6 +555,7 @@ function getDefaultSettings() {
         recentFiles: [], // 最近使用的文件列表
         codeSnippets: [],
         windowOpacity: 1.0,
+        glassEffectEnabled: false,
         backgroundImage: '',
         cppTemplate,
         account: null,
@@ -5328,7 +5329,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
             let needsSaveAfterMigration = false;
 
             for (const key of validKeys) {
@@ -5383,7 +5384,7 @@ function loadSettings() {
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -5411,7 +5412,7 @@ function updateSettings(settingsType, newSettings) {
         const validKeys = [
             'compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme',
             'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'autoSave', 'autoSaveInterval',
-            'codeSnippets', 'windowOpacity', 'backgroundImage', 'markdownMode', 'keybindings', 'autoOpenLastWorkspace', 'autoBackupSettings'
+            'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'markdownMode', 'keybindings', 'autoOpenLastWorkspace', 'autoBackupSettings'
         ];
 
         for (const key in newSettings) {
@@ -5505,7 +5506,7 @@ function importSettings(filePath) {
             throw new Error('无效的设置文件格式');
         }
 
-        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'backgroundImage', 'keybindings'];
+        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings'];
         const defaultSettings = getDefaultSettings();
 
         for (const key of validKeys) {
