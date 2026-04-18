@@ -3514,7 +3514,7 @@ ${data.message || '程序已加载，等待开始执行'}
 
 
     async showAbout() {
-        const fallbackBuildInfo = { version: '1.3.6 (v32)', buildTime: '未知', author: 'mywwzh' };
+        const fallbackBuildInfo = { version: '1.4.0-beta1 (v33)', buildTime: '未知', author: 'mywwzh' };
         let buildInfo = { ...fallbackBuildInfo };
         try {
             const buildInfoData = window.electronAPI ? await window.electronAPI.getBuildInfo() : null;
