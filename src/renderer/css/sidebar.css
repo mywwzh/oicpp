@@ -38,6 +38,7 @@
     flex-direction: column;
     gap: 4px;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .sidebar-icons-spacer {

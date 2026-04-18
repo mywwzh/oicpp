@@ -2499,7 +2499,7 @@ class OICPPApp {
         const dbg = String(status?.debugger || '').toLowerCase();
         const title = dbg === 'lldb' ? 'LLDB 调试环境未就绪' : 'GDB 调试器未安装';
         const intro = dbg === 'lldb'
-            ? 'macOS 调试功能需要 clang + lldb（并提供 lldb-mi 兼容层）支持。'
+            ? 'macOS 调试功能需要 clang + lldb 支持。'
             : '调试功能需要 GDB 调试器支持。请安装 GDB：';
         const container = document.getElementById('debug-variables');
         if (container) {
@@ -2510,7 +2510,7 @@ class OICPPApp {
                     <ul style="margin: 10px 0; padding-left: 20px;">
                         <li><strong>Windows:</strong> 安装MinGW-w64或TDM-GCC</li>
                         <li><strong>Linux:</strong> sudo apt install gdb（Ubuntu/Debian）</li>
-                        <li><strong>macOS:</strong> 安装 Xcode Command Line Tools（clang/lldb），并确保 lldb-mi 可用</li>
+                        <li><strong>macOS:</strong> 安装 Xcode Command Line Tools（clang/lldb）</li>
                     </ul>
                     <p style="margin-top: 16px; font-size: 12px; color: #cccccc;">
                         安装完成后重启IDE即可使用调试功能。
