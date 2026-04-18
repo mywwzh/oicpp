@@ -24,6 +24,24 @@ jobs:
           npm install
           npm install --os=linux --cpu=x64 sharp
 
+      - name: Verify node-pty linux binary
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const pkg = path.dirname(require.resolve('node-pty/package.json'));
+          const candidates = [
+            path.join(pkg, 'prebuilds', `linux-${process.arch}`, 'pty.node'),
+            path.join(pkg, 'build', 'Release', 'pty.node'),
+            path.join(pkg, 'build', 'Debug', 'pty.node')
+          ];
+          console.log('node-pty path:', pkg);
+          console.log('check candidates:', candidates);
+          if (!candidates.some((file) => fs.existsSync(file))) {
+            throw new Error('node-pty linux native binary missing; terminal will be unavailable in Linux package.');
+          }
+          NODE
+
       - name: Build Linux packages
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

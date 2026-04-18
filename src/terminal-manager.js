@@ -1,13 +1,61 @@
 const os = require('os');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 let pty = null;
 let ptyLoadError = null;
+let ptyLoadTargets = [];
 
-try {
-    pty = require('node-pty');
-} catch (error) {
-    ptyLoadError = error;
+function tryLoadPty(moduleId) {
+    try {
+        return require(moduleId);
+    } catch (error) {
+        ptyLoadError = error;
+        return null;
+    }
+}
+
+function resolvePackagedNodePtyCandidates() {
+    const candidates = [];
+
+    // In packaged apps, node-pty native binaries should live under app.asar.unpacked.
+    if (process.resourcesPath) {
+        candidates.push(path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'node-pty', 'lib', 'index.js'));
+    }
+
+    const bundledRoot = path.resolve(__dirname, '..', 'node_modules', 'node-pty');
+    candidates.push(path.join(bundledRoot, 'lib', 'index.js'));
+
+    const asarSegment = `${path.sep}app.asar${path.sep}`;
+    if (bundledRoot.includes(asarSegment)) {
+        candidates.push(
+            path.join(
+                bundledRoot.replace(asarSegment, `${path.sep}app.asar.unpacked${path.sep}`),
+                'lib',
+                'index.js'
+            )
+        );
+    }
+
+    return Array.from(new Set(candidates));
+}
+
+pty = tryLoadPty('node-pty');
+ptyLoadTargets.push('node-pty');
+
+if (!pty) {
+    const candidates = resolvePackagedNodePtyCandidates();
+    for (const candidate of candidates) {
+        ptyLoadTargets.push(candidate);
+        if (!fs.existsSync(candidate)) {
+            continue;
+        }
+        pty = tryLoadPty(candidate);
+        if (pty) {
+            break;
+        }
+    }
 }
 
 class IntegratedTerminalManager {
@@ -34,11 +82,14 @@ class IntegratedTerminalManager {
         const message = ptyLoadError
             ? (ptyLoadError.message || String(ptyLoadError))
             : 'node-pty not installed';
+        const targetInfo = ptyLoadTargets.length > 0
+            ? `\n尝试位置: ${ptyLoadTargets.join(' | ')}`
+            : '';
 
         return {
             available: false,
             reason: 'node-pty 不可用',
-            detail: message
+            detail: `${message}${targetInfo}`
         };
     }
 

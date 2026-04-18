@@ -155,6 +155,9 @@ body.glass-effect-enabled .integrated-terminal-body {
     color: var(--text-secondary, #9a9a9a);
     font-size: 12px;
     padding: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.45;
     pointer-events: none;
 }
 

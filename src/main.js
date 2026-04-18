@@ -6169,7 +6169,6 @@ async function runExecutable(options) {
                 env: runEnv
             };
         } else {
-            const fsLocal = require('fs');
             const which = (bin) => {
                 try {
                     const { execSync } = require('child_process');
@@ -6180,27 +6179,38 @@ async function runExecutable(options) {
             const candidates = [
                 'gnome-terminal',
                 'konsole',
-                'xterm',
                 'xfce4-terminal',
-                'x-terminal-emulator'
+                'x-terminal-emulator',
+                'xterm'
             ];
-            const picked = candidates.find(c => which(c)) || 'xterm';
+            const picked = candidates.find(c => which(c));
+            if (!picked) {
+                reject(new Error('未找到可用的终端模拟器（gnome-terminal/konsole/xfce4-terminal/x-terminal-emulator/xterm）'));
+                return;
+            }
             command = picked;
             const absExe = path.resolve(executablePath);
             const cwd = workingDirectory ? path.resolve(workingDirectory) : path.dirname(absExe);
-            const bashCmd = `cd \"${cwd.replace(/"/g, '\\"')}\" && \"${absExe.replace(/"/g, '\\"')}\"; echo \"程序执行完成，按回车键继续...\"; read`;
+            const quoteForBash = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
+            const bashCmd = [
+                `cd ${quoteForBash(cwd)}`,
+                `${quoteForBash(absExe)}`,
+                `printf '\\n程序执行完成，按回车键继续...\\n'`,
+                'read -r'
+            ].join('; ');
             if (picked === 'gnome-terminal') {
-                args = ['--', 'bash', '-c', bashCmd];
+                args = ['--', 'bash', '-lc', bashCmd];
             } else if (picked === 'konsole') {
-                args = ['-e', 'bash', '-c', bashCmd];
+                args = ['-e', 'bash', '-lc', bashCmd];
             } else if (picked === 'xfce4-terminal') {
-                args = ['-e', `bash -c "${bashCmd.replace(/"/g, '\\"')}"`];
+                args = ['-x', 'bash', '-lc', bashCmd];
             } else if (picked === 'x-terminal-emulator') {
-                args = ['-e', 'bash', '-c', bashCmd];
+                args = ['-e', 'bash', '-lc', bashCmd];
             } else { // xterm 或其他
-                args = ['-e', 'bash', '-c', bashCmd];
+                args = ['-e', 'bash', '-lc', bashCmd];
             }
             spawnOptions = {
+                cwd,
                 detached: true,
                 stdio: 'ignore'
             };
