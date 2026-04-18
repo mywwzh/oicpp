@@ -276,8 +276,9 @@ class IntegratedTerminalPanel {
             fontFamily: fontOptions.fontFamily,
             convertEol: true,
             scrollback: 8000,
+            allowTransparency: true,
             theme: {
-                background: '#111111',
+                background: 'rgba(0,0,0,0)',
                 foreground: '#d0d0d0'
             }
         });

@@ -12,7 +12,7 @@
     min-height: 220px;
     max-height: 65vh;
     border-top: 1px solid var(--border-color, #3c3c3c);
-    background: var(--card-bg, #1e1e1e);
+    background: transparent;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -57,7 +57,9 @@ body.glass-effect-enabled .integrated-terminal-body {
     justify-content: space-between;
     padding: 0 8px 0 10px;
     border-bottom: 1px solid var(--border-color, #3c3c3c);
-    background: var(--primary-bg, #252526);
+    background: rgba(0, 0, 0, 0.14);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
 }
 
 .integrated-terminal-title {
@@ -77,7 +79,9 @@ body.glass-effect-enabled .integrated-terminal-body {
     align-items: center;
     overflow-x: auto;
     border-bottom: 1px solid var(--border-color, #3c3c3c);
-    background: var(--tab-bg, #1f1f1f);
+    background: rgba(0, 0, 0, 0.12);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
 }
 
 .integrated-terminal-tab {
@@ -89,12 +93,12 @@ body.glass-effect-enabled .integrated-terminal-body {
     padding: 0 10px;
     cursor: pointer;
     color: var(--text-color, #cccccc);
-    background: transparent;
+    background: rgba(0, 0, 0, 0.08);
     border-right: 1px solid var(--border-color, #3c3c3c);
 }
 
 .integrated-terminal-tab.active {
-    background: var(--tab-active-bg, #1e1e1e);
+    background: rgba(255, 255, 255, 0.12);
     color: var(--tab-active-fg, #ffffff);
 }
 
@@ -122,7 +126,7 @@ body.glass-effect-enabled .integrated-terminal-body {
     flex: 1;
     min-height: 0;
     overflow: hidden;
-    background: #111111;
+    background: transparent;
 }
 
 .integrated-terminal-pane {
@@ -157,18 +161,25 @@ body.glass-effect-enabled .integrated-terminal-body {
 body.theme-light .integrated-terminal-body,
 body[data-theme="light"] .integrated-terminal-body,
 body[data-editor-theme="light"] .integrated-terminal-body {
-    background: #ffffff;
+    background: transparent;
 }
 
 body.theme-light .integrated-terminal-mount .xterm,
 body[data-theme="light"] .integrated-terminal-mount .xterm,
 body[data-editor-theme="light"] .integrated-terminal-mount .xterm {
-    background: #ffffff;
+    background: transparent;
 }
 
 .integrated-terminal-mount .xterm {
     font-family: var(--editor-font-family, 'Consolas') !important;
     font-size: var(--editor-font-size, 14px) !important;
+    background: transparent !important;
+}
+
+.integrated-terminal-mount .xterm-viewport,
+.integrated-terminal-mount .xterm-screen,
+.integrated-terminal-mount .xterm-scroll-area {
+    background: transparent !important;
 }
 
 @media (max-width: 960px) {
