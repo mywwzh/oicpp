@@ -85,6 +85,7 @@ class GDBDebugger extends EventEmitter {
         this.programExited = false;
         this._inferiorLaunched = false;
         this._inferiorRunning = false;
+        const relaxedInit = !!options.relaxedInit;
         
         const env = options.env ? { ...process.env, ...options.env } : { ...process.env };
         const gdbExecutable = options.gdbPath || 'gdb';
@@ -108,15 +109,26 @@ class GDBDebugger extends EventEmitter {
         });
 
         await this._waitReady();
-        
-        await this._send('gdb-set confirm off');
-        await this._send('gdb-set pagination off');
-        await this._send('gdb-set print pretty on');
-        await this._send('gdb-set print array-indexes on');
-        await this._send('gdb-set print elements 200');
+
+        const runInitCommand = async (command) => {
+            try {
+                await this._send(command);
+            } catch (error) {
+                if (!relaxedInit) {
+                    throw error;
+                }
+                try { global.logWarn?.(`[GDB] 初始化命令失败(已忽略): ${command}`, error?.message || error); } catch (_) { }
+            }
+        };
+
+        await runInitCommand('gdb-set confirm off');
+        await runInitCommand('gdb-set pagination off');
+        await runInitCommand('gdb-set print pretty on');
+        await runInitCommand('gdb-set print array-indexes on');
+        await runInitCommand('gdb-set print elements 200');
         
         if (process.platform === 'win32') {
-            await this._send('gdb-set new-console on');
+            await runInitCommand('gdb-set new-console on');
         } else if (process.platform === 'linux') {
              const opts = options || {};
              this._linuxTTYOptions = {
