@@ -2412,14 +2412,14 @@ class OICPPApp {
             
             if (!gdbStatus.available) {
                 this.showMessage(gdbStatus.message, 'error');
-                this.showGDBInstallGuide();
+                this.showGDBInstallGuide(gdbStatus);
                 return;
             }
             
-            logInfo('GDB检查通过:', gdbStatus.message);
+            logInfo('调试环境检查通过:', gdbStatus.message);
         } catch (error) {
-            logError('GDB检查失败:', error);
-            this.showMessage('无法检查调试环境。请确保GDB已正确安装。', 'error');
+            logError('调试环境检查失败:', error);
+            this.showMessage('无法检查调试环境。请确保调试器已正确安装。', 'error');
             return;
         }
         
@@ -2480,16 +2480,22 @@ class OICPPApp {
         }
     }
 
-    showGDBInstallGuide() {
+    showGDBInstallGuide(status = null) {
+        const dbg = String(status?.debugger || '').toLowerCase();
+        const title = dbg === 'lldb' ? 'LLDB 调试环境未就绪' : 'GDB 调试器未安装';
+        const intro = dbg === 'lldb'
+            ? 'macOS 调试功能需要 clang + lldb（并提供 lldb-mi 兼容层）支持。'
+            : '调试功能需要 GDB 调试器支持。请安装 GDB：';
         const container = document.getElementById('debug-variables');
         if (container) {
             container.innerHTML = `
                 <div class="debug-error-message" style="padding: 16px; color: #f44747;">
-                    <h3>GDB调试器未安装</h3>
-                    <p>调试功能需要GDB调试器支持。请安装GDB：</p>
+                    <h3>${title}</h3>
+                    <p>${intro}</p>
                     <ul style="margin: 10px 0; padding-left: 20px;">
                         <li><strong>Windows:</strong> 安装MinGW-w64或TDM-GCC</li>
                         <li><strong>Linux:</strong> sudo apt install gdb（Ubuntu/Debian）</li>
+                        <li><strong>macOS:</strong> 安装 Xcode Command Line Tools（clang/lldb），并确保 lldb-mi 可用</li>
                     </ul>
                     <p style="margin-top: 16px; font-size: 12px; color: #cccccc;">
                         安装完成后重启IDE即可使用调试功能。
@@ -2512,7 +2518,16 @@ class OICPPApp {
                 if (process.platform !== 'win32') {
                     try {
                         const fs = require('fs');
-                        if (fs.existsSync('/bin/g++')) {
+                        if (process.platform === 'darwin' && fs.existsSync('/usr/bin/clang++')) {
+                            this.settings.compilerPath = '/usr/bin/clang++';
+                            logInfo('[调试编译] macOS 自动使用 /usr/bin/clang++');
+                        } else if (process.platform === 'darwin' && fs.existsSync('/opt/homebrew/opt/llvm/bin/clang++')) {
+                            this.settings.compilerPath = '/opt/homebrew/opt/llvm/bin/clang++';
+                            logInfo('[调试编译] macOS 自动使用 /opt/homebrew/opt/llvm/bin/clang++');
+                        } else if (fs.existsSync('/usr/bin/g++')) {
+                            this.settings.compilerPath = '/usr/bin/g++';
+                            logInfo('[调试编译] 自动使用 /usr/bin/g++');
+                        } else if (fs.existsSync('/bin/g++')) {
                             this.settings.compilerPath = '/bin/g++';
                             logInfo('[调试编译] 自动使用 /bin/g++');
                         }
@@ -3069,7 +3084,7 @@ ${data.message || '程序已加载，等待开始执行'}
                     <p><strong>调试功能错误</strong></p>
                     <p>${message}</p>
                     <p style="margin-top: 8px; font-size: 11px; color: #cccccc;">
-                        请检查GDB是否已安装，代码是否已编译（使用-g选项）
+                        请检查调试器（Windows/Linux: GDB，macOS: LLDB）是否已安装，代码是否已编译（使用-g选项）
                     </p>
                 </div>
             `;

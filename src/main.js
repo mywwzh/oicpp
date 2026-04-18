@@ -724,6 +724,23 @@ function setAutoUpdateCheckInProgress(inProgress = false) {
     broadcastUpdateDownloadState();
 }
 
+function normalizeCompilerArgsForPlatform(inputArgs, platform = process.platform) {
+    const raw = typeof inputArgs === 'string' ? inputArgs : String(inputArgs || '');
+    if (platform !== 'darwin') {
+        return raw;
+    }
+    return raw.replace(/\s-static\b/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeRunModeForPlatform(inputRunMode, platform = process.platform) {
+    if (platform === 'darwin') {
+        return 'integrated-terminal';
+    }
+    return String(inputRunMode || '').toLowerCase() === 'integrated-terminal'
+        ? 'integrated-terminal'
+        : 'popup';
+}
+
 let debugProcess = null;
 let debugSession = null;
 let breakpoints = new Map();
@@ -1776,17 +1793,25 @@ function setupIPC() {
 
     ipcMain.handle('update-settings', async (event, newSettings) => {
         try {
-            settings = { ...settings, ...newSettings };
+            const incomingSettings = { ...(newSettings || {}) };
+            if (Object.prototype.hasOwnProperty.call(incomingSettings, 'runMode')) {
+                incomingSettings.runMode = normalizeRunModeForPlatform(incomingSettings.runMode);
+            }
+            if (Object.prototype.hasOwnProperty.call(incomingSettings, 'compilerArgs')) {
+                incomingSettings.compilerArgs = normalizeCompilerArgsForPlatform(incomingSettings.compilerArgs);
+            }
+
+            settings = { ...settings, ...incomingSettings };
             
             if (mainWindow && !mainWindow.isDestroyed()) {
-                if (typeof newSettings.windowOpacity === 'number') {
-                    mainWindow.setOpacity(newSettings.windowOpacity);
+                if (typeof incomingSettings.windowOpacity === 'number') {
+                    mainWindow.setOpacity(incomingSettings.windowOpacity);
                 }
             }
 
             await saveSettings(); // 确保保存完成
             scheduleAutoSettingsBackup('update-settings');
-            if (newSettings && Object.prototype.hasOwnProperty.call(newSettings, 'keybindings')) {
+            if (incomingSettings && Object.prototype.hasOwnProperty.call(incomingSettings, 'keybindings')) {
                 createMenuBar();
             }
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -3402,7 +3427,9 @@ function setupIPC() {
     });
 
     ipcMain.handle('get-platform', async () => {
-        return process.platform === 'win32' ? 'windows' : 'linux';
+        if (process.platform === 'win32') return 'windows';
+        if (process.platform === 'darwin') return 'macos';
+        return 'linux';
     });
 
     ipcMain.handle('get-user-home', async () => {
@@ -4912,9 +4939,9 @@ async function cleanupOldInstallers(keepFile = null) {
         logInfo('[更新] 开始清理旧的安装包...');
         const files = await fs.promises.readdir(userOicppDir);
         
-        // 匹配安装包文件名模式: OICPP-x.y.z-Setup.exe 或类似的 .deb/.rpm 文件
+        // 匹配安装包文件名模式: OICPP-x.y.z-Setup.exe/.deb/.rpm/.dmg/.pkg/.zip
         // 使用更严格的版本号格式：主版本.次版本.修订号
-        const installerPattern = /^OICPP-\d+\.\d+\.\d+-Setup\.(exe|deb|rpm)$/i;
+        const installerPattern = /^OICPP-\d+\.\d+\.\d+-Setup\.(exe|deb|rpm|dmg|pkg|zip)$/i;
         
         const deletePromises = [];
         
@@ -5022,13 +5049,25 @@ async function downloadAndInstallUpdate(updateInfo = null, options = {}) {
             return;
         }
 
-        const sysParam = process.platform === 'win32' ? 'win' : 'linux';
-        const filelistResp = await fetch(`https://oicpp.mywwzh.top/api/getUpdateFilelist?version=${encodeURIComponent(latestVersion)}&sys=${sysParam}`);
-        if (!filelistResp.ok) {
-            logWarn('[更新] 获取文件列表失败');
-            return;
+        const systemCandidates = process.platform === 'win32'
+            ? ['win']
+            : (process.platform === 'darwin' ? ['mac', 'macos', 'darwin'] : ['linux']);
+
+        let filelist = null;
+        for (const sysParam of systemCandidates) {
+            try {
+                const filelistResp = await fetch(`https://oicpp.mywwzh.top/api/getUpdateFilelist?version=${encodeURIComponent(latestVersion)}&sys=${sysParam}`);
+                if (!filelistResp.ok) {
+                    continue;
+                }
+                const data = await filelistResp.json();
+                if (data && Array.isArray(data.files) && data.files.length > 0) {
+                    filelist = data;
+                    break;
+                }
+            } catch (_) { }
         }
-        const filelist = await filelistResp.json();
+
         if (!filelist || !filelist.files || filelist.files.length === 0) {
             logWarn('[更新] 文件列表为空');
             return;
@@ -5039,6 +5078,10 @@ async function downloadAndInstallUpdate(updateInfo = null, options = {}) {
             installerFile = filelist.files.find(f => /\.exe$/i.test(f.name));
         } else if (process.platform === 'linux') {
             installerFile = filelist.files.find(f => /\.deb$/i.test(f.name)) || filelist.files.find(f => /\.rpm$/i.test(f.name));
+        } else if (process.platform === 'darwin') {
+            installerFile = filelist.files.find(f => /\.dmg$/i.test(f.name))
+                || filelist.files.find(f => /\.pkg$/i.test(f.name))
+                || filelist.files.find(f => /\.zip$/i.test(f.name));
         }
         if (!installerFile || !installerFile.downloadUrl) {
             logWarn('[更新] 未找到可用安装包');
@@ -5173,7 +5216,9 @@ function runInstaller(installerPath) {
 
         if (!isWindows) {
             const { shell } = require('electron');
-            const openPromise = process.platform === 'linux' ? shell.openPath(installerPath) : shell.openExternal(installerPath);
+            const openPromise = (process.platform === 'linux' || process.platform === 'darwin')
+                ? shell.openPath(installerPath)
+                : shell.openExternal(installerPath);
             openPromise.catch(() => { });
             return;
         }
@@ -5363,7 +5408,21 @@ function loadSettings() {
         }
         if (process.platform !== 'win32' && !settings.compilerPath) {
             try {
-                if (fs.existsSync('/usr/bin/g++')) {
+                if (process.platform === 'darwin') {
+                    if (fs.existsSync('/usr/bin/clang++')) {
+                        settings.compilerPath = '/usr/bin/clang++';
+                        logInfo('[设置] macOS 默认使用 /usr/bin/clang++');
+                    } else if (fs.existsSync('/opt/homebrew/opt/llvm/bin/clang++')) {
+                        settings.compilerPath = '/opt/homebrew/opt/llvm/bin/clang++';
+                        logInfo('[设置] macOS 回退使用 /opt/homebrew/opt/llvm/bin/clang++');
+                    } else if (fs.existsSync('/usr/bin/g++')) {
+                        settings.compilerPath = '/usr/bin/g++';
+                        logInfo('[设置] macOS 回退使用 /usr/bin/g++');
+                    } else if (fs.existsSync('/bin/g++')) {
+                        settings.compilerPath = '/bin/g++';
+                        logInfo('[设置] macOS 回退使用 /bin/g++');
+                    }
+                } else if (fs.existsSync('/usr/bin/g++')) {
                     settings.compilerPath = '/usr/bin/g++';
                     logInfo('[设置] 非 Windows 平台默认使用 /usr/bin/g++');
                 } else if (fs.existsSync('/bin/g++')) {
@@ -5376,6 +5435,16 @@ function loadSettings() {
                 if (settings.compilerPath) saveSettings();
             } catch (e) {
                 logWarn('[设置] 检测系统编译器失败:', e.message);
+            }
+        }
+
+        if (process.platform === 'darwin') {
+            const normalizedRunMode = normalizeRunModeForPlatform(settings.runMode, 'darwin');
+            const normalizedCompilerArgs = normalizeCompilerArgsForPlatform(settings.compilerArgs, 'darwin');
+            if (settings.runMode !== normalizedRunMode || settings.compilerArgs !== normalizedCompilerArgs) {
+                settings.runMode = normalizedRunMode;
+                settings.compilerArgs = normalizedCompilerArgs;
+                saveSettings();
             }
         }
 
@@ -5421,8 +5490,14 @@ function updateSettings(settingsType, newSettings) {
 
         for (const key in newSettings) {
             if (validKeys.includes(key)) {
-                logInfo(`更新设置键: ${key} = ${newSettings[key]}`);
-                settings[key] = newSettings[key];
+                let normalizedValue = newSettings[key];
+                if (key === 'runMode') {
+                    normalizedValue = normalizeRunModeForPlatform(newSettings[key]);
+                } else if (key === 'compilerArgs') {
+                    normalizedValue = normalizeCompilerArgsForPlatform(newSettings[key]);
+                }
+                logInfo(`更新设置键: ${key} = ${normalizedValue}`);
+                settings[key] = normalizedValue;
             } else {
                 logInfo(`忽略无效键: ${key}`);
             }
@@ -5974,9 +6049,12 @@ async function runExecutable(options) {
     const path = require('path');
 
     const { executablePath, workingDirectory } = options;
-    const normalizedRunMode = String(settings?.runMode || 'popup').toLowerCase() === 'integrated-terminal'
+    const requestedRunMode = String(settings?.runMode || 'popup').toLowerCase() === 'integrated-terminal'
         ? 'integrated-terminal'
         : 'popup';
+    const normalizedRunMode = process.platform === 'darwin'
+        ? 'integrated-terminal'
+        : requestedRunMode;
 
     function decodeBufferAuto(buffer) {
         if (!buffer || buffer.length === 0) return '';
@@ -7541,8 +7619,164 @@ ipcMain.handle('save-setting', async (event, key, value) => {
     }
 });
 
+function runCommandVersionProbe(command, args = [], options = {}) {
+    const { spawnSync } = require('child_process');
+    const env = options.env ? { ...process.env, ...options.env } : { ...process.env };
+    try {
+        const result = spawnSync(command, args, {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env,
+            encoding: 'utf8',
+            timeout: Number.isFinite(options.timeoutMs) ? options.timeoutMs : 5000,
+            windowsHide: true
+        });
+        if (result.error) {
+            return {
+                ok: false,
+                output: '',
+                message: result.error.message || String(result.error)
+            };
+        }
+        const output = `${result.stdout || ''}${result.stderr || ''}`.trim();
+        if (result.status === 0) {
+            return {
+                ok: true,
+                output,
+                message: output
+            };
+        }
+        return {
+            ok: false,
+            output,
+            message: output || `退出码: ${result.status}`
+        };
+    } catch (error) {
+        return {
+            ok: false,
+            output: '',
+            message: error?.message || String(error)
+        };
+    }
+}
+
+function resolveMacLLDBMIPath() {
+    if (process.platform !== 'darwin') {
+        return null;
+    }
+
+    const envCandidates = [
+        process.env.OICPP_LLDB_MI,
+        process.env.LLDB_MI_PATH
+    ].filter(Boolean).map(x => String(x).trim()).filter(Boolean);
+
+    const absoluteCandidates = [
+        ...envCandidates,
+        '/usr/bin/lldb-mi',
+        '/opt/homebrew/opt/llvm/bin/lldb-mi',
+        '/usr/local/opt/llvm/bin/lldb-mi',
+        '/Library/Developer/CommandLineTools/usr/bin/lldb-mi'
+    ];
+
+    for (const candidate of absoluteCandidates) {
+        try {
+            if (fs.existsSync(candidate)) {
+                return candidate;
+            }
+        } catch (_) { }
+    }
+
+    const xcrunProbe = runCommandVersionProbe('xcrun', ['--find', 'lldb-mi']);
+    if (xcrunProbe.ok) {
+        const resolved = String(xcrunProbe.output || '').split(/\r?\n/).map(s => s.trim()).find(Boolean);
+        if (resolved) {
+            try {
+                if (fs.existsSync(resolved)) {
+                    return resolved;
+                }
+            } catch (_) { }
+        }
+    }
+
+    const pathProbe = runCommandVersionProbe('lldb-mi', ['--version']);
+    if (pathProbe.ok) {
+        return 'lldb-mi';
+    }
+
+    return null;
+}
+
+function resolveDebuggerLaunchConfig() {
+    if (process.platform === 'darwin') {
+        const lldbMiPath = resolveMacLLDBMIPath();
+        if (!lldbMiPath) {
+            throw new Error('未检测到 lldb-mi。请安装 LLVM/LLDB（含 lldb-mi）并确保可执行文件在 PATH 中。');
+        }
+        return {
+            kind: 'lldb',
+            command: lldbMiPath,
+            relaxedInit: true
+        };
+    }
+
+    return {
+        kind: 'gdb',
+        command: 'gdb',
+        relaxedInit: false
+    };
+}
+
 
 async function checkGDBAvailability() {
+    if (process.platform === 'darwin') {
+        logInfo('[主进程] 检查 macOS 调试环境 (clang + lldb + lldb-mi)...');
+
+        const clangProbe = runCommandVersionProbe('clang++', ['--version']);
+        if (!clangProbe.ok) {
+            return {
+                available: false,
+                debugger: 'lldb',
+                message: `未检测到 clang++：${clangProbe.message}`
+            };
+        }
+
+        const lldbProbe = runCommandVersionProbe('lldb', ['--version']);
+        if (!lldbProbe.ok) {
+            return {
+                available: false,
+                debugger: 'lldb',
+                message: `未检测到 lldb：${lldbProbe.message}`
+            };
+        }
+
+        const lldbMiPath = resolveMacLLDBMIPath();
+        if (!lldbMiPath) {
+            return {
+                available: false,
+                debugger: 'lldb',
+                message: '已检测到 clang/lldb，但缺少 lldb-mi。请安装 LLVM/LLDB（含 lldb-mi）并加入 PATH。'
+            };
+        }
+
+        const lldbMiProbe = runCommandVersionProbe(lldbMiPath, ['--version']);
+        if (!lldbMiProbe.ok) {
+            return {
+                available: false,
+                debugger: 'lldb',
+                message: `lldb-mi 不可用：${lldbMiProbe.message}`
+            };
+        }
+
+        const clangVersionLine = String(clangProbe.output || '').split(/\r?\n/).find(Boolean) || 'clang++';
+        const lldbVersionLine = String(lldbProbe.output || '').split(/\r?\n/).find(Boolean) || 'lldb';
+        return {
+            available: true,
+            debugger: 'lldb',
+            debuggerPath: lldbMiPath,
+            version: lldbVersionLine,
+            message: `LLDB可用: ${lldbVersionLine}；编译器: ${clangVersionLine}`
+        };
+    }
+
     return new Promise((resolve) => {
         logInfo('[主进程] 检查GDB可用性...');
 
@@ -7711,7 +7945,7 @@ async function startDebugSession(filePath, options = {}) {
         logInfo('[主进程] 开始调试会话:', filePath);
         logInfo('[主进程] 调试选项:', options);
 
-        const supportedPlatforms = new Set(['win32', 'linux']);
+        const supportedPlatforms = new Set(['win32', 'linux', 'darwin']);
         if (!supportedPlatforms.has(process.platform)) {
             const platformName = process.platform === 'darwin' ? 'macOS' : '当前平台';
             const errorMsg = `调试功能暂未在 ${platformName} 上提供支持。`;
@@ -7815,7 +8049,15 @@ async function startDebugSession(filePath, options = {}) {
             logWarn('[主进程] 无法检查调试信息:', error.message);
         }
 
-        logInfo('[主进程] 使用 GDB 调试器');
+        const useMacDebugger = process.platform === 'darwin';
+        const debuggerConfig = useMacDebugger
+            ? resolveDebuggerLaunchConfig()
+            : { kind: 'gdb', command: 'gdb', relaxedInit: false };
+        if (useMacDebugger) {
+            logInfo(`[主进程] 使用调试器: ${debuggerConfig.kind.toUpperCase()} (${debuggerConfig.command})`);
+        } else {
+            logInfo('[主进程] 使用 GDB 调试器');
+        }
         gdbDebugger = new GDBDebugger();
 
         setupDebuggerEvents();
@@ -7841,7 +8083,14 @@ async function startDebugSession(filePath, options = {}) {
             }
         } catch (e) { logWarn('[主进程] 构造 GDB 环境失败:', e?.message || String(e)); }
         try {
-            await gdbDebugger.start(executablePath, filePath, { env: gdbEnv });
+            const startOptions = useMacDebugger
+                ? {
+                    env: gdbEnv,
+                    gdbPath: debuggerConfig.command,
+                    relaxedInit: !!debuggerConfig.relaxedInit
+                }
+                : { env: gdbEnv };
+            await gdbDebugger.start(executablePath, filePath, startOptions);
         } catch (err) {
             logError('[主进程] 调试器启动失败:', err);
             throw err;

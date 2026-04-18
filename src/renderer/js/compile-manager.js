@@ -186,13 +186,17 @@ class CompilerManager {
 
     async loadSettings() {
         try {
+            const isMacPlatform = !!(typeof window !== 'undefined' && window.process && window.process.platform === 'darwin');
             if (window.electronAPI && window.electronAPI.getAllSettings) {
                 const allSettings = await window.electronAPI.getAllSettings();
                 if (allSettings) {
+                    const loadedCompilerArgs = allSettings.compilerArgs || (isMacPlatform ? '-std=c++14 -O2' : '-std=c++14 -O2 -static');
                     this.updateSettings({
                         compilerPath: allSettings.compilerPath || '',
-                        compilerArgs: allSettings.compilerArgs || '-std=c++14 -O2 -static',
-                        runMode: allSettings.runMode || 'popup'
+                        compilerArgs: isMacPlatform
+                            ? loadedCompilerArgs.replace(/\s-static\b/g, ' ').replace(/\s+/g, ' ').trim()
+                            : loadedCompilerArgs,
+                        runMode: isMacPlatform ? 'integrated-terminal' : (allSettings.runMode || 'popup')
                     });
                     logInfo('编译器设置已加载:', this.settings);
                 }
@@ -201,10 +205,13 @@ class CompilerManager {
                 const savedSettings = localStorage.getItem('oicpp-settings');
                 if (savedSettings) {
                     const parsed = JSON.parse(savedSettings);
+                    const loadedCompilerArgs = parsed.compilerArgs || (isMacPlatform ? '-std=c++14 -O2' : '-std=c++14 -O2 -static');
                     this.updateSettings({
                         compilerPath: parsed.compilerPath || '',
-                        compilerArgs: parsed.compilerArgs || '-std=c++14 -O2 -static',
-                        runMode: parsed.runMode || 'popup'
+                        compilerArgs: isMacPlatform
+                            ? loadedCompilerArgs.replace(/\s-static\b/g, ' ').replace(/\s+/g, ' ').trim()
+                            : loadedCompilerArgs,
+                        runMode: isMacPlatform ? 'integrated-terminal' : (parsed.runMode || 'popup')
                     });
                     logInfo('从本地存储加载编译器设置:', this.settings);
                 }
@@ -268,6 +275,11 @@ class CompilerManager {
             const outputFile = this.getExecutablePath(filePath);
 
             let compilerArgs = this.settings.compilerArgs;
+            const isMacPlatform = !!(typeof window !== 'undefined' && window.process && window.process.platform === 'darwin');
+            if (isMacPlatform && /\s-static\b/.test(` ${compilerArgs}`)) {
+                compilerArgs = compilerArgs.replace(/\s-static\b/g, ' ').replace(/\s+/g, ' ').trim();
+                this.appendOutput('检测到 macOS 平台，已自动移除不兼容参数 -static\n', 'warning');
+            }
             if (options.forDebug) {
                 if (!compilerArgs.includes('-g')) {
                     compilerArgs = compilerArgs + ' -g';
