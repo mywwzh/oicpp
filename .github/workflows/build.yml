@@ -110,7 +110,11 @@ jobs:
       - name: Build macOS DMG
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build -- --mac dmg
+        run: |
+          npm run prebuild:buildinfo
+          npm run prebuild:icons
+          test -f build/icons/png/512x512.png
+          npx electron-builder --mac dmg
 
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
