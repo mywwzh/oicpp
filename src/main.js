@@ -395,6 +395,52 @@ function normalizeWatchKey(filePath) {
     }
 }
 
+function buildContentFingerprint(content) {
+    const text = typeof content === 'string' ? content : String(content ?? '');
+    const size = Buffer.byteLength(text, 'utf8');
+    const hash = crypto.createHash('sha1').update(text, 'utf8').digest('hex');
+    return `${size}:${hash}`;
+}
+
+function readFileContentFingerprint(filePath) {
+    try {
+        const content = fs.readFileSync(filePath, 'utf8');
+        return buildContentFingerprint(content);
+    } catch (_) {
+        return null;
+    }
+}
+
+function writeUtf8FileIfChanged(filePath, content) {
+    const nextContent = typeof content === 'string' ? content : String(content ?? '');
+    const nextFingerprint = buildContentFingerprint(nextContent);
+    let currentFingerprint = null;
+
+    if (fs.existsSync(filePath)) {
+        currentFingerprint = readFileContentFingerprint(filePath);
+    }
+
+    if (currentFingerprint && currentFingerprint === nextFingerprint) {
+        return {
+            changed: false,
+            fingerprint: nextFingerprint,
+            mtimeMs: null
+        };
+    }
+
+    fs.writeFileSync(filePath, nextContent, 'utf8');
+    let mtimeMs = null;
+    try {
+        mtimeMs = fs.statSync(filePath).mtimeMs;
+    } catch (_) { }
+
+    return {
+        changed: true,
+        fingerprint: nextFingerprint,
+        mtimeMs
+    };
+}
+
 function getSubscriberCount(entry) {
     if (!entry || !entry.subscribers) return 0;
     let total = 0;
@@ -442,12 +488,24 @@ function handleWatcherEvent(key, eventType) {
 
     let exists = false;
     let mtimeMs = null;
+    let fingerprint = null;
     try {
         const stat = fs.statSync(entry.resolvedPath);
         exists = true;
         mtimeMs = stat.mtimeMs;
     } catch (_) {
         exists = false;
+    }
+
+    if (exists) {
+        fingerprint = readFileContentFingerprint(entry.resolvedPath);
+        if (fingerprint && entry.lastKnownExists !== false && entry.lastKnownFingerprint === fingerprint) {
+            entry.lastKnownExists = true;
+            entry.lastObservedMtime = mtimeMs ?? null;
+            return;
+        }
+    } else if (entry.lastKnownExists === false) {
+        return;
     }
 
     let changeType = 'modified';
@@ -457,12 +515,14 @@ function handleWatcherEvent(key, eventType) {
         changeType = 'renamed';
     }
 
-    const signature = `${changeType}:${mtimeMs ?? 'NA'}`;
+    const signature = `${changeType}:${mtimeMs ?? 'NA'}:${fingerprint ?? 'NA'}`;
     if (signature === entry.lastEventSignature) {
         return;
     }
     entry.lastEventSignature = signature;
     entry.lastObservedMtime = mtimeMs ?? null;
+    entry.lastKnownExists = exists;
+    entry.lastKnownFingerprint = exists ? fingerprint : null;
 
     const payload = {
         filePath: entry.resolvedPath,
@@ -480,13 +540,20 @@ function handleWatcherEvent(key, eventType) {
     }
 }
 
-function markLocalSave(filePath) {
+function markLocalSave(filePath, state = {}) {
     const normalized = normalizeWatchKey(filePath);
     if (!normalized) return;
     const entry = fileWatchRegistry.get(normalized.key);
     if (!entry) return;
     entry.lastLocalSave = Date.now();
     entry.lastEventSignature = null;
+    entry.lastKnownExists = state.exists !== false;
+    if (typeof state.fingerprint === 'string') {
+        entry.lastKnownFingerprint = state.fingerprint;
+    }
+    if (typeof state.mtimeMs === 'number') {
+        entry.lastObservedMtime = state.mtimeMs;
+    }
 }
 
 function removeRendererWatchers(contentsId) {
@@ -2418,9 +2485,13 @@ function setupIPC() {
             if (/^cloud:/i.test(filePath)) {
                 throw new Error('云端文件不支持本地保存');
             }
-            markLocalSave(filePath);
-            fs.writeFileSync(filePath, content ?? '', 'utf8');
-            logInfo('文件保存成功(事件):', filePath);
+            const writeResult = writeUtf8FileIfChanged(filePath, content);
+            if (writeResult.changed) {
+                markLocalSave(filePath, { exists: true, fingerprint: writeResult.fingerprint, mtimeMs: writeResult.mtimeMs });
+                logInfo('文件保存成功(事件):', filePath);
+            } else {
+                logInfo('文件内容未变化，跳过写入(事件):', filePath);
+            }
             try { event.reply('file-saved', filePath, null); } catch (_) { }
             try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('file-saved', filePath); } catch (_) { }
         } catch (error) {
@@ -2526,9 +2597,13 @@ function setupIPC() {
             if (/^cloud:/i.test(filePath)) {
                 throw new Error('云端文件不支持本地保存');
             }
-            markLocalSave(filePath);
-            fs.writeFileSync(filePath, content ?? '', 'utf8');
-            logInfo('文件保存成功:', filePath);
+            const writeResult = writeUtf8FileIfChanged(filePath, content);
+            if (writeResult.changed) {
+                markLocalSave(filePath, { exists: true, fingerprint: writeResult.fingerprint, mtimeMs: writeResult.mtimeMs });
+                logInfo('文件保存成功:', filePath);
+            } else {
+                logInfo('文件内容未变化，跳过写入:', filePath);
+            }
             try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('file-saved', filePath); } catch (_) { }
             return true;
         } catch (error) {
@@ -2551,9 +2626,13 @@ function setupIPC() {
             });
 
             if (!result.canceled && result.filePath) {
-                markLocalSave(result.filePath);
-                fs.writeFileSync(result.filePath, content ?? '', 'utf8');
-                logInfo('文件另存为成功:', result.filePath);
+                const writeResult = writeUtf8FileIfChanged(result.filePath, content);
+                if (writeResult.changed) {
+                    markLocalSave(result.filePath, { exists: true, fingerprint: writeResult.fingerprint, mtimeMs: writeResult.mtimeMs });
+                    logInfo('文件另存为成功:', result.filePath);
+                } else {
+                    logInfo('文件内容未变化，另存为目标无需重写:', result.filePath);
+                }
                 try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('file-saved', result.filePath); } catch (_) { }
                 return result.filePath;
             }
@@ -2685,7 +2764,9 @@ function setupIPC() {
                     subscribers: new Map(),
                     lastLocalSave: 0,
                     lastEventSignature: null,
-                    lastObservedMtime: null
+                    lastObservedMtime: null,
+                    lastKnownExists: true,
+                    lastKnownFingerprint: readFileContentFingerprint(normalized.resolved)
                 };
                 fileWatchRegistry.set(normalized.key, entry);
             } catch (error) {
@@ -3390,8 +3471,10 @@ function setupIPC() {
 
     ipcMain.handle('write-file', async (event, filePath, content) => {
         try {
-            markLocalSave(filePath);
-            await fs.promises.writeFile(filePath, content, 'utf8');
+            const writeResult = writeUtf8FileIfChanged(filePath, content);
+            if (writeResult.changed) {
+                markLocalSave(filePath, { exists: true, fingerprint: writeResult.fingerprint, mtimeMs: writeResult.mtimeMs });
+            }
             return { success: true };
         } catch (error) {
             logError(`[主进程] 写入文件失败: ${filePath}`, error);
