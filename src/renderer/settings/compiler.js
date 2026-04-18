@@ -6,6 +6,7 @@ class CompilerSettings {
             compilerArgs: '-std=c++14 -O2 -static',
             runMode: 'popup'
         }
+        this.isMacPlatform = false;
         
         this.init();
     }
@@ -37,6 +38,10 @@ class CompilerSettings {
             this.applyTheme(themeFromUrl);
         }
         await this.loadSettings();
+        this.isMacPlatform = await this.detectMacPlatform();
+        if (this.isMacPlatform) {
+            this.settings.runMode = 'integrated-terminal';
+        }
         this.setupEventListeners();
         this.setupThemeListener();
         await this.applyCurrentTheme();
@@ -233,6 +238,11 @@ class CompilerSettings {
         const runModeSelect = document.getElementById('run-mode');
         if (runModeSelect) {
             runModeSelect.addEventListener('change', (e) => {
+                if (this.isMacPlatform) {
+                    e.target.value = 'integrated-terminal';
+                    this.settings.runMode = 'integrated-terminal';
+                    return;
+                }
                 this.settings.runMode = e.target.value === 'integrated-terminal'
                     ? 'integrated-terminal'
                     : 'popup';
@@ -250,13 +260,18 @@ class CompilerSettings {
 
     async loadSettings() {
         try {
+            const isMacPlatform = await this.detectMacPlatform();
+            this.isMacPlatform = isMacPlatform;
             const allSettings = await window.electronAPI.getAllSettings();
             if (allSettings) {
+                const loadedCompilerArgs = allSettings.compilerArgs || (isMacPlatform ? '-std=c++14 -O2' : '-std=c++14 -O2 -static');
                 this.settings = {
                     compilerPath: allSettings.compilerPath || '',
                     pythonInterpreterPath: allSettings.pythonInterpreterPath || '',
-                    compilerArgs: allSettings.compilerArgs || '-std=c++14 -O2 -static',
-                    runMode: allSettings.runMode || 'popup',
+                    compilerArgs: isMacPlatform
+                        ? loadedCompilerArgs.replace(/\s-static\b/g, ' ').replace(/\s+/g, ' ').trim()
+                        : loadedCompilerArgs,
+                    runMode: isMacPlatform ? 'integrated-terminal' : (allSettings.runMode || 'popup'),
                     testlibPath: allSettings.testlibPath || ''
                 };
             }
@@ -276,7 +291,23 @@ class CompilerSettings {
         if (compilerPathInput) compilerPathInput.value = this.settings.compilerPath || '';
         if (pythonInterpreterPathInput) pythonInterpreterPathInput.value = this.settings.pythonInterpreterPath || '';
         if (compilerOptionsInput) compilerOptionsInput.value = this.settings.compilerArgs || '-std=c++14 -O2 -static';
-        if (runModeSelect) runModeSelect.value = this.settings.runMode || 'popup';
+        if (runModeSelect) {
+            const popupOption = runModeSelect.querySelector('option[value="popup"]');
+            const runModeHint = runModeSelect.parentElement ? runModeSelect.parentElement.querySelector('.hint') : null;
+            if (this.isMacPlatform) {
+                if (popupOption) popupOption.disabled = true;
+                runModeSelect.value = 'integrated-terminal';
+                if (runModeHint) {
+                    runModeHint.textContent = 'macOS 仅支持内置终端运行';
+                }
+            } else {
+                if (popupOption) popupOption.disabled = false;
+                runModeSelect.value = this.settings.runMode || 'popup';
+                if (runModeHint) {
+                    runModeHint.textContent = '内置终端运行会新建终端并自动输入程序路径后回车执行';
+                }
+            }
+        }
         if (testlibPathInput) testlibPathInput.value = this.settings.testlibPath || '';
     }
 
@@ -482,11 +513,17 @@ class CompilerSettings {
         try {
             const compilerPath = document.getElementById('compiler-path').value;
             const pythonInterpreterPath = document.getElementById('python-interpreter-path').value;
-            const compilerArgs = document.getElementById('compiler-options').value;
+            let compilerArgs = document.getElementById('compiler-options').value;
             const runModeSelect = document.getElementById('run-mode');
-            const runMode = runModeSelect && runModeSelect.value === 'integrated-terminal'
+            const runMode = this.isMacPlatform
                 ? 'integrated-terminal'
-                : 'popup';
+                : (runModeSelect && runModeSelect.value === 'integrated-terminal'
+                ? 'integrated-terminal'
+                : 'popup');
+
+            if (this.isMacPlatform && typeof compilerArgs === 'string') {
+                compilerArgs = compilerArgs.replace(/\s-static\b/g, ' ').replace(/\s+/g, ' ').trim();
+            }
             
             const newSettings = {
                 compilerPath: compilerPath,
@@ -550,8 +587,14 @@ class CompilerSettings {
         
         const userAgent = navigator.userAgent.toLowerCase();
     if (userAgent.includes('win')) return 'windows';
+    if (userAgent.includes('mac')) return 'macos';
     if (userAgent.includes('linux')) return 'linux';
         return 'windows'; // 默认
+    }
+
+    async detectMacPlatform() {
+        const platform = await this.getCurrentPlatform();
+        return platform === 'macos' || platform === 'darwin' || platform === 'mac';
     }
 
     async getDownloadedVersions() {
