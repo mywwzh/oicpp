@@ -910,9 +910,79 @@ class MonacoEditorManager {
             const classDeclPattern = /\b(?:class|struct|enum|union)\s+([A-Za-z_]\w*)/g;
             const namespaceDeclPattern = /\bnamespace\s+([A-Za-z_]\w*)/g;
             const functionPattern = /\b([A-Za-z_~]\w*)\s*\([^;{}]*\)\s*(?:const\s*)?(?:noexcept(?:\s*\([^)]*\))?\s*)?(?:\{|;|$)/g;
-            const variableDeclPattern = /\b(?:const|constexpr|volatile|mutable|register|static|unsigned|signed|long|short|auto|bool|char|char8_t|char16_t|char32_t|double|float|int|void|wchar_t|size_t|ssize_t|ptrdiff_t|[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)\s+(?:[*&]\s*)*([A-Za-z_]\w*)\s*(?=[=,;\)\[])/g;
+            const typeKeywordPattern = '(?:const|constexpr|volatile|mutable|register|static|unsigned|signed|long|short|auto|bool|char|char8_t|char16_t|char32_t|double|float|int|void|wchar_t|size_t|ssize_t|ptrdiff_t|int\d+_t|uint\d+_t|[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)';
+            const variableDeclPattern = new RegExp(`\\b${typeKeywordPattern}(?:\\s+${typeKeywordPattern})*\\s+(?:[*&]\\s*)*([A-Za-z_]\\w*)\\s*(?=[=,;\\)\\[])`, 'g');
             const preprocessorPattern = /^\s*#\s*([A-Za-z_]\w*)/;
+            const includeHeaderPattern = /^\s*#\s*include\s*([<"][^>"]+[>"])/;
             const operatorPattern = /(\+\+|--|->\*|->|<<=|>>=|==|!=|<=|>=|&&|\|\||<<|>>|[+\-*/%=&|^~<>!?:])/g;
+            const siblingDeclaratorNamePattern = /(?:[*&]+\s*)*([A-Za-z_]\w*)/;
+            const usingOrTypedefPattern = /^\s*(?:using|typedef)\b/;
+
+            const collectSiblingDeclarators = (lineText, declarationStart) => {
+                const collected = [];
+                if (!lineText || declarationStart >= lineText.length) {
+                    return collected;
+                }
+
+                let depthParen = 0;
+                let depthBracket = 0;
+                let depthBrace = 0;
+                let segmentStart = -1;
+
+                const flushSegment = (from, to) => {
+                    if (from < 0 || to <= from) {
+                        return;
+                    }
+
+                    const segment = lineText.slice(from, to);
+                    const nameMatch = siblingDeclaratorNamePattern.exec(segment);
+                    if (!nameMatch || !nameMatch[1]) {
+                        return;
+                    }
+
+                    const name = nameMatch[1];
+                    const localStart = segment.indexOf(name);
+                    if (localStart < 0) {
+                        return;
+                    }
+
+                    collected.push({
+                        name,
+                        start: from + localStart,
+                        length: name.length
+                    });
+                };
+
+                for (let idx = declarationStart; idx < lineText.length; idx++) {
+                    const ch = lineText[idx];
+
+                    if (ch === '(') depthParen += 1;
+                    else if (ch === ')' && depthParen > 0) depthParen -= 1;
+                    else if (ch === '[') depthBracket += 1;
+                    else if (ch === ']' && depthBracket > 0) depthBracket -= 1;
+                    else if (ch === '{') depthBrace += 1;
+                    else if (ch === '}' && depthBrace > 0) depthBrace -= 1;
+
+                    const atTopLevel = depthParen === 0 && depthBracket === 0 && depthBrace === 0;
+                    if (!atTopLevel) {
+                        continue;
+                    }
+
+                    if (ch === ',') {
+                        segmentStart = idx + 1;
+                        continue;
+                    }
+
+                    if (ch === ';') {
+                        if (segmentStart >= 0) {
+                            flushSegment(segmentStart, idx);
+                        }
+                        break;
+                    }
+                }
+
+                return collected;
+            };
 
             const provider = {
                 getLegend: () => legend,
@@ -1033,11 +1103,21 @@ class MonacoEditorManager {
                         operatorPattern.lastIndex = 0;
 
                         const preprocessorMatch = preprocessorPattern.exec(lineText);
+                        const isPreprocessorLine = !!preprocessorMatch;
                         if (preprocessorMatch && preprocessorMatch[1]) {
                             const directive = preprocessorMatch[1];
                             const directiveStart = lineText.indexOf(directive);
                             if (directiveStart >= 0) {
                                 putToken(i, directiveStart, directive.length, 'preprocessor');
+                            }
+
+                            const includeMatch = includeHeaderPattern.exec(lineText);
+                            if (includeMatch && includeMatch[1]) {
+                                const includeArg = includeMatch[1];
+                                const includeArgStart = lineText.indexOf(includeArg);
+                                if (includeArgStart >= 0) {
+                                    putToken(i, includeArgStart, includeArg.length, 'preprocessor');
+                                }
                             }
                         }
 
@@ -1058,28 +1138,42 @@ class MonacoEditorManager {
                             putToken(i, nameStart, className.length, 'class');
                         }
 
-                        while ((match = functionPattern.exec(scanText)) !== null) {
-                            const fnName = match[1] || '';
-                            if (!fnName || controlKeywords.has(fnName)) {
-                                continue;
+                        if (!isPreprocessorLine) {
+                            while ((match = functionPattern.exec(scanText)) !== null) {
+                                const fnName = match[1] || '';
+                                if (!fnName || controlKeywords.has(fnName)) {
+                                    continue;
+                                }
+                                const fnStart = match.index + match[0].indexOf(fnName);
+                                putToken(i, fnStart, fnName.length, 'function');
                             }
-                            const fnStart = match.index + match[0].indexOf(fnName);
-                            putToken(i, fnStart, fnName.length, 'function');
                         }
 
-                        while ((match = variableDeclPattern.exec(scanText)) !== null) {
-                            const varName = match[1] || '';
-                            if (!varName || controlKeywords.has(varName)) {
-                                continue;
+                        if (!isPreprocessorLine && !usingOrTypedefPattern.test(scanText)) {
+                            while ((match = variableDeclPattern.exec(scanText)) !== null) {
+                                const varName = match[1] || '';
+                                if (!varName || controlKeywords.has(varName)) {
+                                    continue;
+                                }
+                                const varStart = match.index + match[0].lastIndexOf(varName);
+                                putToken(i, varStart, varName.length, braceDepth > 0 ? 'localVar' : 'globalVar');
+
+                                const siblings = collectSiblingDeclarators(scanText, match.index + match[0].length);
+                                for (const sibling of siblings) {
+                                    if (!sibling || !sibling.name || controlKeywords.has(sibling.name)) {
+                                        continue;
+                                    }
+                                    putToken(i, sibling.start, sibling.length, braceDepth > 0 ? 'localVar' : 'globalVar');
+                                }
                             }
-                            const varStart = match.index + match[0].lastIndexOf(varName);
-                            putToken(i, varStart, varName.length, braceDepth > 0 ? 'localVar' : 'globalVar');
                         }
 
-                        while ((match = operatorPattern.exec(scanText)) !== null) {
-                            const op = match[0] || '';
-                            const tokenType = (op === '*' || op === '&' || op === '->' || op === '->*') ? 'pointer' : 'operator';
-                            putToken(i, match.index, op.length, tokenType);
+                        if (!isPreprocessorLine) {
+                            while ((match = operatorPattern.exec(scanText)) !== null) {
+                                const op = match[0] || '';
+                                const tokenType = (op === '*' || op === '&' || op === '->' || op === '->*') ? 'pointer' : 'operator';
+                                putToken(i, match.index, op.length, tokenType);
+                            }
                         }
 
                         const openCount = (scanText.match(/\{/g) || []).length;
