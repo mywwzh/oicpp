@@ -36,7 +36,10 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm install --include=optional
+          npm rebuild sharp
+          node -e "require('sharp'); console.log('sharp ok')"
 
       - name: Verify node-pty linux binary
         run: |
@@ -118,7 +121,10 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm install --include=optional
+          npm rebuild sharp
+          node -e "require('sharp'); console.log('sharp ok')"
 
       - name: Build macOS DMG
         env:
@@ -179,7 +185,10 @@ jobs:
           echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm install --include=optional
+          npm rebuild sharp
+          node -e "require('sharp'); console.log('sharp ok')"
 
       - name: Build Unpacked App
         env:
