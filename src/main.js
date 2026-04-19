@@ -7026,7 +7026,9 @@ function getDeviceInfo() {
 
 function generateEncodedToken(username = '') {
     const device = getDeviceInfo();
-    const sys = process.platform === 'win32' ? 'win' : 'linux';
+    const sys = process.platform === 'win32'
+        ? 'win'
+        : (process.platform === 'darwin' ? 'mac' : 'linux');
     const tokenData = `${username}&${device.deviceName}&${device.cpuId}&${sys}`;
     return Buffer.from(tokenData).toString('base64');
 }
