@@ -133,10 +133,17 @@
                     }
 
                     body.has-custom-bg .editor-container {
-                        background-color: rgba(30, 30, 30, 0.85) !important;
+                        background-color: rgba(30, 30, 30, 0.62) !important;
                     }
                     body.has-custom-bg[data-editor-theme="light"] .editor-container {
-                        background-color: rgba(255, 255, 255, 0.85) !important;
+                        background-color: rgba(255, 255, 255, 0.78) !important;
+                    }
+
+                    body.has-custom-bg.glass-effect-enabled .editor-container {
+                        background-color: var(--glass-surface, rgba(16, 19, 27, 0.42)) !important;
+                    }
+                    body.has-custom-bg.glass-effect-enabled[data-editor-theme="light"] .editor-container {
+                        background-color: rgba(255, 255, 255, 0.56) !important;
                     }
                     
                     body.has-custom-bg .sidebar {
