@@ -20,9 +20,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: |
-          npm install
-          npm install --os=linux --cpu=x64 sharp
+        run: npm ci --include=optional
 
       - name: Verify node-pty linux binary
         run: |
