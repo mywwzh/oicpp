@@ -24,6 +24,8 @@ class TabManager {
         this._externalFileChangeUnsubscribe = null;
         this._fileWatchCleanupBound = false;
         this._tabContextMenu = null;
+        this._altWheelListenerBound = false;
+        this._lastAltWheelSwitchTs = 0;
 
         if (typeof window !== 'undefined') {
             this.handlePdfViewerMessage = this.handlePdfViewerMessage.bind(this);
@@ -1893,6 +1895,13 @@ class TabManager {
                 this.closeTab(tab.dataset.file);
             }
         });
+
+        if (!this._altWheelListenerBound) {
+            document.addEventListener('wheel', (e) => {
+                this.handleAltWheelTabSwitch(e);
+            }, { capture: true, passive: false });
+            this._altWheelListenerBound = true;
+        }
 
         document.addEventListener('keydown', (e) => {
             if (e.ctrlKey) {
@@ -4305,6 +4314,58 @@ class TabManager {
         const prevTab = this.tabOrder[prevIndex];
 
         await this.activateTab(prevTab);
+    }
+
+    isAltWheelTabSwitchTarget(target) {
+        if (!(target instanceof Element)) {
+            return false;
+        }
+
+        if (target.closest('input, textarea, select, [contenteditable="true"]')) {
+            return false;
+        }
+
+        if (target.closest('.dialog-overlay, .quick-open-overlay, .menu-dropdown, .global-settings, .integrated-terminal-panel, .sidebar')) {
+            return false;
+        }
+
+        return Boolean(target.closest('#editor-groups, .editor-groups, .editor-group, .editor-area, .tab-bar, .tab, .monaco-editor, .monaco-editor-container'));
+    }
+
+    handleAltWheelTabSwitch(event) {
+        if (!event?.altKey) {
+            return;
+        }
+
+        if (!this.isAltWheelTabSwitchTarget(event.target)) {
+            return;
+        }
+
+        if (Math.abs(Number(event.deltaY) || 0) < 1) {
+            return;
+        }
+
+        const now = Date.now();
+        if (now - this._lastAltWheelSwitchTs < 80) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        this._lastAltWheelSwitchTs = now;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (event.deltaY > 0) {
+            this.switchToNextTab().catch((error) => {
+                logWarn('Alt+滚轮切换到下一个标签失败:', error);
+            });
+            return;
+        }
+
+        this.switchToPreviousTab().catch((error) => {
+            logWarn('Alt+滚轮切换到上一个标签失败:', error);
+        });
     }
 
     markTabAsModified(fileName) {
