@@ -124,6 +124,9 @@ jobs:
           npm install --include=optional
           node -e "try { require('sharp'); console.log('sharp ok'); } catch (e) { console.log('sharp unavailable, will use committed png icons fallback'); }"
 
+      - name: Ensure dmg-license is installed
+        run: npm install --no-save dmg-license
+
       - name: Build macOS DMG
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
