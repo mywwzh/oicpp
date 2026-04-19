@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const sharp = require('sharp');
 const icojs = require('icojs');
 
 (async function main() {
@@ -14,6 +13,20 @@ const icojs = require('icojs');
   const pngDir = path.join(outDir, 'png');
   fs.mkdirSync(pngDir, { recursive: true });
 
+  const sizes = [16, 24, 32, 48, 64, 128, 256, 512, 1024];
+  const missingSizes = sizes.filter((s) => !fs.existsSync(path.join(pngDir, `${s}x${s}.png`)));
+
+  let sharp = null;
+  try {
+    sharp = require('sharp');
+  } catch (err) {
+    if (missingSizes.length === 0) {
+      console.log('[icons] sharp unavailable, using committed png icons');
+      process.exit(0);
+    }
+    throw new Error(`[icons] sharp unavailable and missing icon sizes: ${missingSizes.join(', ')}`);
+  }
+
   const buf = fs.readFileSync(icoPath);
   const images = await icojs.parse(buf, 'image/png');
   let largest = images.sort((a,b)=> (b.width*b.height)-(a.width*a.height))[0];
@@ -23,7 +36,6 @@ const icojs = require('icojs');
     basePng = pngFromIco;
   }
 
-  const sizes = [16, 24, 32, 48, 64, 128, 256, 512, 1024];
   for (const s of sizes) {
     const pngOut = path.join(pngDir, `${s}x${s}.png`);
     const out = await sharp(basePng).resize(s, s, { fit: 'cover' }).png().toBuffer();
