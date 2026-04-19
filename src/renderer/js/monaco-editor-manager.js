@@ -5620,8 +5620,8 @@ class MonacoEditorManager {
             let activatedViaTabManager = false;
             if (normalizedKey && window.tabManager?.activateTabByUniqueKey) {
                 try {
-                    await window.tabManager.activateTabByUniqueKey(normalizedKey);
-                    activatedViaTabManager = true;
+                    const activated = await window.tabManager.activateTabByUniqueKey(normalizedKey);
+                    activatedViaTabManager = activated === true;
                     targetEditor = this.editors.get(tabId) || targetEditor;
                 } catch (activationError) {
                     logWarn('TabManager.activateTabByUniqueKey 失败:', activationError);
