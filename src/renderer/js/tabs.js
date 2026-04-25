@@ -869,6 +869,10 @@ class TabManager {
             this.activateTabByUniqueKey(candidateKey).catch(logError);
             return;
         }
+        if (tabData?.viewType === 'markdown-preview') {
+            this.activateTabByUniqueKey(candidateKey).catch(logError);
+            return;
+        }
         const tabId = tabData?.tabId;
         if (tabId && this.monacoEditorManager && typeof this.monacoEditorManager.switchTab === 'function') {
             const currentActive = this.monacoEditorManager.groupActiveTab?.get?.(groupId);
@@ -3611,26 +3615,28 @@ class TabManager {
             if (openOptions && typeof openOptions === 'object') {
                 targetGroupId = openOptions.groupId || openOptions.targetGroupId || targetGroupId;
             }
+
+            // If the active group is a markdown preview group, open regular files in the source code group by default.
+            if (!openOptions?.groupId && !openOptions?.targetGroupId && this.activeTabKey) {
+                const activeTabData = this.tabs.get(this.activeTabKey);
+                if (activeTabData?.viewType === 'markdown-preview' && activeTabData.sourceTabKey) {
+                    const sourceTab = this.tabs.get(activeTabData.sourceTabKey);
+                    if (sourceTab?.groupId && this.groups.has(sourceTab.groupId)) {
+                        targetGroupId = sourceTab.groupId;
+                    }
+                }
+            }
+
             const requestedViewType = (openOptions && typeof openOptions === 'object' && openOptions.viewType)
                 ? String(openOptions.viewType).toLowerCase()
                 : null;
             const isPdf = requestedViewType === 'pdf' || (this.isPdfFile(fileName) && !isNew);
             const isMarkdown = fileName.toLowerCase().endsWith('.md');
             let initialViewType = 'code';
+            const explicitMarkdownSplit = requestedViewType === 'markdown-split' || requestedViewType === 'markdown-preview';
 
             if (isMarkdown) {
-                try {
-                    const settings = await window.electronAPI.getSettings();
-                    const rawMode = settings ? settings.markdownMode : null;
-                    const mode = typeof rawMode === 'string' ? rawMode.trim().toLowerCase() : '';
-                    if (mode === 'split') {
-                        initialViewType = 'markdown-split';
-                    } else {
-                        initialViewType = 'code';
-                    }
-                } catch (e) {
-                    logWarn('Failed to get settings for markdown mode:', e);
-                }
+                initialViewType = explicitMarkdownSplit ? 'markdown-split' : 'code';
             }
 
             const isTempFile = !!(openOptions && typeof openOptions === 'object' && openOptions.isTempFile);
