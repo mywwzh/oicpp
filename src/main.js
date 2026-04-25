@@ -21,7 +21,7 @@ const IntegratedTerminalManager = require('./terminal-manager');
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 const SAVE_ALL_TIMEOUT = 4000;
 
 function getUserIconPath() {
@@ -588,6 +588,7 @@ function getDefaultSettings() {
 
     return {
         compilerPath: '',
+        lldbMiPath: '',
         pythonInterpreterPath: '',
         compilerArgs,
         runMode: normalizeRunModeForPlatform('popup'),
@@ -1154,7 +1155,7 @@ ipcMain.handle('get-build-info', () => {
     } catch (error) {
         logger.logwarn('读取构建信息失败:', error);
     }
-    return { version: '1.4.0 (v34)', buildTime: '未知', author: 'mywwzh' };
+    return { version: '1.4.1 (v35)', buildTime: '未知', author: 'mywwzh' };
 });
 
 function requestSaveAllAndClose(context = '关闭窗口') {
@@ -5750,7 +5751,7 @@ function resetSettings(settingsType = null) {
 function exportSettings(filePath) {
     try {
         const exportData = {
-            version: '1.4.0 (v34)',
+            version: '1.4.1 (v35)',
             timestamp: new Date().toISOString(),
             settings: settings
         };
@@ -7862,99 +7863,35 @@ function resolveMacMIDebuggerLaunchConfig() {
         return null;
     }
 
-    const candidates = [];
-    const seen = new Set();
-    const pushCandidate = (kind, command, miArgs, relaxedInit = false) => {
-        const normalized = String(command || '').trim();
-        if (!normalized || seen.has(normalized)) {
-            return;
-        }
-        seen.add(normalized);
-        candidates.push({
-            kind,
-            command: normalized,
-            miArgs: Array.isArray(miArgs) ? miArgs.slice() : ['-q', '--interpreter=mi2'],
-            relaxedInit: !!relaxedInit
-        });
+    const configuredPath = String(settings?.lldbMiPath || '').trim();
+    if (!configuredPath) {
+        return null;
+    }
+
+    const probe = runCommandVersionProbe(configuredPath, ['--version']);
+    if (!probe.ok) {
+        return null;
+    }
+
+    const versionLine = String(probe.output || '')
+        .split(/\r?\n/)
+        .map(s => s.trim())
+        .find(Boolean) || configuredPath;
+
+    return {
+        kind: 'lldb-mi',
+        command: configuredPath,
+        miArgs: ['--interpreter=mi'],
+        relaxedInit: true,
+        version: versionLine
     };
-
-    const envGdbCandidates = [
-        process.env.OICPP_GDB,
-        process.env.GDB_PATH
-    ].filter(Boolean).map(x => String(x).trim()).filter(Boolean);
-
-    const envLldbMiCandidates = [
-        process.env.OICPP_LLDB_MI,
-        process.env.LLDB_MI_PATH
-    ].filter(Boolean).map(x => String(x).trim()).filter(Boolean);
-
-    for (const candidate of envGdbCandidates) {
-        pushCandidate('gdb', candidate, ['-q', '--interpreter=mi2'], false);
-    }
-
-    for (const candidate of envLldbMiCandidates) {
-        pushCandidate('lldb-mi', candidate, ['--interpreter=mi'], true);
-    }
-
-    const absoluteGdbCandidates = [
-        '/opt/homebrew/bin/gdb',
-        '/usr/local/bin/gdb',
-        '/usr/bin/gdb'
-    ];
-    for (const candidate of absoluteGdbCandidates) {
-        try {
-            if (fs.existsSync(candidate)) {
-                pushCandidate('gdb', candidate, ['-q', '--interpreter=mi2'], false);
-            }
-        } catch (_) { }
-    }
-
-    const absoluteLldbMiCandidates = [
-        '/opt/homebrew/opt/llvm/bin/lldb-mi',
-        '/usr/local/opt/llvm/bin/lldb-mi',
-        '/Library/Developer/CommandLineTools/usr/bin/lldb-mi'
-    ];
-    for (const candidate of absoluteLldbMiCandidates) {
-        try {
-            if (fs.existsSync(candidate)) {
-                pushCandidate('lldb-mi', candidate, ['--interpreter=mi'], true);
-            }
-        } catch (_) { }
-    }
-
-    const gdbPathProbe = runCommandVersionProbe('gdb', ['--version']);
-    if (gdbPathProbe.ok) {
-        pushCandidate('gdb', 'gdb', ['-q', '--interpreter=mi2'], false);
-    }
-
-    const lldbMiPathProbe = runCommandVersionProbe('lldb-mi', ['--version']);
-    if (lldbMiPathProbe.ok) {
-        pushCandidate('lldb-mi', 'lldb-mi', ['--interpreter=mi'], true);
-    }
-
-    for (const candidate of candidates) {
-        const probe = runCommandVersionProbe(candidate.command, ['--version']);
-        if (!probe.ok) {
-            continue;
-        }
-        const versionLine = String(probe.output || '')
-            .split(/\r?\n/)
-            .map(s => s.trim())
-            .find(Boolean) || candidate.command;
-        return {
-            ...candidate,
-            version: versionLine
-        };
-    }
-
-    return null;
 }
 
 function resolveDebuggerLaunchConfig() {
     if (process.platform === 'darwin') {
         const debuggerConfig = resolveMacMIDebuggerLaunchConfig();
         if (!debuggerConfig) {
-            throw new Error('未检测到可用的 MI 调试器。请安装 gdb（推荐）或 lldb-mi，并确保其在 PATH 中，或通过 OICPP_GDB/OICPP_LLDB_MI 指定路径。');
+            throw new Error('未检测到可用的 lldb-mi。请先安装 lldb-mi，然后在编译器设置中手动选择 lldb-mi 路径。');
         }
         return debuggerConfig;
     }
@@ -7969,7 +7906,7 @@ function resolveDebuggerLaunchConfig() {
 
 async function checkGDBAvailability() {
     if (process.platform === 'darwin') {
-        logInfo('[主进程] 检查 macOS 调试环境 (clang + MI 调试器)...');
+        logInfo('[主进程] 检查 macOS 调试环境 (clang + lldb-mi 手动配置)...');
 
         const clangProbe = runCommandVersionProbe('clang++', ['--version']);
         if (!clangProbe.ok) {
@@ -7980,12 +7917,21 @@ async function checkGDBAvailability() {
             };
         }
 
+        const configuredPath = String(settings?.lldbMiPath || '').trim();
+        if (!configuredPath) {
+            return {
+                available: false,
+                debugger: 'lldb-mi',
+                message: '已检测到 clang，但未配置 lldb-mi。请先安装 lldb-mi，并在编译器设置中手动选择 lldb-mi 路径。'
+            };
+        }
+
         const debuggerConfig = resolveMacMIDebuggerLaunchConfig();
         if (!debuggerConfig) {
             return {
                 available: false,
-                debugger: 'mi-debugger',
-                message: '已检测到 clang，但未找到可用的 MI 调试器。请安装 gdb（推荐）或 lldb-mi，并将其加入 PATH。'
+                debugger: 'lldb-mi',
+                message: `已检测到 clang，但当前 lldb-mi 路径不可用：${configuredPath}。请在编译器设置中重新选择。`
             };
         }
 

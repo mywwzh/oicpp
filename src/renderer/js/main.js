@@ -2715,9 +2715,10 @@ class OICPPApp {
 
     showGDBInstallGuide(status = null) {
         const dbg = String(status?.debugger || '').toLowerCase();
-        const title = dbg === 'lldb' ? 'LLDB 调试环境未就绪' : 'GDB 调试器未安装';
-        const intro = dbg === 'lldb'
-            ? 'macOS 调试功能需要 clang + lldb 支持。'
+        const isMacLldbMi = dbg === 'lldb-mi' || dbg === 'lldb';
+        const title = isMacLldbMi ? 'LLDB-MI 调试环境未就绪' : 'GDB 调试器未安装';
+        const intro = isMacLldbMi
+            ? 'macOS 调试功能需要 clang + lldb-mi。请先安装 lldb-mi，并在“编译器设置”中手动选择 lldb-mi 路径。'
             : '调试功能需要 GDB 调试器支持。请安装 GDB：';
         const container = document.getElementById('debug-variables');
         if (container) {
@@ -2728,7 +2729,7 @@ class OICPPApp {
                     <ul style="margin: 10px 0; padding-left: 20px;">
                         <li><strong>Windows:</strong> 安装MinGW-w64或TDM-GCC</li>
                         <li><strong>Linux:</strong> sudo apt install gdb（Ubuntu/Debian）</li>
-                        <li><strong>macOS:</strong> 安装 Xcode Command Line Tools（clang/lldb）</li>
+                        <li><strong>macOS:</strong> 安装 lldb-mi，并在编译器设置中手动选择 lldb-mi 路径</li>
                     </ul>
                     <p style="margin-top: 16px; font-size: 12px; color: #cccccc;">
                         安装完成后重启IDE即可使用调试功能。
@@ -3329,7 +3330,7 @@ ${data.message || '程序已加载，等待开始执行'}
                     <p><strong>调试功能错误</strong></p>
                     <p>${message}</p>
                     <p style="margin-top: 8px; font-size: 11px; color: #cccccc;">
-                        请检查调试器（Windows/Linux: GDB，macOS: LLDB）是否已安装，代码是否已编译（使用-g选项）
+                        请检查调试器（Windows/Linux: GDB，macOS: lldb-mi 且已在编译器设置中手动选择路径）是否可用，代码是否已编译（使用-g选项）
                     </p>
                 </div>
             `;
@@ -3745,7 +3746,7 @@ ${data.message || '程序已加载，等待开始执行'}
 
 
     async showAbout() {
-        const fallbackBuildInfo = { version: '1.4.0 (v34)', buildTime: '未知', author: 'mywwzh' };
+        const fallbackBuildInfo = { version: '1.4.1 (v35)', buildTime: '未知', author: 'mywwzh' };
         let buildInfo = { ...fallbackBuildInfo };
         try {
             const buildInfoData = window.electronAPI ? await window.electronAPI.getBuildInfo() : null;
