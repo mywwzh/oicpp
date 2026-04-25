@@ -2058,8 +2058,8 @@ function setupIPC() {
         return updateSettings(null, newSettings);
     });
 
-    ipcMain.handle('reset-settings', (settingsType) => {
-        return resetSettings();
+    ipcMain.handle('reset-settings', (_event, settingsType) => {
+        return resetSettings(settingsType);
     });
 
     ipcMain.handle('get-system-info', () => {
@@ -5711,9 +5711,26 @@ function updateSettings(settingsType, newSettings) {
     }
 }
 
+function getResettableSettingsKeys() {
+    return [
+        'compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath',
+        'font', 'fontSize', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors',
+        'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled',
+        'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'markdownMode', 'cppTemplate', 'codeSnippets',
+        'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace'
+    ];
+}
+
 function resetSettings(settingsType = null) {
     try {
-        settings = getDefaultSettings();
+        const defaultSettings = getDefaultSettings();
+        const resettableKeys = getResettableSettingsKeys();
+
+        for (const key of resettableKeys) {
+            if (Object.prototype.hasOwnProperty.call(defaultSettings, key)) {
+                settings[key] = JSON.parse(JSON.stringify(defaultSettings[key]));
+            }
+        }
 
         saveSettings();
 
