@@ -3790,7 +3790,7 @@ ${data.message || '程序已加载，等待开始执行'}
                         <p><strong>开发者:</strong> ${buildInfo.author}</p>
                         <p><strong>描述:</strong> 专为 OI 选手优化的 C++ 开发环境</p>
                         <p><strong>用户群:</strong> 931577836</p>
-                        <p><strong>官网:</strong> <a href="https://oicpp.mywwzh.top" target="_blank" rel="noopener noreferrer">https://oicpp.mywwzh.top</a></p>
+                        <p><strong>官网:</strong> https://oicpp.mywwzh.top</p>
                     </div>
                 </div>
                 <div  class="about-footer">
