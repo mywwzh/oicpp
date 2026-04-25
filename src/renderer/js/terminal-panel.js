@@ -408,11 +408,122 @@ class IntegratedTerminalPanel {
         });
 
         this.setupTerminalClipboardShortcuts(terminal, provisionalSession);
+        this.shieldTerminalKeyEvents(mount, provisionalSession);
+
+        await this.initializeSessionEncodingIfNeeded(provisionalSession);
 
         this.fitTerminal(remoteId);
         this.applyThemeSettings();
         this.renderEmptyState();
         return remoteId;
+    }
+
+    shieldTerminalKeyEvents(mountNode, sessionRef = null) {
+        if (!mountNode || mountNode._terminalKeyShielded) {
+            return;
+        }
+
+        const sendInput = async (text) => {
+            const session = sessionRef;
+            const remoteId = session?.remoteId;
+            if (!remoteId || !text) {
+                return;
+            }
+
+            if (typeof session.inputBridge === 'function') {
+                this.echoBridgedInput(session, String(text));
+                try {
+                    session.inputBridge(String(text));
+                } catch (_) {
+                }
+                return;
+            }
+
+            try {
+                await window.electronAPI?.writeTerminal?.(remoteId, String(text));
+            } catch (_) {
+            }
+        };
+
+        mountNode.addEventListener('keydown', (event) => {
+            const key = String(event?.key || '').toLowerCase();
+            const ctrl = !!event.ctrlKey;
+            const meta = !!event.metaKey;
+            const alt = !!event.altKey;
+            const shift = !!event.shiftKey;
+
+            // Ensure terminal input is not stolen by focus traversal or global handlers.
+            if (key === 'tab' && !ctrl && !meta && !alt) {
+                event.preventDefault();
+                event.stopPropagation();
+                const seq = shift ? '\u001b[Z' : '\t';
+                sendInput(seq);
+                return;
+            }
+
+            if (!ctrl && !meta && !alt && (key === 'arrowup' || key === 'arrowdown' || key === 'arrowleft' || key === 'arrowright')) {
+                event.preventDefault();
+                event.stopPropagation();
+                const map = {
+                    arrowup: '\u001b[A',
+                    arrowdown: '\u001b[B',
+                    arrowright: '\u001b[C',
+                    arrowleft: '\u001b[D'
+                };
+                sendInput(map[key] || '');
+                return;
+            }
+            // Let xterm handle all other keys (e.g. Backspace/Delete/Ctrl combinations).
+        }, true);
+
+        mountNode.addEventListener('wheel', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const session = sessionRef;
+            if (!session?.terminal || typeof session.terminal.scrollLines !== 'function') {
+                return;
+            }
+
+            const deltaY = Number(event.deltaY) || 0;
+            if (deltaY === 0) {
+                return;
+            }
+
+            const lines = Math.max(1, Math.min(6, Math.round(Math.abs(deltaY) / 36)));
+            session.terminal.scrollLines(deltaY > 0 ? lines : -lines);
+        }, true);
+
+        mountNode._terminalKeyShielded = true;
+    }
+
+    async initializeSessionEncodingIfNeeded(session) {
+        const terminalId = session?.remoteId;
+        if (!terminalId || !window.electronAPI?.getPlatform || !window.electronAPI?.writeTerminal) {
+            return;
+        }
+
+        let platform = '';
+        try {
+            platform = String(await window.electronAPI.getPlatform() || '').toLowerCase();
+        } catch (_) {
+            return;
+        }
+
+        if (platform !== 'windows') {
+            return;
+        }
+
+        const shell = String(session?.shell || '').toLowerCase();
+        let initCmd = 'chcp 65001 > nul\r';
+        if (shell.includes('powershell') || shell.includes('pwsh')) {
+            initCmd = '[Console]::InputEncoding=[System.Text.UTF8Encoding]::new($false);[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);chcp 65001 > $null\r';
+        }
+
+        try {
+            await window.electronAPI.writeTerminal(terminalId, initCmd);
+        } catch (_) {
+        }
     }
 
     setupTerminalClipboardShortcuts(terminal, sessionRef) {
@@ -427,13 +538,16 @@ class IntegratedTerminalPanel {
 
             const key = String(event.key || '').toLowerCase();
             const ctrlOrMeta = !!(event.ctrlKey || event.metaKey);
-            if (!ctrlOrMeta) {
+            const shiftOnly = !!event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
+            if (!ctrlOrMeta && !shiftOnly) {
                 return true;
             }
 
             const hasSelection = typeof terminal.getSelection === 'function' && !!terminal.getSelection();
-            const wantsCopy = key === 'c' && (event.shiftKey || hasSelection);
-            const wantsPaste = key === 'v';
+            const wantsCopy = (ctrlOrMeta && key === 'c' && (event.shiftKey || hasSelection))
+                || (ctrlOrMeta && key === 'insert');
+            const wantsPaste = (ctrlOrMeta && key === 'v')
+                || (shiftOnly && key === 'insert');
 
             if (wantsCopy) {
                 event.preventDefault();
@@ -461,12 +575,30 @@ class IntegratedTerminalPanel {
         }
         try {
             await navigator.clipboard.writeText(value);
+            return;
+        } catch (_) { }
+
+        try {
+            const result = await window.electronAPI?.clipboardWriteText?.(value);
+            if (result?.success) {
+                return;
+            }
         } catch (_) { }
     }
 
     async pasteClipboardToTerminal(terminalId) {
         try {
             const text = await navigator.clipboard.readText();
+            if (!text) {
+                return;
+            }
+            await window.electronAPI.writeTerminal(terminalId, text);
+            return;
+        } catch (_) { }
+
+        try {
+            const result = await window.electronAPI?.clipboardReadText?.();
+            const text = result?.success ? String(result.text || '') : '';
             if (!text) {
                 return;
             }
@@ -555,6 +687,7 @@ class IntegratedTerminalPanel {
         }
 
         this.fitActiveTerminal();
+        this.focusTerminal(terminalId);
     }
 
     focusTerminal(terminalId) {
