@@ -475,23 +475,70 @@ class EditorSettings {
                 return;
             }
 
+            const normalizeDraftHex = (raw) => {
+                const body = String(raw || '').trim().replace(/^#/, '').replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+                return body.toUpperCase();
+            };
+
+            const formatDraftHex = (raw) => `#${normalizeDraftHex(raw)}`;
+
+            const hasFullHex = (raw) => normalizeDraftHex(raw).length === 6;
+
+            const commitTextColor = (fallbackColor) => {
+                const currentTheme = this.getCurrentThemeFromUI();
+                const themeDefaults = this.getDefaultSyntaxColors(currentTheme);
+                const fallback = this.normalizeHexColor(fallbackColor, themeDefaults[key]);
+                if (hasFullHex(textInput.value)) {
+                    const normalized = this.normalizeHexColor(`#${normalizeDraftHex(textInput.value)}`, fallback);
+                    colorInput.value = normalized;
+                    textInput.value = normalized.toUpperCase();
+                    textInput.classList.remove('invalid');
+                    this.updateSyntaxPreview(null, currentTheme);
+                    this.notifyMainWindowPreview();
+                    return;
+                }
+
+                textInput.value = fallback.toUpperCase();
+                textInput.classList.remove('invalid');
+            };
+
             colorInput.addEventListener('input', () => {
                 const currentTheme = this.getCurrentThemeFromUI();
                 const themeDefaults = this.getDefaultSyntaxColors(currentTheme);
                 const normalized = this.normalizeHexColor(colorInput.value, themeDefaults[key]);
                 textInput.value = normalized.toUpperCase();
+                textInput.classList.remove('invalid');
                 this.updateSyntaxPreview(null, currentTheme);
                 this.notifyMainWindowPreview();
             });
 
             textInput.addEventListener('input', () => {
-                const currentTheme = this.getCurrentThemeFromUI();
-                const themeDefaults = this.getDefaultSyntaxColors(currentTheme);
-                const normalized = this.normalizeHexColor(textInput.value, themeDefaults[key]);
-                colorInput.value = normalized;
-                textInput.value = normalized.toUpperCase();
-                this.updateSyntaxPreview(null, currentTheme);
-                this.notifyMainWindowPreview();
+                textInput.value = formatDraftHex(textInput.value);
+                if (hasFullHex(textInput.value)) {
+                    const currentTheme = this.getCurrentThemeFromUI();
+                    const themeDefaults = this.getDefaultSyntaxColors(currentTheme);
+                    const normalized = this.normalizeHexColor(`#${normalizeDraftHex(textInput.value)}`, themeDefaults[key]);
+                    colorInput.value = normalized;
+                    textInput.value = normalized.toUpperCase();
+                    textInput.classList.remove('invalid');
+                    this.updateSyntaxPreview(null, currentTheme);
+                    this.notifyMainWindowPreview();
+                    return;
+                }
+
+                textInput.classList.add('invalid');
+            });
+
+            textInput.addEventListener('blur', () => {
+                commitTextColor(colorInput.value);
+            });
+
+            textInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    commitTextColor(colorInput.value);
+                    textInput.blur();
+                }
             });
 
             if (boldInput) {
