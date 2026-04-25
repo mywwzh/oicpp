@@ -175,7 +175,7 @@ body[data-editor-theme="light"] .integrated-terminal-mount .xterm {
 
 .integrated-terminal-mount .xterm {
     font-family: var(--editor-font-family, 'Consolas') !important;
-    font-size: var(--editor-font-size, 14px) !important;
+    font-size: 14px !important;
     background: transparent !important;
 }
 
