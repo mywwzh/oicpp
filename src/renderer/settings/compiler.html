@@ -51,6 +51,15 @@
                         </div>
                         <div class="hint">当对拍器数据生成器为 .py 文件时使用此解释器运行</div>
                     </div>
+
+                    <div class="setting-group" id="lldb-mi-setting-group" hidden>
+                        <label for="lldb-mi-path">LLDB-MI 路径 (macOS 调试必填)</label>
+                        <div class="input-group">
+                            <input type="text" id="lldb-mi-path" placeholder="请选择 lldb-mi 可执行文件路径" readonly>
+                            <button id="browse-lldb-mi" class="btn btn-secondary">浏览本地</button>
+                        </div>
+                        <div class="hint">请先安装 lldb-mi，再手动选择其路径。调试不会自动检测该路径。</div>
+                    </div>
                 </div>
 
                 <div id="testlib-section" class="settings-section">

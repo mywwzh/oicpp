@@ -25,6 +25,7 @@ class UnifiedSettingsManager {
 
         return {
             compilerPath: '',
+            lldbMiPath: '',
             compilerArgs: '-std=c++14 -O2 -static',
             runMode: isIntegratedOnlyPlatform ? 'integrated-terminal' : 'popup',
             font: 'Consolas',
@@ -178,7 +179,7 @@ class UnifiedSettingsManager {
             if (typeof require !== 'undefined') {
                 const { ipcRenderer } = require('electron');
                 const allowedKeys = new Set([
-                    'font','fontSize','lineHeight','theme','tabSize','enableAutoCompletion','foldingEnabled','stickyScrollEnabled','compilerPath','compilerArgs','runMode','testlibPath','codeSnippets','cppTemplate','fontLigaturesEnabled','autoSave','autoSaveInterval','autoBackupSettings','windowOpacity','backgroundImage','markdownMode','keybindings'
+                    'font','fontSize','lineHeight','theme','tabSize','enableAutoCompletion','foldingEnabled','stickyScrollEnabled','compilerPath','lldbMiPath','compilerArgs','runMode','testlibPath','codeSnippets','cppTemplate','fontLigaturesEnabled','autoSave','autoSaveInterval','autoBackupSettings','windowOpacity','backgroundImage','markdownMode','keybindings'
                 ]);
                 const filtered = {};
                 Object.keys(newSettings || {}).forEach(k=>{ if (allowedKeys.has(k)) filtered[k]=newSettings[k]; });
