@@ -2,6 +2,7 @@ class CompilerSettings {
     constructor() {
         this.settings = {
             compilerPath: '',
+            lldbMiPath: '',
             pythonInterpreterPath: '',
             compilerArgs: '-std=c++14 -O2 -static',
             runMode: 'popup'
@@ -101,6 +102,14 @@ class CompilerSettings {
             browsePythonBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 this.browsePythonInterpreter();
+            });
+        }
+
+        const browseLldbMiBtn = document.getElementById('browse-lldb-mi');
+        if (browseLldbMiBtn) {
+            browseLldbMiBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.browseLldbMiPath();
             });
         }
         
@@ -228,6 +237,13 @@ class CompilerSettings {
                 this.settings.pythonInterpreterPath = e.target.value;
             });
         }
+
+        const lldbMiPath = document.getElementById('lldb-mi-path');
+        if (lldbMiPath) {
+            lldbMiPath.addEventListener('input', (e) => {
+                this.settings.lldbMiPath = e.target.value;
+            });
+        }
         
         const testTestlibBtn = document.getElementById('test-testlib');
         if (testTestlibBtn) {
@@ -272,6 +288,7 @@ class CompilerSettings {
                 const loadedCompilerArgs = allSettings.compilerArgs || (isMacPlatform ? '-std=c++14 -O2' : '-std=c++14 -O2 -static');
                 this.settings = {
                     compilerPath: allSettings.compilerPath || '',
+                    lldbMiPath: allSettings.lldbMiPath || '',
                     pythonInterpreterPath: allSettings.pythonInterpreterPath || '',
                     compilerArgs: isMacPlatform
                         ? loadedCompilerArgs.replace(/\s-static\b/g, ' ').replace(/\s+/g, ' ').trim()
@@ -288,12 +305,16 @@ class CompilerSettings {
 
     updateUI() {
         const compilerPathInput = document.getElementById('compiler-path');
+        const lldbMiPathInput = document.getElementById('lldb-mi-path');
+        const lldbMiSettingGroup = document.getElementById('lldb-mi-setting-group');
         const pythonInterpreterPathInput = document.getElementById('python-interpreter-path');
         const compilerOptionsInput = document.getElementById('compiler-options');
         const runModeSelect = document.getElementById('run-mode');
         const testlibPathInput = document.getElementById('testlib-path');
         
         if (compilerPathInput) compilerPathInput.value = this.settings.compilerPath || '';
+        if (lldbMiPathInput) lldbMiPathInput.value = this.settings.lldbMiPath || '';
+        if (lldbMiSettingGroup) lldbMiSettingGroup.hidden = !this.isMacPlatform;
         if (pythonInterpreterPathInput) pythonInterpreterPathInput.value = this.settings.pythonInterpreterPath || '';
         if (compilerOptionsInput) compilerOptionsInput.value = this.settings.compilerArgs || '-std=c++14 -O2 -static';
         if (runModeSelect) {
@@ -348,6 +369,31 @@ class CompilerSettings {
         } catch (error) {
             logError('浏览 Python 解释器失败:', error);
             this.showMessage('浏览 Python 解释器失败：' + error.message, 'error');
+        }
+    }
+
+    async browseLldbMiPath() {
+        try {
+            const result = await window.electronAPI.showOpenDialog({
+                title: '选择 lldb-mi 可执行文件',
+                filters: [
+                    { name: '所有文件', extensions: ['*'] }
+                ],
+                properties: ['openFile']
+            });
+
+            if (!result.canceled && result.filePaths.length > 0) {
+                const selectedPath = result.filePaths[0];
+                this.settings.lldbMiPath = selectedPath;
+                const input = document.getElementById('lldb-mi-path');
+                if (input) {
+                    input.value = selectedPath;
+                }
+                this.showMessage('已选择 lldb-mi 路径', 'success');
+            }
+        } catch (error) {
+            logError('选择 lldb-mi 路径失败:', error);
+            this.showMessage('选择 lldb-mi 路径失败：' + error.message, 'error');
         }
     }
 
@@ -532,6 +578,7 @@ class CompilerSettings {
             
             const newSettings = {
                 compilerPath: compilerPath,
+                lldbMiPath: this.isMacPlatform ? (this.settings.lldbMiPath || '') : '',
                 pythonInterpreterPath: pythonInterpreterPath,
                 compilerArgs: compilerArgs,
                 runMode: runMode
