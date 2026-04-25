@@ -68,7 +68,7 @@ class IntegratedTerminalManager {
     }
 
     isAvailable() {
-        return !!pty || this._isProcessFallbackAvailable();
+        return !!pty || this._isInteractiveFallbackAvailable();
     }
 
     getStatus() {
@@ -80,7 +80,7 @@ class IntegratedTerminalManager {
             };
         }
 
-        if (this._isProcessFallbackAvailable()) {
+        if (this._isInteractiveFallbackAvailable()) {
             const message = ptyLoadError
                 ? (ptyLoadError.message || String(ptyLoadError))
                 : 'node-pty not installed';
@@ -92,6 +92,20 @@ class IntegratedTerminalManager {
                 available: true,
                 reason: 'node-pty 不可用，已启用兼容终端',
                 detail: `${message}${targetInfo}`
+            };
+        }
+
+        if (this._isProcessFallbackAvailable() && process.platform === 'win32') {
+            const message = ptyLoadError
+                ? (ptyLoadError.message || String(ptyLoadError))
+                : 'node-pty not installed';
+            const targetInfo = ptyLoadTargets.length > 0
+                ? `\n尝试位置: ${ptyLoadTargets.join(' | ')}`
+                : '';
+            return {
+                available: false,
+                reason: 'node-pty 不可用（Windows 终端需 PTY 支持）',
+                detail: `${message}${targetInfo}\n请重新安装依赖并确保 node-pty 原生模块可加载。`
             };
         }
 
@@ -111,6 +125,15 @@ class IntegratedTerminalManager {
 
     _isProcessFallbackAvailable() {
         return typeof spawn === 'function';
+    }
+
+    _isInteractiveFallbackAvailable() {
+        if (!this._isProcessFallbackAvailable()) {
+            return false;
+        }
+        // Windows pipe fallback is non-interactive (no readline/history/completion),
+        // so it cannot be treated as a usable integrated terminal backend.
+        return process.platform !== 'win32';
     }
 
     _resolveDefaultShell() {
@@ -288,6 +311,18 @@ class IntegratedTerminalManager {
             delete nextEnv.ITERM_SESSION_ID;
             nextEnv.TERM_PROGRAM = 'oicpp';
             nextEnv.TERM_PROGRAM_VERSION = 'embedded';
+        }
+
+        if (process.platform === 'win32') {
+            if (!nextEnv.LANG) {
+                nextEnv.LANG = 'zh_CN.UTF-8';
+            }
+            if (!nextEnv.LC_ALL) {
+                nextEnv.LC_ALL = 'C.UTF-8';
+            }
+            if (!nextEnv.PYTHONIOENCODING) {
+                nextEnv.PYTHONIOENCODING = 'utf-8';
+            }
         }
 
         nextEnv.TERM = 'xterm-256color';
@@ -514,6 +549,12 @@ class IntegratedTerminalManager {
         }
 
         if (!pty) {
+            if (!this._isInteractiveFallbackAvailable()) {
+                const status = this.getStatus();
+                const err = new Error(`${status.reason}: ${status.detail}`);
+                err.code = 'TERMINAL_REQUIRES_PTY';
+                throw err;
+            }
             const fallbackErrors = [];
             for (const fallbackShell of shellCandidates) {
                 try {

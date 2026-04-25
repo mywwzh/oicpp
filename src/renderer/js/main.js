@@ -1186,6 +1186,13 @@ class OICPPApp {
 
     handleKeyDown(e) {
         const key = (e.key || '').toLowerCase();
+        const activeElement = document.activeElement;
+        const isInTerminal = !!(
+            e.target?.closest?.('#integrated-terminal-panel') ||
+            e.target?.closest?.('.xterm') ||
+            activeElement?.closest?.('#integrated-terminal-panel') ||
+            activeElement?.closest?.('.xterm')
+        );
         const isInEditor = e.target.closest('.monaco-editor') || 
                           e.target.closest('.monaco-editor-container') ||
                           e.target.classList.contains('monaco-editor') ||
@@ -1203,6 +1210,11 @@ class OICPPApp {
             e.stopPropagation();
             fn();
         };
+
+        if (isInTerminal) {
+            // Keep terminal-native key handling (history, completion, readline shortcuts).
+            return;
+        }
         
         if (isInEditor) {
             if ((e.ctrlKey || e.metaKey) && !e.altKey) {
