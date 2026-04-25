@@ -18,6 +18,7 @@ class IntegratedTerminalPanel {
         this.counter = 0;
         this.panelHeight = 290;
         this._dragState = null;
+        this.fixedTerminalFontSize = 14;
 
         this._resizeObserver = null;
     }
@@ -194,14 +195,13 @@ class IntegratedTerminalPanel {
         }
     }
 
-    resolveEditorFontOptions() {
+    resolveTerminalFontOptions() {
         const app = this.getApp ? this.getApp() : null;
         const settings = app?.settings || {};
         const fontFamily = (typeof settings.font === 'string' && settings.font.trim())
             ? settings.font.trim()
             : 'Consolas';
-        const sizeRaw = Number(settings.fontSize);
-        const fontSize = Number.isFinite(sizeRaw) ? Math.max(10, Math.min(36, Math.round(sizeRaw))) : 14;
+        const fontSize = this.fixedTerminalFontSize;
         return { fontFamily, fontSize };
     }
 
@@ -250,8 +250,8 @@ class IntegratedTerminalPanel {
         }
     }
 
-    applyEditorFontSettings() {
-        const { fontFamily, fontSize } = this.resolveEditorFontOptions();
+    applyTerminalFontSettings() {
+        const { fontFamily, fontSize } = this.resolveTerminalFontOptions();
         for (const session of this.sessions.values()) {
             try {
                 session.terminal.options.fontFamily = fontFamily;
@@ -262,6 +262,11 @@ class IntegratedTerminalPanel {
                 }
             } catch (_) { }
         }
+    }
+
+    // Keep backward compatibility with older call sites.
+    applyEditorFontSettings() {
+        this.applyTerminalFontSettings();
     }
 
     async createTerminal(options = {}) {
@@ -313,7 +318,7 @@ class IntegratedTerminalPanel {
         this.tabs.appendChild(tab);
         this.body.appendChild(pane);
 
-        const fontOptions = this.resolveEditorFontOptions();
+        const fontOptions = this.resolveTerminalFontOptions();
 
         const terminal = new window.Terminal({
             cursorBlink: true,
