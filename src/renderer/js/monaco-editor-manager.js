@@ -44,8 +44,10 @@ class MonacoEditorManager {
         this.syntaxColorsByTheme = {};
         this.syntaxStyles = {};
         this._cppSemanticProviders = [];
+        this._onMonacoContextMenuPasteCapture = this.handleMonacoContextMenuPasteCapture.bind(this);
         
         this.init();
+        document.addEventListener('click', this._onMonacoContextMenuPasteCapture, true);
 
         document.addEventListener('settings-applied', (evt) => {
             try {
@@ -1461,6 +1463,138 @@ class MonacoEditorManager {
         return false;
     }
 
+    isMonacoPasteMenuActionTarget(target, event = null) {
+        const nodes = [];
+        if (target) nodes.push(target);
+        if (event && typeof event.composedPath === 'function') {
+            for (const node of event.composedPath()) {
+                if (!node || nodes.includes(node)) continue;
+                nodes.push(node);
+            }
+        }
+
+        for (const node of nodes) {
+            if (!node || typeof node !== 'object' || typeof node.closest !== 'function') continue;
+            const actionItem = node.closest('.context-view .action-item, .context-view .action-menu-item, .monaco-menu .action-item, .monaco-menu .action-menu-item, [role="menuitem"]');
+            if (!actionItem) continue;
+
+            const commandId = [
+                actionItem.getAttribute('data-command') || '',
+                actionItem.getAttribute('data-action') || '',
+                actionItem.getAttribute('id') || '',
+                actionItem.dataset?.command || '',
+                actionItem.dataset?.action || ''
+            ].join(' ').toLowerCase();
+
+            if (commandId.includes('clipboardpasteaction') || /\bpaste\b/.test(commandId)) {
+                return true;
+            }
+
+            const actionText = [
+                actionItem.getAttribute('aria-label') || '',
+                actionItem.getAttribute('title') || '',
+                actionItem.textContent || ''
+            ].join(' ').trim().toLowerCase();
+
+            if (actionText && (actionText.includes('粘贴') || /\bpaste\b/.test(actionText))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    async executeCustomPaste() {
+        const focusedTarget = document.activeElement;
+        if (this.isFindWidgetInputFocused(focusedTarget)) {
+            try {
+                const text = await this.readFromClipboard();
+                if (typeof text === 'string' && this.pasteTextIntoInputTarget(focusedTarget, text)) {
+                    logInfo('已将剪贴板内容粘贴到查找/替换输入框');
+                    return true;
+                }
+            } catch (err) {
+                logError('查找框粘贴失败:', err);
+            }
+            return false;
+        }
+
+        const activeEditor = this.currentEditor;
+        if (!activeEditor) {
+            logInfo('没有当前活动编辑器');
+            return false;
+        }
+
+        logInfo('粘贴命令被触发 - 使用当前活动编辑器:', this.currentFileName);
+        try {
+            const text = await this.readFromClipboard();
+            if (!text) {
+                logWarn('剪贴板为空或无法读取');
+                return false;
+            }
+
+            const selection = activeEditor.getSelection();
+            let baseLineNumber = 1;
+            let baseColumn = 1;
+
+            if (selection) {
+                baseLineNumber = selection.endLineNumber;
+                baseColumn = selection.endColumn;
+            } else {
+                const position = activeEditor.getPosition();
+                if (position) {
+                    baseLineNumber = position.lineNumber;
+                    baseColumn = position.column;
+                }
+            }
+
+            const range = selection && !selection.isEmpty()
+                ? selection
+                : new monaco.Range(baseLineNumber, baseColumn, baseLineNumber, baseColumn);
+
+            activeEditor.executeEdits('paste', [{
+                range: range,
+                text: text
+            }]);
+
+            const lines = text.split('\n');
+            const lastLineLength = lines[lines.length - 1].length;
+            const newPosition = {
+                lineNumber: baseLineNumber + lines.length - 1,
+                column: lines.length === 1 ? baseColumn + lastLineLength : lastLineLength + 1
+            };
+            activeEditor.setPosition(newPosition);
+
+            logInfo('粘贴操作成功');
+            return true;
+        } catch (err) {
+            logError('粘贴操作失败:', err);
+            return false;
+        }
+    }
+
+    handleMonacoContextMenuPasteCapture(event) {
+        if (!event || event.type !== 'click') return;
+        if (!this.isMonacoPasteMenuActionTarget(event.target, event)) return;
+
+        const editor = this.currentEditor;
+        const model = editor && typeof editor.getModel === 'function' ? editor.getModel() : null;
+        const beforeVersion = model && typeof model.getVersionId === 'function' ? model.getVersionId() : null;
+
+        setTimeout(async () => {
+            try {
+                const afterVersion = model && typeof model.getVersionId === 'function' ? model.getVersionId() : null;
+                const builtInPasteApplied = Number.isFinite(beforeVersion) && Number.isFinite(afterVersion) && afterVersion !== beforeVersion;
+                if (builtInPasteApplied) {
+                    return;
+                }
+                await this.executeCustomPaste();
+            } catch (e) {
+                logWarn('右键菜单粘贴兜底执行失败:', e);
+            }
+        }, 0);
+    }
+
     async refreshKeybindingsFromSettings() {
         try {
             if (window.electronAPI && window.electronAPI.getAllSettings) {
@@ -2009,56 +2143,10 @@ class MonacoEditorManager {
 
             const pasteKeybinding = this.toMonacoKeybinding('paste') || (monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV);
             editor.addCommand(pasteKeybinding, async () => {
-                const focusedTarget = document.activeElement;
-                if (this.isFindWidgetInputFocused(focusedTarget)) {
-                    try {
-                        const text = await this.readFromClipboard();
-                        if (typeof text === 'string' && this.pasteTextIntoInputTarget(focusedTarget, text)) {
-                            logInfo('已将剪贴板内容粘贴到查找/替换输入框');
-                        }
-                    } catch (err) {
-                        logError('查找框粘贴失败:', err);
-                    }
-                    return;
-                }
-
-                const activeEditor = this.currentEditor;
-                if (activeEditor) {
-                    logInfo('粘贴命令被触发 - 使用当前活动编辑器:', this.currentFileName);
-                    try {
-                        const text = await this.readFromClipboard();
-                        
-                        if (text) {
-                            const position = activeEditor.getPosition();
-                            const selection = activeEditor.getSelection();
-                            
-                            const range = selection && !selection.isEmpty() 
-                                ? selection 
-                                : new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column);
-                            
-                            activeEditor.executeEdits('paste', [{
-                                range: range,
-                                text: text
-                            }]);
-                            
-                            const lines = text.split('\n');
-                            const lastLineLength = lines[lines.length - 1].length;
-                            const newPosition = {
-                                lineNumber: position.lineNumber + lines.length - 1,
-                                column: lines.length === 1 ? position.column + lastLineLength : lastLineLength + 1
-                            };
-                            activeEditor.setPosition(newPosition);
-                            
-                            logInfo('粘贴操作成功');
-                        } else {
-                            logWarn('剪贴板为空或无法读取');
-                        }
-                    } catch (err) {
-                        logError('粘贴操作失败:', err);
-                    }
-                } else {
-                    logInfo('没有当前活动编辑器');
-                }
+                await this.executeCustomPaste();
+            });
+            editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Insert, async () => {
+                await this.executeCustomPaste();
             });
             
             const cutKeybinding = this.toMonacoKeybinding('cut') || (monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX);
@@ -2140,6 +2228,14 @@ class MonacoEditorManager {
                 if (editor && editor.focus) {
                     editor.focus();
                 }
+            });
+
+            monacoContainer.addEventListener('contextmenu', () => {
+                try {
+                    this.currentEditor = editor;
+                    if (editor.filePath) this.currentFilePath = editor.filePath;
+                    if (editor.fileName) this.currentFileName = editor.fileName;
+                } catch (_) {}
             });
             
             this.addWheelZoomListener(editor, monacoContainer);
