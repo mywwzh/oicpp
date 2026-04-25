@@ -363,6 +363,11 @@ body[data-theme="dracula"] {
     text-transform: uppercase;
 }
 
+.syntax-color-text.invalid {
+    border-color: var(--settings-warning-bg);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--settings-warning-bg) 35%, transparent);
+}
+
 .syntax-style-toggle {
     display: inline-flex;
     align-items: center;
