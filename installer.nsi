@@ -173,6 +173,9 @@ Section "OICPP 主程序" SEC01
   SetOutPath "$INSTDIR\resources"
   File "dist\win-unpacked\resources\app.asar"
   File "dist\win-unpacked\resources\elevate.exe"
+  SetOutPath "$INSTDIR\resources\app.asar.unpacked"
+  IfFileExists "dist\win-unpacked\resources\app.asar.unpacked\*.*" 0 +2
+    File /r "dist\win-unpacked\resources\app.asar.unpacked\*.*"
   SetOutPath "$INSTDIR"
   File "dist\win-unpacked\resources.pak"
   File "dist\win-unpacked\snapshot_blob.bin"
@@ -368,6 +371,7 @@ Section Uninstall
   Delete "$SMPROGRAMS\OICPP IDE\OICPP IDE.lnk"
 
   RMDir "$SMPROGRAMS\OICPP IDE"
+  RMDir /r "$INSTDIR\resources\app.asar.unpacked"
   RMDir "$INSTDIR\resources"
   RMDir "$INSTDIR\locales"
   RMDir "$INSTDIR"
