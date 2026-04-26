@@ -190,10 +190,63 @@ jobs:
           npm install --include=optional
           node -e "try { require('sharp'); console.log('sharp ok'); } catch (e) { console.log('sharp unavailable, will use committed png icons fallback'); }"
 
+      - name: Verify node-pty windows binary
+        shell: powershell
+        run: |
+          @'
+          const fs = require("fs");
+          const path = require("path");
+          const pkg = path.dirname(require.resolve("node-pty/package.json"));
+          const platformDir = `win32-${process.arch}`;
+          const candidates = [
+            path.join(pkg, "prebuilds", platformDir, "pty.node"),
+            path.join(pkg, "build", "Release", "pty.node"),
+            path.join(pkg, "build", "Debug", "pty.node")
+          ];
+          console.log("node-pty path:", pkg);
+          console.log("check candidates:", candidates);
+          if (!fs.existsSync(path.join(pkg, "lib", "index.js"))) {
+            throw new Error("node-pty lib/index.js missing; terminal will be unavailable in Windows package.");
+          }
+          if (!candidates.some((file) => fs.existsSync(file))) {
+            throw new Error("node-pty windows native binary missing; terminal will be unavailable in Windows package.");
+          }
+          '@ | node
+
       - name: Build Unpacked App
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build
+
+      - name: Verify packaged node-pty in app.asar.unpacked
+        shell: powershell
+        run: |
+          @'
+          const fs = require("fs");
+          const path = require("path");
+          const root = path.join(process.cwd(), "dist", "win-unpacked", "resources", "app.asar.unpacked", "node_modules", "node-pty");
+          const platformDir = `win32-${process.arch}`;
+          const indexFile = path.join(root, "lib", "index.js");
+          const nativeCandidates = [
+            path.join(root, "prebuilds", platformDir, "pty.node"),
+            path.join(root, "build", "Release", "pty.node"),
+            path.join(root, "build", "Debug", "pty.node")
+          ];
+          const sidecarCandidates = [
+            path.join(root, "prebuilds", platformDir, "winpty-agent.exe"),
+            path.join(root, "prebuilds", platformDir, "conpty", "OpenConsole.exe")
+          ];
+          console.log("packaged node-pty root:", root);
+          if (!fs.existsSync(indexFile)) {
+            throw new Error("packaged node-pty lib/index.js missing in app.asar.unpacked. Ensure asarUnpack includes node_modules/node-pty/**/*.");
+          }
+          if (!nativeCandidates.some((file) => fs.existsSync(file))) {
+            throw new Error("packaged node-pty native binary missing in app.asar.unpacked.");
+          }
+          if (!sidecarCandidates.some((file) => fs.existsSync(file))) {
+            throw new Error("packaged node-pty runtime sidecar missing in app.asar.unpacked.");
+          }
+          '@ | node
 
       - name: Prepare and Build Installer
         shell: powershell
