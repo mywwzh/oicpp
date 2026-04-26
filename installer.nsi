@@ -174,8 +174,7 @@ Section "OICPP 主程序" SEC01
   File "dist\win-unpacked\resources\app.asar"
   File "dist\win-unpacked\resources\elevate.exe"
   SetOutPath "$INSTDIR\resources\app.asar.unpacked"
-  IfFileExists "dist\win-unpacked\resources\app.asar.unpacked\*.*" 0 +2
-    File /r "dist\win-unpacked\resources\app.asar.unpacked\*.*"
+  File /r "dist\win-unpacked\resources\app.asar.unpacked\*"
   SetOutPath "$INSTDIR"
   File "dist\win-unpacked\resources.pak"
   File "dist\win-unpacked\snapshot_blob.bin"
