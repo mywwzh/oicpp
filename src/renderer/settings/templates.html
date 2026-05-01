@@ -243,31 +243,17 @@ int main()
                 <div id="snippets-section" class="settings-section">
                     <div class="section-title">代码片段</div>
                     <div class="template-info">
-                        <strong>关键字代码片段：</strong>在编辑器中输入关键词（如 sgt），自动补全将优先显示对应片段。（注意先翻到下面点添加再点保存）
+                        <strong>关键字代码片段：</strong>在编辑器中输入关键词（如 sgt），自动补全将优先显示对应片段。
                     </div>
                     <div class="setting-group">
-                        <div class="two-col">
-                            <div class="col-left">
-                                <label for="snippet-keyword">关键词：</label>
-                                <input id="snippet-keyword" type="text" placeholder="关键词，如: sgt">
-                            </div>
-                            <div class="col-right">
-                                <label for="snippet-desc">描述：</label>
-                                <input id="snippet-desc" type="text" placeholder="描述，如: 用户代码片段">
-                            </div>
-                        </div>
-                        <div class="setting-group">
-                            <label for="snippet-content">片段内容：</label>
-                            <textarea id="snippet-content" placeholder="支持占位符：${1:var}，多行OK" rows="10"></textarea>
-                            <div class="hint">提示：保存后主窗口即时生效；在编辑器中输入关键词即可看到补全。</div>
-                        </div>
                         <div class="btn-row">
-                            <button id="add-snippet" class="preview-btn">添加/更新片段</button>
+                            <button id="add-snippet" class="preview-btn">添加模板</button>
                         </div>
-                        <div class="setting-group">
-                            <label>片段列表：</label>
-                            <div id="snippets-list" class="snippets-list"></div>
-                        </div>
+                        <div class="hint" style="margin-top:8px;">提示：保存后主窗口即时生效；在编辑器中输入关键词即可看到补全。</div>
+                    </div>
+                    <div class="setting-group">
+                        <label>片段列表：</label>
+                        <div id="snippets-list" class="snippets-list"></div>
                     </div>
                 </div>
             </div>
@@ -277,6 +263,34 @@ int main()
             <button id="save-settings" class="btn btn-primary">保存</button>
             <button id="cancel-settings" class="btn btn-secondary">取消</button>
             <button id="reset-settings" class="btn btn-warning">重置默认</button>
+        </div>
+    </div>
+
+    <!-- 代码片段添加/编辑弹窗 -->
+    <div id="snippet-dialog" class="modal-overlay" style="display:none;">
+        <div class="modal-dialog" style="max-width:480px; max-height:90vh;">
+            <div class="modal-header" style="padding:14px 20px;">
+                <h3 id="snippet-dialog-title" style="font-size:16px;">添加代码片段</h3>
+                <button id="close-snippet-dialog" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height:60vh; padding:16px 20px;">
+                <div class="setting-group" style="margin-bottom:12px;">
+                    <label for="snippet-dialog-keyword">关键词：</label>
+                    <input id="snippet-dialog-keyword" type="text" placeholder="关键词，如: sgt" style="width:100%; padding:6px 10px; border:1px solid var(--settings-input-border,#464647); border-radius:6px; background:var(--settings-input-bg,#1e1e1e); color:var(--settings-text,#ccc); box-sizing:border-box;">
+                </div>
+                <div class="setting-group" style="margin-bottom:12px;">
+                    <label for="snippet-dialog-desc">描述：</label>
+                    <input id="snippet-dialog-desc" type="text" placeholder="描述，如: 用户代码片段" style="width:100%; padding:6px 10px; border:1px solid var(--settings-input-border,#464647); border-radius:6px; background:var(--settings-input-bg,#1e1e1e); color:var(--settings-text,#ccc); box-sizing:border-box;">
+                </div>
+                <div class="setting-group" style="margin-bottom:12px;">
+                    <label for="snippet-dialog-content">片段内容：</label>
+                    <textarea id="snippet-dialog-content" placeholder="支持占位符：${1:var}" rows="6" style="width:100%; min-height:120px; padding:10px; border:1px solid var(--settings-input-border,#464647); border-radius:8px; background:var(--settings-input-bg,#1e1e1e); color:var(--settings-text,#ccc); font-family:Consolas,Monaco,'Courier New',monospace; font-size:13px; resize:vertical; box-sizing:border-box;"></textarea>
+                </div>
+                <div class="btn-row" style="display:flex; gap:10px; justify-content:flex-end; margin-top:12px; padding-bottom:4px;">
+                    <button id="cancel-snippet-btn" class="btn btn-secondary" style="background:#6c757d; color:#fff; border:none; padding:6px 18px; border-radius:6px; cursor:pointer; font-size:13px;">取消</button>
+                    <button id="confirm-snippet-btn" class="preview-btn" style="background:linear-gradient(135deg,#17a2b8 0%,#138496 100%); padding:6px 18px; font-size:13px;">确认添加</button>
+                </div>
+            </div>
         </div>
     </div>
 
