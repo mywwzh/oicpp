@@ -96,3 +96,39 @@
         padding: 0 2px;
     }
 }
+
+/* LSP 状态指示器 */
+.lsp-status-icon {
+    display: inline-block;
+    width: 14px;
+    text-align: center;
+    margin-right: 2px;
+    font-size: 11px;
+    line-height: 1;
+}
+
+.status-item.lsp-status {
+    gap: 2px;
+    user-select: none;
+}
+
+/* 错误/警告计数 */
+.status-item.marker-summary {
+    gap: 6px;
+    user-select: none;
+    font-weight: 600;
+    font-size: 11px;
+}
+
+.marker-errors,
+.marker-warnings {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    cursor: pointer;
+}
+
+.marker-errors:hover,
+.marker-warnings:hover {
+    text-decoration: underline;
+}

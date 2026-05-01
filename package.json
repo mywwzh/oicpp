@@ -14,7 +14,8 @@
     "dev": "electron . --dev",
     "prebuild:icons": "node scripts/generate-icons.js",
     "prebuild:buildinfo": "node scripts/generate-build-info.js",
-    "build": "npm run prebuild:buildinfo && npm run prebuild:icons && electron-builder"
+    "prebuild:clangd": "node scripts/download-clangd.js",
+    "build": "npm run prebuild:buildinfo && npm run prebuild:icons && npm run prebuild:clangd && electron-builder"
   },
   "devDependencies": {
     "electron": "^37.2.0",
@@ -70,10 +71,22 @@
       "signExts": [
         ".exe",
         ".dll"
+      ],
+      "extraResources": [
+        {
+          "from": "build/clangd/win32",
+          "to": "clangd"
+        }
       ]
     },
     "mac": {
-      "icon": "build/icons/png"
+      "icon": "build/icons/png",
+      "extraResources": [
+        {
+          "from": "build/clangd/darwin",
+          "to": "clangd"
+        }
+      ]
     },
     "linux": {
       "target": [
@@ -82,7 +95,13 @@
         "AppImage"
       ],
       "category": "Development",
-      "icon": "build/icons/png"
+      "icon": "build/icons/png",
+      "extraResources": [
+        {
+          "from": "build/clangd/linux",
+          "to": "clangd"
+        }
+      ]
     },
     "deb": {
       "depends": [

@@ -428,6 +428,109 @@ body[data-editor-theme="light"] .breakpoint-glyph {
     font-size: 13px;
 }
 
+/* Monaco 悬停提示框修正 — 字号、间距、分割线 */
+/* 基础字号统一 */
+.monaco-hover,
+.monaco-editor .monaco-hover,
+.monaco-hover .hover-contents,
+.monaco-editor .monaco-hover .hover-contents,
+.monaco-hover .hover-row,
+.monaco-editor .monaco-hover .hover-row {
+    font-size: 12px !important;
+    line-height: 1.5 !important;
+}
+
+/* 行内代码保持继承 */
+.monaco-hover code,
+.monaco-editor .monaco-hover code,
+.monaco-hover .hover-contents code,
+.monaco-editor .monaco-hover .hover-contents code,
+.monaco-hover .hover-row code,
+.monaco-editor .monaco-hover .hover-row code {
+    font-size: inherit !important;
+    font-family: var(--editor-font-family, 'Consolas') !important;
+    background: rgba(128, 128, 128, 0.15);
+    border-radius: 3px;
+    padding: 1px 4px;
+}
+
+/* 代码块 */
+.monaco-hover pre,
+.monaco-editor .monaco-hover pre,
+.monaco-hover .hover-contents pre,
+.monaco-editor .monaco-hover .hover-contents pre,
+.monaco-hover .hover-row pre,
+.monaco-editor .monaco-hover .hover-row pre {
+    font-size: 13px !important;
+    line-height: 1.4 !important;
+}
+
+.monaco-hover pre code,
+.monaco-editor .monaco-hover pre code,
+.monaco-hover .hover-contents pre code,
+.monaco-editor .monaco-hover .hover-contents pre code,
+.monaco-hover .hover-row pre code,
+.monaco-editor .monaco-hover .hover-row pre code {
+    font-size: 13px !important;
+    background: none;
+    padding: 0;
+}
+
+/* 统一标题字号，覆盖浏览器默认 */
+.monaco-hover h1,
+.monaco-hover h2,
+.monaco-hover h3,
+.monaco-hover h4,
+.monaco-hover h5,
+.monaco-hover h6,
+.monaco-editor .monaco-hover h1,
+.monaco-editor .monaco-hover h2,
+.monaco-editor .monaco-hover h3,
+.monaco-editor .monaco-hover h4,
+.monaco-editor .monaco-hover h5,
+.monaco-editor .monaco-hover h6 {
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    margin: 4px 0 !important;
+    font-weight: 600 !important;
+}
+
+/* 段落 / 列表间距 */
+.monaco-hover p,
+.monaco-hover .code,
+.monaco-hover ul,
+.monaco-hover ol,
+.monaco-hover pre,
+.monaco-hover table,
+.monaco-editor .monaco-hover p,
+.monaco-editor .monaco-hover .code,
+.monaco-editor .monaco-hover ul,
+.monaco-editor .monaco-hover ol,
+.monaco-editor .monaco-hover pre,
+.monaco-editor .monaco-hover table {
+    margin: 4px 0 !important;
+}
+
+/* 去掉分割线 (hr 负 margin 导致文字重叠) */
+.monaco-hover hr,
+.monaco-editor .monaco-hover hr {
+    display: none !important;
+}
+
+/* hover-row 间距（去掉动态注入的 border-top 分割线） */
+.monaco-hover .hover-row,
+.monaco-editor .monaco-hover .hover-row {
+    padding: 4px 8px !important;
+    box-sizing: border-box !important;
+    border-top: none !important;
+}
+
+/* 精确覆盖 Monaco 动态注入的 .hover-row:not(:first-child):not(:empty) */
+.monaco-hover .hover-row:not(:first-child):not(:empty),
+.monaco-editor .monaco-hover .hover-row:not(:first-child):not(:empty) {
+    border-top: none !important;
+}
+
 .menu-item {
     padding: 6px 12px;
     cursor: pointer;

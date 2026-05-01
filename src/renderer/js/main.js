@@ -87,6 +87,12 @@ class OICPPApp {
             this.updateStatusBar();
             this.setAppIcon();
             this.initialized = true;
+
+            // 主动启动 LSP 语言服务器（设置已加载，可获得正确编译参数）
+            this.startLspIfNeeded();
+
+            // 监听 Monaco 标记变化，实时更新状态栏
+            this._setupMarkerChangeListener();
             
             logInfo('OICPP App 初始化完成');
         } catch (error) {
@@ -4117,6 +4123,87 @@ ${data.message || '程序已加载，等待开始执行'}
                 if (encoding) encoding.textContent = 'UTF-8';
                 if (language) language.textContent = 'C++';
             }
+
+            // 更新 LSP 状态
+            this.updateLspStatusBar();
+
+            // 更新错误/警告计数
+            this.updateMarkerStatusBar();
+        }
+    }
+
+    updateLspStatusBar() {
+        const lspItem = document.getElementById('lsp-status-item');
+        if (!lspItem) return;
+
+        const icon = lspItem.querySelector('.lsp-status-icon');
+        if (!icon) return;
+
+        try {
+            const status = this.editorManager?.getLspStatus?.() || 'idle';
+            switch (status) {
+                case 'ready':
+                    icon.textContent = '✓';
+                    icon.style.color = '#4ec9b0';
+                    lspItem.title = 'clangd 语言服务器已就绪';
+                    break;
+                case 'starting':
+                    icon.textContent = '⟳';
+                    icon.style.color = '#dcdcaa';
+                    lspItem.title = 'clangd 语言服务器正在启动...';
+                    break;
+                case 'unavailable':
+                    icon.textContent = '✗';
+                    icon.style.color = '#f44747';
+                    lspItem.title = 'clangd 语言服务器不可用';
+                    break;
+                default:
+                    icon.textContent = '◌';
+                    icon.style.color = '#808080';
+                    lspItem.title = 'clangd 语言服务器空闲';
+                    break;
+            }
+        } catch (_) {
+            icon.textContent = '◌';
+        }
+    }
+
+    updateMarkerStatusBar() {
+        const summaryItem = document.getElementById('marker-summary-item');
+        const errorsEl = document.getElementById('marker-errors-count');
+        const warningsEl = document.getElementById('marker-warnings-count');
+
+        if (!summaryItem || !errorsEl || !warningsEl) return;
+
+        try {
+            const counts = this.editorManager?.getCurrentMarkerCounts?.() || { errors: 0, warnings: 0, infos: 0 };
+            
+            if (counts.errors === 0 && counts.warnings === 0) {
+                summaryItem.style.display = 'none';
+                return;
+            }
+
+            summaryItem.style.display = '';
+            
+            if (counts.errors > 0) {
+                errorsEl.textContent = `✗ ${counts.errors}`;
+                errorsEl.style.color = '#f44747';
+                errorsEl.style.display = '';
+            } else {
+                errorsEl.style.display = 'none';
+            }
+
+            if (counts.warnings > 0) {
+                warningsEl.textContent = `⚠ ${counts.warnings}`;
+                warningsEl.style.color = '#dcdcaa';
+                warningsEl.style.display = '';
+            } else {
+                warningsEl.style.display = 'none';
+            }
+
+            summaryItem.title = `${counts.errors} 个错误, ${counts.warnings} 个警告`;
+        } catch (_) {
+            summaryItem.style.display = 'none';
         }
     }
 
@@ -4133,6 +4220,54 @@ ${data.message || '程序已加载，等待开始执行'}
                 const fileName = typeof filePath === 'string' ? filePath.split(/[\\/]/).pop() : '';
                 if (fileName) window.tabManager.markTabAsSaved(fileName);
             }
+        }
+    }
+
+    startLspIfNeeded() {
+        if (!this.editorManager) return;
+        try {
+            // 仅在 LSP 客户端可用时启动
+            if (this.editorManager.lspClient || window.lspClient) {
+                this.editorManager.ensureLspReady().then(() => {
+                    logInfo('[LSP] 应用初始化后 LSP 已就绪');
+                    this.updateLspStatusBar();
+                }).catch(err => {
+                    logWarn('[LSP] 应用初始化后 LSP 启动失败（将在打开文件时重试）:', err?.message || err);
+                    this.updateLspStatusBar();
+                });
+                // 定时更新 LSP 状态（状态可能在异步中变化）
+                setTimeout(() => this.updateLspStatusBar(), 3000);
+                setTimeout(() => this.updateLspStatusBar(), 8000);
+            }
+        } catch (err) {
+            logWarn('[LSP] startLspIfNeeded 出错:', err?.message || err);
+        }
+    }
+
+    _setupMarkerChangeListener() {
+        try {
+            if (typeof monaco === 'undefined' || !monaco.editor) return;
+
+            // 监听 Monaco 标记变化
+            if (monaco.editor.onDidChangeMarkers) {
+                monaco.editor.onDidChangeMarkers(() => {
+                    this.updateMarkerStatusBar();
+                });
+            }
+
+            // 监听编辑器切换
+            const origUpdateStatusBar = this.updateStatusBar.bind(this);
+            this._origUpdateStatusBar = origUpdateStatusBar;
+
+            // 定期更新状态栏（作为备用）
+            setInterval(() => {
+                if (this.initialized) {
+                    this.updateMarkerStatusBar();
+                    this.updateLspStatusBar();
+                }
+            }, 3000);
+        } catch (err) {
+            logWarn('设置标记变化监听失败:', err?.message || err);
         }
     }
 
