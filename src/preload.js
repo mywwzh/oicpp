@@ -572,6 +572,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     walkDirectory: (dirPath, options) => ipcRenderer.invoke('walk-directory', dirPath, options),
 
+    lspStart: (options) => ipcRenderer.invoke('lsp-start', options),
+    lspStop: () => ipcRenderer.invoke('lsp-stop'),
+    lspRequest: (method, params) => ipcRenderer.invoke('lsp-request', method, params),
+    lspNotify: (method, params) => ipcRenderer.invoke('lsp-notify', method, params),
+    onLspNotification: (callback) => ipcRenderer.on('lsp-notification', (_event, payload) => callback && callback(payload)),
+
     onRequestSaveAll: (callback) => ipcRenderer.on('request-save-all', () => callback && callback()),
     notifySaveAllComplete: () => ipcRenderer.send('save-all-complete')
 });
@@ -617,11 +623,14 @@ const safeSendLog = (level, args) => {
         }
         ipcRenderer.send('logger-log', { level, args, meta });
     } catch (_) { }
-    try {
-        if (level === 'warn') logWarn(...args);
-        else if (level === 'error') console.error(...args);
-        else console.log(...args);
-    } catch (_) { }
+    // 仅在开发模式或显式开启时输出到控制台
+    if (process.env.NODE_ENV === 'development' || process.env.OICPP_CONSOLE_LOG === '1') {
+        try {
+            if (level === 'warn') console.warn(...args);
+            else if (level === 'error') console.error(...args);
+            else console.log(...args);
+        } catch (_) { }
+    }
 };
 
 contextBridge.exposeInMainWorld('logInfo', (...args) => safeSendLog('info', args));

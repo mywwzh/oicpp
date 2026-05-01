@@ -6,6 +6,7 @@ const { URL } = require('url');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { spawn } = require('child_process');
 const StreamZip = require('node-stream-zip');
 const extractZip = require('extract-zip');
 let sevenBinPath = null;
@@ -31,6 +32,390 @@ function getUserIconPath() {
     }
     return path.join(__dirname, '../oicpp.ico');
 }
+
+function getClangdPlatformKey() {
+    if (process.platform === 'win32') return 'win32';
+    if (process.platform === 'darwin') return 'darwin';
+    return 'linux';
+}
+
+function getClangdExecutableName() {
+    return process.platform === 'win32' ? 'clangd.exe' : 'clangd';
+}
+
+function resolveClangdRootFromBundle() {
+    const platformKey = getClangdPlatformKey();
+    const bundled = app.isPackaged
+        ? path.join(process.resourcesPath, 'clangd')
+        : path.join(__dirname, '..', 'build', 'clangd', platformKey);
+    if (bundled && fs.existsSync(bundled)) {
+        return bundled;
+    }
+    return null;
+}
+
+function getUserClangdRoot() {
+    return path.join(os.homedir(), '.oicpp', 'LSP');
+}
+
+function resolveClangdExecutable(rootDir) {
+    if (!rootDir) return null;
+    const exeName = getClangdExecutableName();
+    const candidate = path.join(rootDir, 'bin', exeName);
+    return fs.existsSync(candidate) ? candidate : null;
+}
+
+function ensureClangdUserBundle() {
+    try {
+        const userRoot = getUserClangdRoot();
+        const userExe = resolveClangdExecutable(userRoot);
+        if (userExe) {
+            logInfo('[LSP] clangd 已存在于用户目录:', userExe);
+            return { ok: true, root: userRoot };
+        }
+
+        const bundledRoot = resolveClangdRootFromBundle();
+        if (!bundledRoot) {
+            logWarn('[LSP] 未找到打包的 clangd，用户可能不会获得 LSP 支持');
+            return { ok: false, error: 'clangd bundle not found' };
+        }
+
+        logInfo('[LSP] 从安装包复制 clangd 到用户目录:', bundledRoot, '->', userRoot);
+        fs.mkdirSync(userRoot, { recursive: true });
+        fs.cpSync(bundledRoot, userRoot, { recursive: true });
+        const copiedExe = resolveClangdExecutable(userRoot);
+        logInfo('[LSP] clangd 已复制到用户目录:', copiedExe || userRoot);
+        return { ok: true, root: userRoot };
+    } catch (error) {
+        logWarn('[LSP] 无法复制 clangd 到用户目录:', error?.message || error);
+        return { ok: false, error: error?.message || String(error) };
+    }
+}
+
+/**
+ * 运行编译器获取其内置 include 路径 和 target triple
+ * 执行 g++ -E -x c++ - -v 并解析 stderr
+ * @param {string} compilerPath - 编译器完整路径
+ * @param {string[]} extraArgs - 额外的编译参数（如 -std=c++14）
+ * @returns {Promise<{includePaths: string[], target: string}>}
+ */
+function queryCompilerInfo(compilerPath, extraArgs = []) {
+    return new Promise((resolve) => {
+        const result = { includePaths: [], target: '' };
+
+        if (!compilerPath || !fs.existsSync(compilerPath)) {
+            resolve(result);
+            return;
+        }
+
+        const args = ['-E', '-x', 'c++', '-', '-v'];
+        for (const arg of extraArgs) {
+            if (arg && (arg.startsWith('-std=') || arg.startsWith('-m'))) {
+                args.push(arg);
+            }
+        }
+
+        logInfo('[LSP] 正在查询编译器信息:', compilerPath, args.join(' '));
+
+        let stderr = '';
+        let timedOut = false;
+
+        const proc = spawn(compilerPath, args, {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            windowsHide: true
+        });
+
+        const timer = setTimeout(() => {
+            timedOut = true;
+            try { proc.kill(); } catch (_) {}
+        }, 10000);
+
+        proc.stderr.on('data', (data) => {
+            stderr += data.toString('utf8');
+        });
+
+        proc.on('close', (code) => {
+            clearTimeout(timer);
+            if (timedOut) {
+                logWarn('[LSP] 查询编译器信息超时');
+                resolve(result);
+                return;
+            }
+
+            // 解析 target triple：形如 Target: x86_64-w64-mingw32
+            const targetMatch = stderr.match(/^Target:\s*(\S+)/m);
+            if (targetMatch) {
+                result.target = targetMatch[1];
+                logInfo('[LSP] 从编译器获取 target:', result.target);
+            }
+
+            // 解析 include 搜索路径
+            const lines = stderr.split(/\r?\n/);
+            let inSearchList = false;
+
+            for (const line of lines) {
+                if (line.includes('search starts here:')) {
+                    inSearchList = true;
+                    continue;
+                }
+                if (inSearchList) {
+                    if (line.includes('End of search list')) {
+                        break;
+                    }
+                    const trimmed = line.trim();
+                    if (trimmed && !trimmed.startsWith('#')) {
+                        const cleanPath = trimmed.replace(/\s+$/, '');
+                        // 规范化路径（消除 .. 等相对组件）
+                        const normalized = path.resolve(cleanPath);
+                        if (fs.existsSync(normalized)) {
+                            result.includePaths.push(normalized);
+                        } else if (fs.existsSync(cleanPath)) {
+                            result.includePaths.push(cleanPath);
+                        }
+                    }
+                }
+            }
+
+            if (result.includePaths.length > 0) {
+                logInfo('[LSP] 从编译器获取到 ' + result.includePaths.length + ' 个 include 路径');
+            } else {
+                logWarn('[LSP] 未能从编译器提取 include 路径 (code=' + code + ')');
+            }
+
+            resolve(result);
+        });
+
+        proc.on('error', (err) => {
+            clearTimeout(timer);
+            logWarn('[LSP] 查询编译器信息失败:', err?.message || err);
+            resolve(result);
+        });
+
+        if (proc.stdin) {
+            proc.stdin.end();
+        }
+    });
+}
+
+class ClangdLspManager {
+    constructor() {
+        this.proc = null;
+        this.buffer = Buffer.alloc(0);
+        this.pending = new Map();
+        this.nextId = 1;
+    }
+
+    isRunning() {
+        return !!this.proc;
+    }
+
+    async start(options = {}) {
+        if (this.proc) {
+            logInfo('[LSP] clangd 已在运行中，复用了现有进程');
+            return { ok: true, alreadyRunning: true };
+        }
+
+        const ensured = ensureClangdUserBundle();
+        if (!ensured.ok) {
+            logError('[LSP] 启动 clangd 失败:', ensured.error || 'clangd bundle missing');
+            return { ok: false, error: ensured.error || 'clangd missing' };
+        }
+
+        const clangdRoot = ensured.root || getUserClangdRoot();
+        const clangdPath = resolveClangdExecutable(clangdRoot);
+        if (!clangdPath) {
+            logError('[LSP] 未找到 clangd 可执行文件，路径:', clangdRoot);
+            return { ok: false, error: 'clangd executable not found' };
+        }
+
+        const args = [
+            '--offset-encoding=utf-16',
+            '--background-index',
+            '--completion-style=detailed',
+            '--header-insertion=iwyu',
+            '--pch-storage=memory'
+            // 注意：不启用 --clang-tidy，避免 GCC 头文件误报
+        ];
+
+        // 配置 query-driver：让 clangd 使用用户指定的编译器查询系统 include 路径
+        const compilerPath = options.compilerPath || '';
+        if (compilerPath && typeof compilerPath === 'string' && fs.existsSync(compilerPath)) {
+            const normalized = compilerPath.replace(/\\/g, '/');
+            const dir = path.dirname(normalized);
+            const baseName = path.basename(normalized, path.extname(normalized));
+            const driverGlob = `${dir}/${baseName}*`;
+            args.push(`--query-driver=${driverGlob}`);
+            logInfo('[LSP] 配置 query-driver:', driverGlob, '(编译器路径:', compilerPath, ')');
+        } else if (compilerPath) {
+            logWarn('[LSP] 编译器路径不存在，跳过 --query-driver:', compilerPath);
+        }
+
+        // 回退编译参数
+        let fallbackFlags = Array.isArray(options.fallbackFlags) ? options.fallbackFlags.filter(Boolean) : [];
+
+        // 如果提供了编译器路径，运行编译器获取真实的 include 路径和 target
+        if (compilerPath && fs.existsSync(compilerPath)) {
+            try {
+                const compilerInfo = await queryCompilerInfo(compilerPath, fallbackFlags);
+
+                // 设置 target triple（关键！让 clang 正确模拟 GCC）
+                if (compilerInfo.target && compilerInfo.target !== 'x86_64-pc-windows-msvc') {
+                    // 确保 fallbackFlags 中有 --target
+                    const hasTarget = fallbackFlags.some(f => f.startsWith('--target='));
+                    if (!hasTarget) {
+                        fallbackFlags.unshift('--target=' + compilerInfo.target);
+                        logInfo('[LSP] 设置 target triple:', compilerInfo.target);
+                    }
+                }
+
+                // 将 include 路径添加为 -isystem 参数
+                if (compilerInfo.includePaths.length > 0) {
+                    for (const incPath of compilerInfo.includePaths) {
+                        fallbackFlags.push('-isystem', incPath);
+                    }
+                    logInfo('[LSP] 已将 ' + compilerInfo.includePaths.length + ' 个编译器 include 路径添加到回退参数');
+                }
+
+                // 抑制系统头文件中的诊断噪音
+                fallbackFlags.push('-Wno-system-headers');
+            } catch (err) {
+                logWarn('[LSP] 查询编译器信息时出错:', err?.message || err);
+            }
+        }
+
+        if (fallbackFlags.length > 0) {
+            logInfo('[LSP] 回退编译参数:', fallbackFlags.join(' '));
+        }
+
+        if (Array.isArray(options.clangdArgs)) {
+            args.push(...options.clangdArgs.filter(Boolean));
+        }
+
+        logInfo('[LSP] 正在启动 clangd:', clangdPath, args.join(' '));
+        this.proc = spawn(clangdPath, args, { stdio: 'pipe' });
+        this.proc.stdout.on('data', (data) => this._handleData(data));
+        this.proc.stderr.on('data', (data) => {
+            try { logWarn('[clangd]', data.toString('utf8').trim()); } catch (_) {}
+        });
+        this.proc.on('exit', (code, signal) => {
+            logInfo('[LSP] clangd 进程已退出, code=' + (code ?? 'null') + (signal ? ', signal=' + signal : ''));
+            this.proc = null;
+            this.buffer = Buffer.alloc(0);
+            const err = new Error(`clangd exited (${code || '0'})${signal ? ` signal=${signal}` : ''}`);
+            this.pending.forEach((entry) => {
+                try { entry.reject(err); } catch (_) {}
+            });
+            this.pending.clear();
+        });
+        this.proc.on('error', (err) => {
+            logError('[LSP] clangd 进程启动失败:', err?.message || err);
+        });
+        logInfo('[LSP] clangd 已启动, PID:', this.proc.pid);
+        return { ok: true, clangdPath, args, fallbackFlags };
+    }
+
+    stop() {
+        if (!this.proc) {
+            return { ok: true };
+        }
+        logInfo('[LSP] 正在停止 clangd (PID:', this.proc.pid, ')');
+        try { this.proc.kill(); } catch (_) {}
+        this.proc = null;
+        this.buffer = Buffer.alloc(0);
+        this.pending.forEach((entry) => {
+            try { entry.reject(new Error('clangd stopped')); } catch (_) {}
+        });
+        this.pending.clear();
+        logInfo('[LSP] clangd 已停止');
+        return { ok: true };
+    }
+
+    request(method, params) {
+        if (!this.proc) {
+            return Promise.reject(new Error('clangd not running'));
+        }
+        const id = this.nextId++;
+        const payload = { jsonrpc: '2.0', id, method, params: params || {} };
+        this._send(payload);
+        return new Promise((resolve, reject) => {
+            this.pending.set(id, { resolve, reject });
+        });
+    }
+
+    notify(method, params) {
+        if (!this.proc) {
+            return { ok: false, error: 'clangd not running' };
+        }
+        const payload = { jsonrpc: '2.0', method, params: params || {} };
+        this._send(payload);
+        return { ok: true };
+    }
+
+    _send(payload) {
+        if (!this.proc || !this.proc.stdin) return;
+        const json = JSON.stringify(payload);
+        const header = `Content-Length: ${Buffer.byteLength(json, 'utf8')}\r\n\r\n`;
+        this.proc.stdin.write(header + json, 'utf8');
+    }
+
+    _handleData(chunk) {
+        this.buffer = Buffer.concat([this.buffer, chunk]);
+        while (true) {
+            const headerEnd = this.buffer.indexOf('\r\n\r\n');
+            if (headerEnd === -1) return;
+            const headerText = this.buffer.slice(0, headerEnd).toString('utf8');
+            const lengthMatch = headerText.match(/content-length:\s*(\d+)/i);
+            if (!lengthMatch) {
+                this.buffer = this.buffer.slice(headerEnd + 4);
+                continue;
+            }
+            const length = parseInt(lengthMatch[1], 10);
+            const messageStart = headerEnd + 4;
+            const messageEnd = messageStart + length;
+            if (this.buffer.length < messageEnd) {
+                return;
+            }
+            const body = this.buffer.slice(messageStart, messageEnd).toString('utf8');
+            this.buffer = this.buffer.slice(messageEnd);
+            let payload = null;
+            try { payload = JSON.parse(body); } catch (_) { continue; }
+            this._dispatchMessage(payload);
+        }
+    }
+
+    _dispatchMessage(message) {
+        if (!message) return;
+        if (Object.prototype.hasOwnProperty.call(message, 'id')) {
+            const entry = this.pending.get(message.id);
+            if (!entry) return;
+            this.pending.delete(message.id);
+            if (message.error) {
+                logWarn('[LSP] 请求失败, id=' + message.id + ', 方法=' + (entry.method || '?'), message.error?.message || JSON.stringify(message.error));
+                entry.reject(new Error(message.error.message || 'clangd error'));
+            } else {
+                entry.resolve(message.result);
+            }
+            return;
+        }
+        if (message.method) {
+            if (message.method === 'textDocument/publishDiagnostics') {
+                const diagCount = message.params?.diagnostics?.length || 0;
+                if (diagCount > 0) {
+                    const uri = (message.params?.uri || '').replace(/^file:\/\//, '').split('/').pop();
+                    logInfo('[LSP] 收到诊断: ' + diagCount + ' 条, 文件: ' + uri);
+                }
+            }
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('lsp-notification', {
+                    method: message.method,
+                    params: message.params || null
+                });
+            }
+        }
+    }
+}
+
+const clangdLspManager = new ClangdLspManager();
 
 let mainWindow;
 let sampleTesterServer = null; // HTTP 服务实例
@@ -2012,6 +2397,47 @@ function setupIPC() {
                 error: error?.message || String(error)
             };
         }
+    });
+
+    ipcMain.handle('lsp-start', async (_event, options = {}) => {
+        logInfo('[LSP] 渲染进程请求启动 LSP, options:', JSON.stringify(options));
+        const result = await clangdLspManager.start(options || {});
+        if (result.ok) {
+            logInfo('[LSP] 启动成功:', result.clangdPath || 'already running');
+        } else {
+            logError('[LSP] 启动失败:', result.error);
+        }
+        return result;
+    });
+
+    ipcMain.handle('lsp-stop', () => {
+        logInfo('[LSP] 渲染进程请求停止 LSP');
+        return clangdLspManager.stop();
+    });
+
+    ipcMain.handle('lsp-request', async (_event, method, params) => {
+        logInfo('[LSP] 请求: ' + method);
+        try {
+            const result = await clangdLspManager.request(method, params || {});
+            if (method === 'initialize') {
+                const caps = result?.capabilities;
+                const version = result?.serverInfo?.version || '?';
+                logInfo('[LSP] 初始化完成, 服务器:', result?.serverInfo?.name || 'clangd', '版本:', version);
+                if (caps?.semanticTokensProvider) {
+                    const legend = caps.semanticTokensProvider.legend;
+                    logInfo('[LSP] 语义令牌支持: ' + (legend?.tokenTypes?.length || 0) + ' 种类型, ' + (legend?.tokenModifiers?.length || 0) + ' 种修饰符');
+                }
+            }
+            return result;
+        } catch (err) {
+            logError('[LSP] 请求 ' + method + ' 失败:', err?.message || err);
+            throw err;
+        }
+    });
+
+    ipcMain.handle('lsp-notify', (_event, method, params) => {
+        logInfo('[LSP] 通知: ' + method);
+        return clangdLspManager.notify(method, params || {});
     });
 
     ipcMain.handle('ide-login-start', async () => {
@@ -6524,6 +6950,14 @@ function compareVersions(currentVersion, latestVersion) {
 
 app.whenReady().then(() => {
     app.commandLine.appendSwitch('charset', 'utf-8');
+    try {
+        const clangdStatus = ensureClangdUserBundle();
+        if (clangdStatus.ok) {
+            logInfo('[LSP] 启动时 clangd 就绪:', clangdStatus.root);
+        } else {
+            logWarn('[LSP] 启动时 clangd 未就绪:', clangdStatus.error || 'unknown');
+        }
+    } catch (_) { }
     createWindow();
 
     handleCommandLineArgs();
@@ -6546,6 +6980,7 @@ app.on('before-quit', () => {
     stopHeartbeatService();
     disposeAllFileWatchers();
     try { terminalManager.disposeAll(); } catch (_) { }
+    try { clangdLspManager.stop(); } catch (_) { }
     try {
         const tempDir = path.join(os.homedir(), '.oicpp', 'codeTemp');
         fs.rmSync(tempDir, { recursive: true, force: true });

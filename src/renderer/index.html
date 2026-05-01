@@ -587,6 +587,13 @@
             <span class="status-item cursor-position">行 1, 列 1</span>
             <span class="status-item encoding">UTF-8</span>
             <span class="status-item language">C++</span>
+            <span class="status-item lsp-status" id="lsp-status-item" title="语言服务器状态">
+                <span class="lsp-status-icon">◌</span> clangd
+            </span>
+            <span class="status-item marker-summary" id="marker-summary-item" title="错误和警告" style="display: none;">
+                <span class="marker-errors" id="marker-errors-count"></span>
+                <span class="marker-warnings" id="marker-warnings-count"></span>
+            </span>
         </div>
         <div class="status-right">
             <span class="status-item"><span class="status-icon" data-ui-icon="check"></span>就绪</span>
@@ -664,6 +671,7 @@
     <script src="js/folder-picker.js"></script>
     <script src="js/compile-manager.js"></script>
     <script src="js/formatters/cppFormatter.js"></script>
+    <script src="js/lsp-client.js"></script>
     <script src="js/monaco-editor-manager.js"></script>
     <script src="js/titlebar.js"></script>
     <script src="js/sidebar/fileExplorer.js"></script>
