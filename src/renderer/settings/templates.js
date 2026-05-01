@@ -77,6 +77,9 @@ class TemplatesSettings {
     setupEventListeners() {
         logInfo('设置事件监听器');
         
+        const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || '');
+        const modKey = (e) => (isMac ? e.metaKey : e.ctrlKey);
+
         const saveBtn = document.getElementById('save-settings');
         if (saveBtn) {
             saveBtn.addEventListener('click', () => {
@@ -105,9 +108,53 @@ class TemplatesSettings {
             });
         }
 
+        // 打开片段添加弹窗
         const addBtn = document.getElementById('add-snippet');
         if (addBtn) {
-            addBtn.addEventListener('click', () => this.addSnippetFromInputs());
+            addBtn.addEventListener('click', () => this.openSnippetDialog(-1));
+        }
+
+        // 关闭片段弹窗
+        const closeSnippetDialogBtn = document.getElementById('close-snippet-dialog');
+        if (closeSnippetDialogBtn) {
+            closeSnippetDialogBtn.addEventListener('click', () => {
+                this.closeSnippetDialog();
+            });
+        }
+
+        const cancelSnippetBtn = document.getElementById('cancel-snippet-btn');
+        if (cancelSnippetBtn) {
+            cancelSnippetBtn.addEventListener('click', () => {
+                this.closeSnippetDialog();
+            });
+        }
+
+        const confirmSnippetBtn = document.getElementById('confirm-snippet-btn');
+        if (confirmSnippetBtn) {
+            confirmSnippetBtn.addEventListener('click', () => {
+                this.confirmSnippetDialog();
+            });
+        }
+
+        // 点击弹窗遮罩关闭
+        const snippetDialog = document.getElementById('snippet-dialog');
+        if (snippetDialog) {
+            snippetDialog.addEventListener('click', (e) => {
+                if (e.target === snippetDialog) {
+                    this.closeSnippetDialog();
+                }
+            });
+        }
+
+        // 弹窗内 Ctrl/Cmd+Enter 确认
+        const snippetDialogContent = document.getElementById('snippet-dialog-content');
+        if (snippetDialogContent) {
+            snippetDialogContent.addEventListener('keydown', (e) => {
+                if (modKey(e) && e.key === 'Enter') {
+                    e.preventDefault();
+                    this.confirmSnippetDialog();
+                }
+            });
         }
         
         const closePreviewBtn = document.getElementById('close-preview');
@@ -134,7 +181,8 @@ class TemplatesSettings {
             });
             
             cppTemplateTextarea.addEventListener('keydown', (e) => {
-                if (e.ctrlKey && e.key === 's') {
+                // macOS 使用 Cmd+S，Windows/Linux 使用 Ctrl+S
+                if (modKey(e) && e.key === 's') {
                     e.preventDefault();
                     this.saveSettings();
                 }
@@ -150,6 +198,19 @@ class TemplatesSettings {
                 }
             });
         }
+
+        // 监听全局键盘事件，支持 Cmd/Ctrl+S 在任意位置保存
+        document.addEventListener('keydown', (e) => {
+            if (modKey(e) && e.key === 's') {
+                // 如果焦点在弹窗内的输入框，不触发全局保存
+                const activeEl = document.activeElement;
+                if (activeEl && activeEl.closest('#snippet-dialog')) {
+                    return;
+                }
+                e.preventDefault();
+                this.saveSettings();
+            }
+        });
     }
 
 
@@ -214,8 +275,9 @@ class TemplatesSettings {
             
             const cppTemplate = cppTemplateTextarea.value.trim();
             
-            if (!cppTemplate) {
-                this.showMessage('模板内容不能为空', 'error');
+            // 允许文件模板为空，只要有关键词代码片段即可保存
+            if (!cppTemplate && (!this.snippets || this.snippets.length === 0)) {
+                this.showMessage('模板内容和代码片段不能同时为空，请至少填写一项', 'error');
                 return;
             }
             
@@ -288,26 +350,86 @@ class TemplatesSettings {
         }
     }
 
-    addSnippetFromInputs() {
-        const kwEl = document.getElementById('snippet-keyword');
-        const descEl = document.getElementById('snippet-desc');
-        const contentEl = document.getElementById('snippet-content');
+    // 打开片段添加/编辑弹窗
+    openSnippetDialog(editIndex = -1) {
+        const dialog = document.getElementById('snippet-dialog');
+        if (!dialog) return;
+
+        const kwEl = document.getElementById('snippet-dialog-keyword');
+        const descEl = document.getElementById('snippet-dialog-desc');
+        const contentEl = document.getElementById('snippet-dialog-content');
+
+        // 如果是编辑模式，加载已有数据
+        if (editIndex >= 0 && editIndex < this.snippets.length) {
+            const item = this.snippets[editIndex];
+            if (kwEl) kwEl.value = item.keyword || '';
+            if (descEl) descEl.value = item.description || '';
+            if (contentEl) contentEl.value = item.content || '';
+            dialog.setAttribute('data-edit-index', editIndex);
+            const titleEl = document.getElementById('snippet-dialog-title');
+            if (titleEl) titleEl.textContent = '编辑代码片段';
+        } else {
+            if (kwEl) kwEl.value = '';
+            if (descEl) descEl.value = '';
+            if (contentEl) contentEl.value = '';
+            dialog.removeAttribute('data-edit-index');
+            const titleEl = document.getElementById('snippet-dialog-title');
+            if (titleEl) titleEl.textContent = '添加代码片段';
+        }
+
+        dialog.style.display = 'block';
+        // 自动聚焦到关键词输入框
+        setTimeout(() => {
+            if (kwEl) kwEl.focus();
+        }, 100);
+    }
+
+    closeSnippetDialog() {
+        const dialog = document.getElementById('snippet-dialog');
+        if (dialog) {
+            dialog.style.display = 'none';
+        }
+    }
+
+    confirmSnippetDialog() {
+        const kwEl = document.getElementById('snippet-dialog-keyword');
+        const descEl = document.getElementById('snippet-dialog-desc');
+        const contentEl = document.getElementById('snippet-dialog-content');
         const keyword = (kwEl?.value || '').trim();
         const description = (descEl?.value || '').trim() || '用户代码片段';
         const content = (contentEl?.value || '').trim();
+
         if (!keyword) {
             this.showMessage('请输入片段关键词', 'warning');
+            if (kwEl) kwEl.focus();
             return;
         }
         if (!content) {
             this.showMessage('请输入片段内容', 'warning');
+            if (contentEl) contentEl.focus();
             return;
         }
-        const idx = this.snippets.findIndex(s => (s.keyword || '').toLowerCase() === keyword.toLowerCase());
-        const item = { keyword, description, content };
-        if (idx >= 0) this.snippets[idx] = item; else this.snippets.push(item);
-        this.showMessage('片段已添加到列表，点击“保存”写入设置', 'success');
-        if (contentEl) contentEl.value = '';
+
+        const dialog = document.getElementById('snippet-dialog');
+        const editIndex = dialog ? parseInt(dialog.getAttribute('data-edit-index'), 10) : -1;
+
+        if (Number.isFinite(editIndex) && editIndex >= 0 && editIndex < this.snippets.length) {
+            // 编辑模式：更新已有片段
+            this.snippets[editIndex] = { keyword, description, content };
+            this.showMessage('片段已更新，点击保存写入设置', 'success');
+        } else {
+            // 添加模式：检查重复关键词
+            const idx = this.snippets.findIndex(s => (s.keyword || '').toLowerCase() === keyword.toLowerCase());
+            if (idx >= 0) {
+                this.snippets[idx] = { keyword, description, content };
+                this.showMessage('已覆盖同名片段，点击保存写入设置', 'success');
+            } else {
+                this.snippets.push({ keyword, description, content });
+                this.showMessage('片段已添加，点击保存写入设置', 'success');
+            }
+        }
+
+        this.closeSnippetDialog();
         this.renderSnippets();
     }
 
@@ -315,7 +437,7 @@ class TemplatesSettings {
         const list = document.getElementById('snippets-list');
         if (!list) return;
         if (!this.snippets || this.snippets.length === 0) {
-            list.innerHTML = '<div style="opacity:.8; font-size:12px; padding:6px;">暂无片段。可在上方添加，例如关键词 sgt，描述“用户代码片段”，内容填入你的线段树。</div>';
+            list.innerHTML = '<div style="opacity:.8; font-size:12px; padding:6px;">暂无片段。点击上方添加模板按钮添加代码片段。</div>';
             return;
         }
         const rows = this.snippets.map((s, i) => {
@@ -340,14 +462,7 @@ class TemplatesSettings {
                     this.snippets.splice(idx, 1);
                     this.renderSnippets();
                 } else if (action === 'edit') {
-                    const item = this.snippets[idx];
-                    const kwEl = document.getElementById('snippet-keyword');
-                    const descEl = document.getElementById('snippet-desc');
-                    const contentEl = document.getElementById('snippet-content');
-                    if (kwEl) kwEl.value = item.keyword || '';
-                    if (descEl) descEl.value = item.description || '';
-                    if (contentEl) contentEl.value = item.content || '';
-                    this.showMessage('已加载到上方表单，修改后再次点击“添加片段”以覆盖，然后保存设置', 'info');
+                    this.openSnippetDialog(idx);
                 }
             });
         });
