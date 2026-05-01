@@ -40,6 +40,9 @@ jobs:
           npm install --include=optional
           node -e "try { require('sharp'); console.log('sharp ok'); } catch (e) { console.log('sharp unavailable, will use committed png icons fallback'); }"
 
+      - name: Prepare clangd bundle
+        run: npm run prebuild:clangd
+
       - name: Verify node-pty linux binary
         run: |
           node - <<'NODE'
@@ -124,6 +127,9 @@ jobs:
           npm install --include=optional
           node -e "try { require('sharp'); console.log('sharp ok'); } catch (e) { console.log('sharp unavailable, will use committed png icons fallback'); }"
 
+      - name: Prepare clangd bundle
+        run: npm run prebuild:clangd
+
       - name: Ensure dmg-license is installed
         run: npm install --no-save dmg-license
 
@@ -189,6 +195,9 @@ jobs:
         run: |
           npm install --include=optional
           node -e "try { require('sharp'); console.log('sharp ok'); } catch (e) { console.log('sharp unavailable, will use committed png icons fallback'); }"
+
+      - name: Prepare clangd bundle
+        run: npm run prebuild:clangd
 
       - name: Verify node-pty windows binary
         shell: powershell
