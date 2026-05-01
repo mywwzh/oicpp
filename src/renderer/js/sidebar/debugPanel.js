@@ -29,12 +29,12 @@ class DebugPanel {
       <div class="debug-toolbar">
                 <button id="dbg-start" class="icon-btn" title="开始" aria-label="开始">
                     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
-                        <path fill="currentColor" d="M4.8 3.2v9.6L12.6 8 4.8 3.2z"/>
+                        <path fill="currentColor" d="M5 3.5v9l7-4.5z"/>
                     </svg>
                 </button>
                 <button id="dbg-continue" class="icon-btn" title="继续(F6)" aria-label="继续">
                     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
-                        <path fill="currentColor" d="M4.8 3.2v9.6L12.6 8 4.8 3.2z"/>
+                        <path fill="currentColor" d="M3 3h2v10H3V3zm4.5 0 6 5-6 5V3z"/>
                     </svg>
                 </button>
                 <button id="dbg-step-over" class="icon-btn" title="步过(F7)" aria-label="步过">
@@ -44,12 +44,12 @@ class DebugPanel {
                 </button>
                 <button id="dbg-step-into" class="icon-btn" title="步入(F8)" aria-label="步入">
                     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
-                        <path fill="currentColor" d="M3 4h8V2l3 3-3 3V6H3V4zm4 4h2v4h3l-4 4-4-4h3V8z"/>
+                        <path fill="currentColor" d="M8 2v5H5l3 5 3-5H8V2zM3 13h10v1.5H3z"/>
                     </svg>
                 </button>
                 <button id="dbg-step-out" class="icon-btn" title="步出(Shift+F8)" aria-label="步出">
                     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
-                        <path fill="currentColor" d="M3 4h8V2l3 3-3 3V6H3V4zm8 8H8V8H6v4H3l4 4 4-4z"/>
+                        <path fill="currentColor" d="M8 14V9h3L8 4l-3 5h3v5zM3 2h10V3.5H3z"/>
                     </svg>
                 </button>
                 <button id="dbg-stop" class="icon-btn" title="停止" aria-label="停止">
