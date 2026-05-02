@@ -22,29 +22,24 @@ const normalizePlatform = (raw) => {
     return value || process.platform;
 };
 
-const version = readArg('version', process.env.CLANGD_VERSION || '18.1.8');
-const tag = readArg('tag', process.env.CLANGD_TAG || `llvmorg-${version}`);
-const repo = readArg('repo', process.env.CLANGD_REPO || 'llvm/llvm-project');
+const version = readArg('version', process.env.CLANGD_VERSION || '22.1.0');
+const tag = readArg('tag', process.env.CLANGD_TAG || version);
+const repo = readArg('repo', process.env.CLANGD_REPO || 'clangd/clangd');
 const platform = normalizePlatform(readArg('platform', process.env.OICPP_CLANGD_PLATFORM || process.platform));
 const outputRoot = path.resolve(readArg('output', process.env.CLANGD_OUTPUT || path.join(__dirname, '..', 'build', 'clangd')));
 const tempRoot = path.join(outputRoot, '_download');
 
 const platformPatterns = {
     win32: [
-        /clangd.*windows.*\.zip$/i,
-        /clangd.*win64.*\.zip$/i,
-        /clangd.*win.*\.zip$/i
+        /^clangd-windows-.*\.zip$/i,
+        /^clangd-win.*\.zip$/i
     ],
     darwin: [
-        /clangd.*macos.*\.tar\.xz$/i,
-        /clangd.*mac.*\.tar\.xz$/i,
-        /clangd.*darwin.*\.tar\.xz$/i,
-        /clangd.*macos.*\.zip$/i
+        /^clangd-mac-.*\.zip$/i,
+        /^clangd-macos-.*\.zip$/i
     ],
     linux: [
-        /clangd.*linux.*\.tar\.xz$/i,
-        /clangd.*linux.*\.tar\.gz$/i,
-        /clangd.*linux.*\.zip$/i
+        /^clangd-linux-.*\.zip$/i
     ]
 };
 
