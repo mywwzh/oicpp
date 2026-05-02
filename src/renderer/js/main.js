@@ -1,4 +1,4 @@
-class OICPPApp {
+﻿class OICPPApp {
     constructor() {
         this.currentFile = null;
         this.files = new Map();
@@ -2599,7 +2599,7 @@ class OICPPApp {
             
             if (!gdbStatus.available) {
                 this.showMessage(gdbStatus.message, 'error');
-                this.showGDBInstallGuide(gdbStatus);
+                this.showDebugStatus(gdbStatus.message);
                 return;
             }
             
@@ -2637,12 +2637,13 @@ class OICPPApp {
             const debugRunMode = this.resolveRunModeForCurrentPlatform();
             let inferiorTTY = '';
             let useInputBridge = false;
+            let terminalId = '';
             if (debugRunMode === 'integrated-terminal') {
                 try {
                     this.compilerManager?.hideOutput?.();
                 } catch (_) { }
                 const openedTerminalId = await this.openIntegratedTerminal({ forceCreate: true });
-                const terminalId = openedTerminalId || this.terminalPanel?.activeId || null;
+                terminalId = openedTerminalId || this.terminalPanel?.activeId || '';
                 this.unbindDebugTerminalBridge();
                 const isUnixLike = this.isUnixLikePlatform();
 
@@ -2656,11 +2657,9 @@ class OICPPApp {
                     if (!useInputBridge) {
                         inferiorTTY = await this.resolveTerminalTTYForDebug(terminalId);
                     }
-                } else {
-                    if (isUnixLike) {
-                        inferiorTTY = await this.resolveTerminalTTYForDebug(terminalId);
-                    }
-
+                } else if (isUnixLike) {
+                    // macOS: 优先 TTY 模式（后续通过 tcsetpgrp 接管终端前台）
+                    inferiorTTY = await this.resolveTerminalTTYForDebug(terminalId);
                     if (!inferiorTTY) {
                         useInputBridge = this.bindDebugTerminalBridge(terminalId);
                     }
@@ -2695,6 +2694,7 @@ class OICPPApp {
             this.startDebugSession(currentFile, {
                 runMode: debugRunMode,
                 useInputBridge,
+                terminalId: terminalId || '',
                 ...(inferiorTTY ? { inferiorTTY } : {})
             });
             
@@ -2719,27 +2719,12 @@ class OICPPApp {
         }
     }
 
-    showGDBInstallGuide(status = null) {
-        const dbg = String(status?.debugger || '').toLowerCase();
-        const isMacLldbMi = dbg === 'lldb-mi' || dbg === 'lldb';
-        const title = isMacLldbMi ? 'LLDB-MI 调试环境未就绪' : 'GDB 调试器未安装';
-        const intro = isMacLldbMi
-            ? 'macOS 调试功能需要 clang + lldb-mi。请先安装 lldb-mi，并在“编译器设置”中手动选择 lldb-mi 路径。'
-            : '调试功能需要 GDB 调试器支持。请安装 GDB：';
+    showDebugStatus(message) {
         const container = document.getElementById('debug-variables');
         if (container) {
             container.innerHTML = `
-                <div class="debug-error-message" style="padding: 16px; color: #f44747;">
-                    <h3>${title}</h3>
-                    <p>${intro}</p>
-                    <ul style="margin: 10px 0; padding-left: 20px;">
-                        <li><strong>Windows:</strong> 安装MinGW-w64或TDM-GCC</li>
-                        <li><strong>Linux:</strong> sudo apt install gdb（Ubuntu/Debian）</li>
-                        <li><strong>macOS:</strong> 安装 lldb-mi，并在编译器设置中手动选择 lldb-mi 路径</li>
-                    </ul>
-                    <p style="margin-top: 16px; font-size: 12px; color: #cccccc;">
-                        安装完成后重启IDE即可使用调试功能。
-                    </p>
+                <div class="debug-status-message" style="padding: 12px 16px; color: #cccccc; font-size: 13px;">
+                    <p>${message}</p>
                 </div>
             `;
         }
@@ -2848,6 +2833,7 @@ class OICPPApp {
                     breakpoints: breakpoints,
                     runMode,
                     useInputBridge,
+                    terminalId: options?.terminalId || '',
                     ...(inferiorTTY ? { inferiorTTY } : {})
                 });
                 
@@ -3336,7 +3322,7 @@ ${data.message || '程序已加载，等待开始执行'}
                     <p><strong>调试功能错误</strong></p>
                     <p>${message}</p>
                     <p style="margin-top: 8px; font-size: 11px; color: #cccccc;">
-                        请检查调试器（Windows/Linux: GDB，macOS: lldb-mi 且已在编译器设置中手动选择路径）是否可用，代码是否已编译（使用-g选项）
+                        请检查调试器（Windows/Linux: GDB）是否可用，代码是否已编译（使用-g选项）。macOS 暂不支持调试功能。
                     </p>
                 </div>
             `;
