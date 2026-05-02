@@ -6,7 +6,7 @@ const { URL } = require('url');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const StreamZip = require('node-stream-zip');
 const extractZip = require('extract-zip');
 let sevenBinPath = null;
@@ -141,15 +141,12 @@ function queryCompilerInfo(compilerPath, extraArgs = []) {
                 resolve(result);
                 return;
             }
-
-            // 解析 target triple：形如 Target: x86_64-w64-mingw32
             const targetMatch = stderr.match(/^Target:\s*(\S+)/m);
             if (targetMatch) {
                 result.target = targetMatch[1];
                 logInfo('[LSP] 从编译器获取 target:', result.target);
             }
 
-            // 解析 include 搜索路径
             const lines = stderr.split(/\r?\n/);
             let inSearchList = false;
 
@@ -165,7 +162,6 @@ function queryCompilerInfo(compilerPath, extraArgs = []) {
                     const trimmed = line.trim();
                     if (trimmed && !trimmed.startsWith('#')) {
                         const cleanPath = trimmed.replace(/\s+$/, '');
-                        // 规范化路径（消除 .. 等相对组件）
                         const normalized = path.resolve(cleanPath);
                         if (fs.existsSync(normalized)) {
                             result.includePaths.push(normalized);
@@ -234,10 +230,7 @@ class ClangdLspManager {
             '--completion-style=detailed',
             '--header-insertion=iwyu',
             '--pch-storage=memory'
-            // 注意：不启用 --clang-tidy，避免 GCC 头文件误报
         ];
-
-        // 配置 query-driver：让 clangd 使用用户指定的编译器查询系统 include 路径
         const compilerPath = options.compilerPath || '';
         if (compilerPath && typeof compilerPath === 'string' && fs.existsSync(compilerPath)) {
             const normalized = compilerPath.replace(/\\/g, '/');
@@ -258,9 +251,7 @@ class ClangdLspManager {
             try {
                 const compilerInfo = await queryCompilerInfo(compilerPath, fallbackFlags);
 
-                // 设置 target triple（关键！让 clang 正确模拟 GCC）
                 if (compilerInfo.target && compilerInfo.target !== 'x86_64-pc-windows-msvc') {
-                    // 确保 fallbackFlags 中有 --target
                     const hasTarget = fallbackFlags.some(f => f.startsWith('--target='));
                     if (!hasTarget) {
                         fallbackFlags.unshift('--target=' + compilerInfo.target);
@@ -276,7 +267,6 @@ class ClangdLspManager {
                     logInfo('[LSP] 已将 ' + compilerInfo.includePaths.length + ' 个编译器 include 路径添加到回退参数');
                 }
 
-                // 抑制系统头文件中的诊断噪音
                 fallbackFlags.push('-Wno-system-headers');
             } catch (err) {
                 logWarn('[LSP] 查询编译器信息时出错:', err?.message || err);
@@ -973,7 +963,6 @@ function getDefaultSettings() {
 
     return {
         compilerPath: '',
-        lldbMiPath: '',
         pythonInterpreterPath: '',
         compilerArgs,
         runMode: normalizeRunModeForPlatform('popup'),
@@ -8345,42 +8334,9 @@ function runCommandVersionProbe(command, args = [], options = {}) {
     }
 }
 
-function resolveMacMIDebuggerLaunchConfig() {
-    if (process.platform !== 'darwin') {
-        return null;
-    }
-
-    const configuredPath = String(settings?.lldbMiPath || '').trim();
-    if (!configuredPath) {
-        return null;
-    }
-
-    const probe = runCommandVersionProbe(configuredPath, ['--version']);
-    if (!probe.ok) {
-        return null;
-    }
-
-    const versionLine = String(probe.output || '')
-        .split(/\r?\n/)
-        .map(s => s.trim())
-        .find(Boolean) || configuredPath;
-
-    return {
-        kind: 'lldb-mi',
-        command: configuredPath,
-        miArgs: ['--interpreter=mi'],
-        relaxedInit: true,
-        version: versionLine
-    };
-}
-
 function resolveDebuggerLaunchConfig() {
     if (process.platform === 'darwin') {
-        const debuggerConfig = resolveMacMIDebuggerLaunchConfig();
-        if (!debuggerConfig) {
-            throw new Error('未检测到可用的 lldb-mi。请先安装 lldb-mi，然后在编译器设置中手动选择 lldb-mi 路径。');
-        }
-        return debuggerConfig;
+        throw new Error('macOS 暂不支持调试功能。');
     }
 
     return {
@@ -8393,43 +8349,11 @@ function resolveDebuggerLaunchConfig() {
 
 async function checkGDBAvailability() {
     if (process.platform === 'darwin') {
-        logInfo('[主进程] 检查 macOS 调试环境 (clang + lldb-mi 手动配置)...');
-
-        const clangProbe = runCommandVersionProbe('clang++', ['--version']);
-        if (!clangProbe.ok) {
-            return {
-                available: false,
-                debugger: 'mi-debugger',
-                message: `未检测到 clang++：${clangProbe.message}`
-            };
-        }
-
-        const configuredPath = String(settings?.lldbMiPath || '').trim();
-        if (!configuredPath) {
-            return {
-                available: false,
-                debugger: 'lldb-mi',
-                message: '已检测到 clang，但未配置 lldb-mi。请先安装 lldb-mi，并在编译器设置中手动选择 lldb-mi 路径。'
-            };
-        }
-
-        const debuggerConfig = resolveMacMIDebuggerLaunchConfig();
-        if (!debuggerConfig) {
-            return {
-                available: false,
-                debugger: 'lldb-mi',
-                message: `已检测到 clang，但当前 lldb-mi 路径不可用：${configuredPath}。请在编译器设置中重新选择。`
-            };
-        }
-
-        const clangVersionLine = String(clangProbe.output || '').split(/\r?\n/).find(Boolean) || 'clang++';
-        const debuggerVersionLine = String(debuggerConfig.version || debuggerConfig.command || debuggerConfig.kind || 'debugger');
+        logInfo('[主进程] macOS 暂不支持调试功能');
         return {
-            available: true,
-            debugger: debuggerConfig.kind,
-            debuggerPath: debuggerConfig.command,
-            version: debuggerVersionLine,
-            message: `调试器可用: ${debuggerVersionLine}；编译器: ${clangVersionLine}`
+            available: false,
+            debugger: 'unsupported',
+            message: 'macOS 暂不支持调试功能。'
         };
     }
 
@@ -8729,15 +8653,8 @@ async function startDebugSession(filePath, options = {}) {
             logWarn('[主进程] 无法检查调试信息:', error.message);
         }
 
-        const useMacDebugger = process.platform === 'darwin';
-        const debuggerConfig = useMacDebugger
-            ? resolveDebuggerLaunchConfig()
-            : { kind: 'gdb', command: 'gdb', relaxedInit: false };
-        if (useMacDebugger) {
-            logInfo(`[主进程] 使用调试器: ${debuggerConfig.kind.toUpperCase()} (${debuggerConfig.command})`);
-        } else {
-            logInfo('[主进程] 使用 GDB 调试器');
-        }
+        const debuggerConfig = resolveDebuggerLaunchConfig();
+        logInfo('[主进程] 使用 GDB 调试器');
         gdbDebugger = new GDBDebugger();
 
         setupDebuggerEvents();
@@ -8773,14 +8690,6 @@ async function startDebugSession(filePath, options = {}) {
                     ? { consoleTerminalTemplate: resolveLinuxConsoleTerminalTemplate() }
                     : {})
             };
-
-            if (useMacDebugger) {
-                startOptions.gdbPath = debuggerConfig.command;
-                startOptions.relaxedInit = !!debuggerConfig.relaxedInit;
-                startOptions.miArgs = Array.isArray(debuggerConfig.miArgs)
-                    ? debuggerConfig.miArgs.slice()
-                    : undefined;
-            }
 
             await gdbDebugger.start(executablePath, filePath, startOptions);
         } catch (err) {
@@ -8858,10 +8767,35 @@ async function startDebugSession(filePath, options = {}) {
     }
 }
 
+function _restoreTTYShell() {
+    if (process.platform !== 'darwin') return;
+    const shellPid = _debugShellPid;
+    const ttyPath = _debugTTYPath;
+    _debugShellPid = 0;
+    _debugInferiorPid = 0;
+    _debugTTYPath = '';
+    if (!shellPid || !ttyPath) return;
+
+    try {
+        // 1. 恢复 shell 前台进程组
+        const tcsetScript = `import os, termios; fd = os.open('${ttyPath}', os.O_RDONLY); termios.tcsetpgrp(fd, ${shellPid}); os.close(fd)`;
+        spawnSync('python3', ['-c', tcsetScript], { encoding: 'utf8', timeout: 3000 });
+
+        // 2. SIGCONT 恢复 shell
+        process.kill(shellPid, 'SIGCONT');
+        logInfo('[主进程] TTY 已恢复: shell PID=', shellPid);
+    } catch (e) {
+        logWarn('[主进程] TTY 恢复异常:', e?.message || String(e));
+    }
+}
+
 async function stopDebugSession() {
     try {
         logInfo('停止调试会话');
         autoStoppingOnProgramExit = false;
+
+        // 恢复被暂停的终端 shell（macOS TTY 接管恢复）
+        _restoreTTYShell();
 
         if (gdbDebugger && gdbDebugger.isRunning) {
             await gdbDebugger.stop();
@@ -9017,6 +8951,48 @@ function setupDebuggerEvents() {
                 data: typeof text === 'string' ? text : String(text ?? '')
             });
         } catch (_) { }
+    });
+
+    // macOS TTY 接管：将被调试进程设为终端前台进程组
+    let _debugShellPid = 0;
+    let _debugInferiorPid = 0;
+    let _debugTTYPath = '';
+
+    gdbDebugger.on('inferior-started', (data) => {
+        if (process.platform !== 'darwin') return;
+        const inferiorPid = data?.pid;
+        const ttyPath = data?.ttyPath;
+        if (!inferiorPid || !ttyPath) return;
+        _debugInferiorPid = inferiorPid;
+        _debugTTYPath = ttyPath;
+
+        try {
+            // 获取终端 shell 的 PID
+            const ps = spawnSync('ps', ['-t', ttyPath.replace('/dev/', ''), '-o', 'pid='], { encoding: 'utf8' });
+            const shellPidStr = String(ps.stdout || '').trim().split(/\r?\n/)[0];
+            const shellPid = parseInt(shellPidStr, 10);
+            if (!shellPid || shellPid <= 0) {
+                logWarn('[主进程] TTY接管失败: 无法获取 shell PID');
+                return;
+            }
+            _debugShellPid = shellPid;
+            logInfo(`[主进程] TTY接管: shell PID=${shellPid}, inferior PID=${inferiorPid}, TTY=${ttyPath}`);
+
+            // 步骤1: tcsetpgrp 将 inferior 设为前台进程组
+            const tcsetScript = `import os, termios; fd = os.open('${ttyPath}', os.O_RDONLY); termios.tcsetpgrp(fd, ${inferiorPid}); os.close(fd)`;
+            const tcsetResult = spawnSync('python3', ['-c', tcsetScript], { encoding: 'utf8', timeout: 3000 });
+            if (tcsetResult.status !== 0) {
+                logWarn('[主进程] tcsetpgrp 失败:', tcsetResult.stderr?.trim() || 'unknown');
+            } else {
+                logInfo('[主进程] tcsetpgrp 成功, inferior 已是终端前台进程组');
+            }
+
+            // 步骤2: SIGSTOP 暂停 shell，防止争抢终端输入
+            process.kill(shellPid, 'SIGSTOP');
+            logInfo('[主进程] 已发送 SIGSTOP 到 shell PID:', shellPid);
+        } catch (e) {
+            logWarn('[主进程] TTY接管异常:', e?.message || String(e));
+        }
     });
 
     gdbDebugger.on('error', (error) => {
