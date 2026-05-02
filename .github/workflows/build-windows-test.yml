@@ -37,8 +37,30 @@ jobs:
       - name: Install NSIS
         shell: powershell
         run: |
-          choco install nsis
-          echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
+          choco install nsis -y --no-progress
+          if (Test-Path "C:\Program Files (x86)\NSIS\makensis.exe") {
+            Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files (x86)\NSIS"
+          } elseif (Test-Path "C:\Program Files\NSIS\makensis.exe") {
+            Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files\NSIS"
+          }
+          # Verify makensis is accessible
+          $nsisPath = (Get-Command makensis -ErrorAction SilentlyContinue).Source
+          if (-not $nsisPath) {
+            Write-Warning "makensis not found on PATH, trying explicit lookup"
+            $candidates = @(
+              "C:\Program Files (x86)\NSIS\makensis.exe",
+              "C:\Program Files\NSIS\makensis.exe"
+            )
+            $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if ($found) {
+              Add-Content -Path $env:GITHUB_PATH -Value (Split-Path $found -Parent)
+              Write-Host "Added NSIS path: $(Split-Path $found -Parent)"
+            } else {
+              Write-Error "NSIS installation failed - makensis.exe not found"
+            }
+          } else {
+            Write-Host "makensis found at: $nsisPath"
+          }
 
       - name: Install dependencies
         run: npm install --include=optional
