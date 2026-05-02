@@ -3,1001 +3,488 @@ const path = require('path');
 const os = require('os');
 const EventEmitter = require('events');
 const fs = require('fs');
-const { tokenizeGDBLocals, parseGDBWatchValue } = require('./gdb-utils');
-
+const {
+    tokenizeGDBLocals,
+    parseGDBWatchValue,
+    tokenizeBacktrace
+} = require('./gdb-utils');
+const GDB_PROMPT = 'oicpp_gdb:';
+const FULL_GDB_PROMPT = '>>>>>>' + GDB_PROMPT;
+const reThreadSwitch = /^\[Switching to thread .*\]#0[ \t]+(0x[A-Fa-f0-9]+) in (.*) from (.*)/;
+const reThreadSwitch2 = /^\[Switching to thread .*\]#0[ \t]+(0x[A-Fa-f0-9]+) in (.*) from (.*):(\d+)/;
+const reBreak = /\x1a*([A-Za-z]*[:]*)([^:]+):(\d+):\d+:[begmidl]+:(0x[0-9A-Fa-f]+)/;
+const reBreak2 = /^(0x[A-Fa-f0-9]+) in (.*) from (.*)/;
+const reBreak3 = /^(0x[A-Fa-f0-9]+) in (.*)/;
+const reCatchThrow = /^Catchpoint (\d+) \(exception thrown\), (0x[0-9a-f]+) in (.+) from (.+)$/;
+const reCatchThrowNoFile = /^Catchpoint (\d+) \(exception thrown\), (0x[0-9a-f]+) in (.+)$/;
+const rePendingFoundWin = /^Pending[ \t]+breakpoint[ \t]+["]+([A-Za-z]:)([^:]+):(\d+)".*/;
+const rePendingFoundUnix = /^Pending[ \t]+breakpoint[ \t]+["]+([^:]+):(\d+)".*/;
+const rePendingFound1 = /^Breakpoint[ \t]+(\d+),.*/;
+const reTempBreakFound = /^[Tt]emporary[ \t]breakpoint[ \t](\d+),.*/;
+const reChildPid1 = /Thread[ \t]+[xA-Fa-f0-9-]+[ \t]+\(LWP (\d+)\)\]/;
+const reChildPid2 = /\[New [tT]hread[ \t]+\d+\.[xA-Fa-f0-9-]+\]/;
+const reInferiorExited = /^\[Inferior[ \t].+[ \t]exited normally\]$/;
+const reInferiorExitedWithCode = /^\[[Ii]nferior[ \t].+[ \t]exited[ \t]with[ \t]code[ \t](\d+)\]$/;
 class GDBDebugger extends EventEmitter {
     constructor() {
         super();
         this.isRunning = false;
         this.programExited = false;
         this.gdbProcess = null;
-        this.buffer = '';
-        this.seq = 1;
-        this.pending = new Map(); // token -> {resolve, reject, cmd, captureOutput}
         this._variables = { local: {}, global: {}, watches: {} };
         this._callStack = [];
-        this._breakpoints = []; // {number, file, line}
-        this._watchExpressions = new Set(); // Set<string>
+        this._breakpoints = [];
+        this._watchExpressions = new Set();
         this._inferiorRunning = false;
-        this._inferiorLaunched = false;
-        this.inferiorPid = null;
-        
-        // Linux TTY
+        this._cmdQueue = [];
+        this._queueBusy = false;
+        this._currentCmd = null;
+        this._buffer = '';
+        this._programStopped = true;
+        this._isStarted = false;
+        this._manualBreakOnEntry = false;
+        this._cursor = { file: '', function: '', address: '', line: -1, changed: false };
         this._ttyProcess = null;
         this._ttyProcessPid = 0;
         this._ttyPath = null;
-        this._ttyPromise = null;
         this._linuxTTYOptions = {};
         this._ttyShellPid = null;
-        this._expectingRunning = false;
-        this._commandChain = Promise.resolve();
-        this._lastResumeAt = 0;
-
         this._shortPathCache = new Map();
     }
-
-    _enqueueCommand(task) {
-        const run = this._commandChain.then(() => task());
-        // Keep the chain alive even if one command fails.
-        this._commandChain = run.catch(() => {});
-        return run;
+    _queueCommand(cmd, opts = {}) {
+        return new Promise((resolve, reject) => {
+            const entry = { cmd, resolve, reject, parser: opts.parser || null, isContinue: !!opts.isContinue };
+            if (opts.highPriority) this._cmdQueue.unshift(entry);
+            else this._cmdQueue.push(entry);
+            this._runQueue();
+        });
     }
-
-    _send(cmd) {
-        return this._enqueueCommand(() => new Promise((resolve, reject) => {
-            if (!this.gdbProcess) return reject(new Error('GDB process not started'));
-            const token = this.seq++;
-            this.pending.set(token, { resolve, reject, cmd });
-            const line = `${token}-${cmd}\n`;
-            try { global.logInfo?.('[GDB<<]', line.trim()); } catch (_) { }
-            this.gdbProcess.stdin.write(line);
-        }));
-    }
-
-    async _sendCLI(cmd) {
-        return this._enqueueCommand(() => new Promise((resolve, reject) => {
-            if (!this.gdbProcess) return reject(new Error('GDB not started'));
-            const token = this.seq++;
-            
-            let output = '';
-            const capture = (line) => {
-                if (line.startsWith('~')) {
-                    try {
-                        output += this._unescapeMIString(line.substring(1));
-                    } catch (e) {
-                        output += line.substring(2, line.length - 1);
-                    }
-                }
-            };
-            
-            this.pending.set(token, { 
-                resolve: (res) => resolve(output), 
-                reject, 
-                cmd,
-                captureOutput: capture 
-            });
-            
-            const line = `${token}-interpreter-exec console "${cmd.replace(/"/g, '\\"')}"\n`;
-            try { global.logInfo?.('[GDB<<]', line.trim()); } catch (_) { }
-            this.gdbProcess.stdin.write(line);
-        }));
-    }
-
-    _unescapeMIString(str) {
-        if (str.startsWith('"') && str.endsWith('"')) {
-            str = str.slice(1, -1);
+    _runQueue() {
+        if (this._queueBusy || this._cmdQueue.length === 0 || !this._programStopped) return;
+        const entry = this._cmdQueue[0];
+        if (!entry.cmd) {
+            this._cmdQueue.shift();
+            if (entry.resolve) entry.resolve();
+            this._runQueue();
+            return;
         }
-        return str.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+        this._queueBusy = true;
+        this._currentCmd = entry;
+        if (entry.isContinue) {
+            this._programStopped = false;
+            this._inferiorRunning = true;
+            this.emit('running');
+        }
+        const line = entry.cmd + '\n';
+        try { global.logInfo?.('[GDB<<]', line.trim()); } catch (_) { }
+        this.gdbProcess.stdin.write(line);
     }
-
+    _send(cmd, opts = {}) { return this._queueCommand(cmd, opts); }
+    _sendContinue(cmd, opts = {}) { return this._queueCommand(cmd, { ...opts, isContinue: true }); }
     async start(executablePath, sourcePath, options = {}) {
         if (this.gdbProcess) await this.stop();
         this.programExited = false;
-        this._inferiorLaunched = false;
         this._inferiorRunning = false;
+        this._programStopped = true;
+        this._isStarted = false;
+        this._cursor = { file: '', function: '', address: '', line: -1, changed: false };
+        this._cmdQueue = [];
+        this._queueBusy = false;
         const relaxedInit = !!options.relaxedInit;
-        
         const env = options.env ? { ...process.env, ...options.env } : { ...process.env };
-        const gdbExecutable = options.gdbPath || 'gdb';
-        
-        const args = Array.isArray(options.miArgs) && options.miArgs.length > 0
-            ? options.miArgs.map((item) => String(item))
-            : ['-q', '--interpreter=mi2'];
-        this.gdbProcess = spawn(gdbExecutable, args, {
-            stdio: ['pipe', 'pipe', 'pipe'],
-            env,
-            windowsHide: false,
-        });
-
+        const gdbExe = options.gdbPath || 'gdb';
+        const args = ['-fullname', '-quiet'];
+        if (options.disableInit) args.unshift('-nx');
+        this.gdbProcess = spawn(gdbExe, args, { stdio: ['pipe', 'pipe', 'pipe'], env, windowsHide: false });
         this.gdbProcess.stdout.on('data', (d) => this._onData(d.toString()));
-        this.gdbProcess.stderr.on('data', (d) => {
-            try { global.logWarn?.('[GDB-STDERR]', d.toString()); } catch (_) { }
-        });
+        this.gdbProcess.stderr.on('data', (d) => { try { global.logWarn?.('[GDB-STDERR]', d.toString()); } catch (_) { } });
         this.gdbProcess.on('exit', (code, signal) => {
-            if (this.buffer && this.buffer.length > 0) {
-                this._onData('\n');
-            }
-            this.isRunning = false;
-            this.programExited = true;
-            this._inferiorRunning = false;
+            if (this._buffer) { this._parseOutput(this._buffer); this._buffer = ''; }
+            this.isRunning = false; this.programExited = true;
+            this._programStopped = true; this._inferiorRunning = false;
             this.emit('exited', { code, signal });
         });
-
-        await this._waitReady();
-
-        const runInitCommand = async (command) => {
-            try {
-                await this._send(command);
-            } catch (error) {
-                if (!relaxedInit) {
-                    throw error;
-                }
-                try { global.logWarn?.(`[GDB] 初始化命令失败(已忽略): ${command}`, error?.message || error); } catch (_) { }
-            }
+        const runInit = async (cmd) => {
+            try { await this._send(cmd); } catch (e) { if (!relaxedInit) throw e; }
         };
-
-        await runInitCommand('gdb-set confirm off');
-        await runInitCommand('gdb-set pagination off');
-        await runInitCommand('gdb-set print pretty on');
-        await runInitCommand('gdb-set print array-indexes on');
-        await runInitCommand('gdb-set print elements 200');
-        
+        await runInit(`set prompt ${FULL_GDB_PROMPT}`);
+        await runInit('show version');
+        await runInit('set confirm off');
+        await runInit('set width 0');
+        await runInit('set height 0');
+        await runInit('set breakpoint pending on');
+        await runInit('set print asm-demangle on');
+        await runInit('set unwindonsignal on');
+        await runInit(`set print elements ${options.printElements || 200}`);
+        await runInit('set filename-display absolute');
+        await runInit('set style enabled off');
+        await runInit('set print pretty on');
+        await runInit('set print array-indexes on');
         if (process.platform === 'win32') {
-            const disableNewConsole = !!options.noNewConsole;
-            await runInitCommand(`gdb-set new-console ${disableNewConsole ? 'off' : 'on'}`);
+            await runInit(`set new-console ${options.noNewConsole ? 'off' : 'on'}`);
         } else if (process.platform === 'linux') {
-             const opts = options || {};
-             this._linuxTTYOptions = {
-                 inferiorTTY: typeof opts.inferiorTTY === 'string' ? opts.inferiorTTY : undefined,
-                 noNewConsole: !!opts.noNewConsole,
-                 consoleTerminalTemplate: typeof opts.consoleTerminalTemplate === 'string'
-                     ? opts.consoleTerminalTemplate
-                     : ''
-             };
-             await this._cleanupLinuxTTY();
-             if (this._linuxTTYOptions.inferiorTTY) {
-                 this._ttyPath = this._linuxTTYOptions.inferiorTTY;
-             }
+            this._linuxTTYOptions = {
+                inferiorTTY: typeof options.inferiorTTY === 'string' ? options.inferiorTTY : undefined,
+                noNewConsole: !!options.noNewConsole,
+                consoleTerminalTemplate: typeof options.consoleTerminalTemplate === 'string' ? options.consoleTerminalTemplate : ''
+            };
+            await this._cleanupLinuxTTY();
+            if (this._linuxTTYOptions.inferiorTTY) this._ttyPath = this._linuxTTYOptions.inferiorTTY;
         }
-
-        await this._send(`file-exec-and-symbols "${this._escapePath(executablePath)}"`);
-        
+        await this._send(`file "${this._escapePath(executablePath)}"`);
         this.isRunning = true;
         this.emit('started', { executable: executablePath, sourceFile: sourcePath });
     }
-
     async stop() {
         if (!this.gdbProcess) return;
         try {
             if (this._inferiorRunning) {
-                try { process.kill(this.gdbProcess.pid, 'SIGINT'); } catch (_) {}
-                await new Promise(r => setTimeout(r, 100));
+                try { process.kill(this.gdbProcess.pid, 'SIGINT'); } catch (_) { }
+                await new Promise(r => setTimeout(r, 200));
             }
-            await this._send('gdb-exit');
-        } catch (_) {}
-        try { this.gdbProcess.kill(); } catch (_) {}
+            await this._send('quit');
+        } catch (_) { }
+        try { this.gdbProcess.kill(); } catch (_) { }
         this.gdbProcess = null;
         this.isRunning = false;
+        this._programStopped = true;
         this._inferiorRunning = false;
+        this._queueBusy = false;
+        this._cmdQueue = [];
         await this._cleanupLinuxTTY();
     }
-
     async run() {
-        if (this._inferiorLaunched && this._inferiorRunning) return;
-        if (this._inferiorLaunched && !this._inferiorRunning && !this.programExited) {
-            return this.continue();
-        }
-
+        if (this.programExited) throw new Error('Program has exited');
+        if (this._inferiorRunning) throw new Error('The program is already running');
+        if (this._isStarted && !this.programExited) return this.continue();
         if (process.platform === 'linux') {
             try {
-                const ttyInfo = await this._ensureLinuxTTY();
-                if (ttyInfo && ttyInfo.ttyPath) {
-                    await this._send(`gdb-set inferior-tty ${ttyInfo.ttyPath}`);
-                }
-            } catch (e) {
-                global.logWarn?.('[GDB] TTY 设置失败', e);
-            }
+                const tty = await this._ensureLinuxTTY();
+                if (tty && tty.ttyPath) await this._send(`set inferior-tty ${tty.ttyPath}`);
+            } catch (e) { global.logWarn?.('[GDB] TTY 失败', e); }
         }
-
-        this._expectingRunning = true;
-        this._lastResumeAt = Date.now();
-        await this._send('exec-run');
-        this._inferiorLaunched = true;
-        this._inferiorRunning = true;
-        this.emit('running');
+        this._isStarted = true;
+        this._sendContinue('run').catch(e => global.logWarn?.('[GDB] run 失败:', e?.message || e));
     }
-
     async continue() {
-        if (this.programExited) return;
-        if (!this._inferiorLaunched) return this.run();
-        
-        this._expectingRunning = true;
-        this._lastResumeAt = Date.now();
-        try {
-            await this._send('exec-continue');
-            // MI 的 *running 事件在少数环境可能延迟/丢失，先乐观打开输入窗口，后续由 *stopped 回收状态。
-            this._inferiorRunning = true;
-            this.emit('running');
-        } catch (e) {
-            this._expectingRunning = false;
-            if (e.message.includes('not stopped')) {
-                this._inferiorRunning = true; // Sync state
-                this.emit('running');
-            }
-        }
+        if (this.programExited) throw new Error('Program has exited');
+        if (this._inferiorRunning) throw new Error('The program is already running');
+        if (!this._isStarted) return this.run();
+        this._manualBreakOnEntry = false;
+        this._sendContinue('cont').catch(e => global.logWarn?.('[GDB] cont 失败:', e?.message || e));
     }
-
-    async stepOver() { 
-        this._expectingRunning = true;
-        this._lastResumeAt = Date.now();
-        try { await this._send('exec-next'); } catch(e) { this._expectingRunning = false; throw e; }
+    async stepOver() {
+        if (this.programExited) throw new Error('Program has exited');
+        if (this._inferiorRunning) throw new Error('The program is already running');
+        this._manualBreakOnEntry = false;
+        this._sendContinue('next').catch(e => global.logWarn?.('[GDB] next 失败:', e?.message || e));
     }
-    async stepInto() { 
-        this._expectingRunning = true;
-        this._lastResumeAt = Date.now();
-        try { await this._send('exec-step'); } catch(e) { this._expectingRunning = false; throw e; }
+    async stepInto() {
+        if (this.programExited) throw new Error('Program has exited');
+        if (this._inferiorRunning) throw new Error('The program is already running');
+        this._manualBreakOnEntry = false;
+        this._sendContinue('step').catch(e => global.logWarn?.('[GDB] step 失败:', e?.message || e));
     }
-    async stepOut() { 
-        this._expectingRunning = true;
-        this._lastResumeAt = Date.now();
-        try { await this._send('exec-finish'); } catch(e) { this._expectingRunning = false; throw e; }
+    async stepOut() {
+        if (this.programExited) throw new Error('Program has exited');
+        if (this._inferiorRunning) throw new Error('The program is already running');
+        this._manualBreakOnEntry = false;
+        this._sendContinue('finish').catch(e => global.logWarn?.('[GDB] finish 失败:', e?.message || e));
     }
-
     async setBreakpoint(file, line) {
-        const location = `${this._escapePath(file)}:${line}`;
-        try {
-            const res = await this._send(`break-insert -f "${location}"`);
-            const bkpt = res.bkpt;
-            const b = {
-                number: bkpt.number,
-                file: this._normalizePath(bkpt.fullname || bkpt.file || file, file),
-                line: parseInt(bkpt.line, 10)
-            };
-            this._breakpoints.push(b);
-            this.emit('breakpoint-set', b);
-            return b;
-        } catch (e) {
-            global.logWarn?.('[GDB] 设置断点失败', e);
-            throw e;
+        const loc = `${this._escapePath(file)}:${line}`;
+        const output = await this._send(`break "${loc}"`);
+        const m = /Breakpoint (\d+) at (0x[0-9A-Fa-f]+)/.exec(output || '');
+        if (m) {
+            const bp = { number: parseInt(m[1], 10), file: this._normalizePath(file), line, address: m[2] };
+            this._breakpoints.push(bp);
+            this.emit('breakpoint-set', bp);
+            return bp;
         }
+        const mp = /Breakpoint (\d+)[ \t]\("(.+):(\d+)"\)[ \t]pending\./.exec(output || '');
+        if (mp) {
+            const bp = { number: parseInt(mp[1], 10), file: this._normalizePath(mp[2]), line: parseInt(mp[3], 10), pending: true };
+            this._breakpoints.push(bp);
+            this.emit('breakpoint-set', bp);
+            return bp;
+        }
+        throw new Error(output || 'Failed to set breakpoint');
     }
-
     async removeBreakpoint(number) {
-        await this._send(`break-delete ${number}`);
-        this._breakpoints = this._breakpoints.filter(b => b.number != number);
+        await this._send(`delete breakpoints ${number}`);
+        this._breakpoints = this._breakpoints.filter(b => b.number !== number);
         this.emit('breakpoint-removed', { number });
     }
-
-    async addWatchVariable(expr) {
-        this._watchExpressions.add(expr);
-        await this.updateVariables();
-    }
-
-    async removeWatchVariable(expr) {
-        this._watchExpressions.delete(expr);
-        delete this._variables.watches[expr];
-        this.emit('variables-updated', this._variables);
-    }
-
-    async sendInput(input) {
-        if (!this.gdbProcess || !this.gdbProcess.stdin) {
-            return false;
-        }
-        const resumeWindowActive = this._lastResumeAt > 0 && (Date.now() - this._lastResumeAt) <= 3000;
-        if (!this._inferiorRunning && !this._expectingRunning && !resumeWindowActive) {
-            return false;
-        }
-
-        try {
-            let text = String(input ?? '');
-            if (!text) {
-                return false;
-            }
-            text = text.replace(/\r/g, '\n');
-            this.gdbProcess.stdin.write(text);
-            return true;
-        } catch (_) {
-            return false;
-        }
-    }
-
+    async addWatchVariable(expr) { this._watchExpressions.add(expr); await this.updateVariables(); }
+    async removeWatchVariable(expr) { this._watchExpressions.delete(expr); delete this._variables.watches[expr]; this.emit('variables-updated', this._variables); }
     async updateVariables() {
-        if (!this.isRunning || this._inferiorRunning || this.programExited) {
-            try { global.logInfo?.(`[GDB] updateVariables 跳过: isRunning=${this.isRunning}, inferiorRunning=${this._inferiorRunning}, programExited=${this.programExited}`); } catch (_) { }
-            return;
-        }
-
-        try {
-            const localsOutput = await this._sendCLI('info locals');
-            const parsedLocals = tokenizeGDBLocals(localsOutput);
-            
-            this._variables.local = {};
-            for (const item of parsedLocals) {
-                const entry = {
-                    name: item.name,
-                    value: item.value,
-                    type: '', 
-                    children: []
-                };
-                parseGDBWatchValue(entry, item.value);
-                this._variables.local[item.name] = entry;
-            }
-        } catch (e) {
-            global.logWarn?.('[GDB] 更新局部变量失败', e);
-        }
-
         if (!this.isRunning || this._inferiorRunning || this.programExited) return;
-
+        let needsRetry = false;
         try {
-            const argsOutput = await this._sendCLI('info args');
-            const parsedArgs = tokenizeGDBLocals(argsOutput);
-            for (const item of parsedArgs) {
-                const entry = {
-                    name: item.name,
-                    value: item.value,
-                    type: '',
-                    children: []
-                };
-                parseGDBWatchValue(entry, item.value);
-                this._variables.local[item.name] = entry;
+            const out = await this._send('info locals');
+            if (out && out !== 'No locals.') {
+                const parsed = tokenizeGDBLocals(out);
+                this._variables.local = {};
+                for (const item of parsed) {
+                    const e = { name: item.name, value: item.value, type: '', children: [] };
+                    parseGDBWatchValue(e, item.value);
+                    this._variables.local[item.name] = e;
+                }
             }
-        } catch (e) {
-             global.logWarn?.('[GDB] 更新参数失败', e);
-        }
-
+        } catch (e) { global.logWarn?.('[GDB] 局部变量失败', e); needsRetry = true; }
         if (!this.isRunning || this._inferiorRunning || this.programExited) return;
-
+        try {
+            const out = await this._send('info args');
+            if (out && out !== 'No arguments.') {
+                for (const item of tokenizeGDBLocals(out)) {
+                    const e = { name: item.name, value: item.value, type: '', children: [] };
+                    parseGDBWatchValue(e, item.value);
+                    this._variables.local[item.name] = e;
+                }
+            }
+        } catch (e) { global.logWarn?.('[GDB] 参数失败', e); needsRetry = true; }
+        if (!this.isRunning || this._inferiorRunning || this.programExited) return;
         this._variables.watches = {};
         for (const expr of this._watchExpressions) {
             try {
-                const output = await this._sendCLI(`output ${expr}`);
-                try { global.logInfo?.(`[GDB] 监视 ${expr} 输出: ${output}`); } catch (_) { }
-                const entry = {
-                    name: expr,
-                    value: output,
-                    type: '',
-                    children: []
-                };
-                
-                try {
-                    const typeOutput = await this._sendCLI(`whatis ${expr}`);
-                    if (typeOutput.startsWith('type = ')) {
-                        entry.type = typeOutput.substring(7).trim();
-                    }
-                } catch (_) {}
-
-                parseGDBWatchValue(entry, output);
-                this._variables.watches[expr] = entry;
-            } catch (e) {
-                this._variables.watches[expr] = { name: expr, value: '<error>', children: [] };
-            }
+                let typeStr = '';
+                try { const t = await this._send(`whatis ${expr}`); if (t && t.startsWith('type = ')) typeStr = t.substring(7).trim(); } catch (_) { }
+                const out = await this._send(`output ${expr}`);
+                const e = { name: expr, value: out || '', type: typeStr, children: [] };
+                parseGDBWatchValue(e, out || '');
+                this._variables.watches[expr] = e;
+            } catch (_) { this._variables.watches[expr] = { name: expr, value: '<error>', children: [] }; }
         }
-
         this.emit('variables-updated', this._variables);
+        if (needsRetry) setTimeout(() => { if (this.isRunning && !this._inferiorRunning && !this.programExited) this.updateVariables().catch(() => { }); }, 500);
     }
-    
     async updateCallStack() {
-        if (!this.isRunning || this._inferiorRunning || this.programExited) {
-            return;
-        }
+        if (!this.isRunning || this._inferiorRunning || this.programExited) return;
         try {
-            const res = await this._send('stack-list-frames');
-            const stack = res.stack || res.frames || [];
-            this._callStack = stack.map(f => {
-                const frame = f.frame || f;
-                return {
-                    function: frame.func,
-                    file: this._normalizePath(frame.fullname || frame.file),
-                    line: parseInt(frame.line, 10),
-                    level: parseInt(frame.level, 10)
-                };
-            });
+            const out = await this._send('bt 30');
+            this._callStack = tokenizeBacktrace(out || '').map(f => ({
+                function: f.function || '??', file: this._normalizePath(f.file),
+                line: f.line, level: f.level, address: f.address
+            }));
             this.emit('callstack-updated', this._callStack);
-        } catch (e) {
-            global.logWarn?.('[GDB] 更新堆栈失败', e);
-        }
+        } catch (e) { global.logWarn?.('[GDB] 堆栈失败', e); }
     }
-
-    getVariables() {
-        return this._variables;
-    }
-
-    getCallStack() {
-        return this._callStack;
-    }
-
+    getVariables() { return this._variables; }
+    getCallStack() { return this._callStack; }
     async expandVariable(name, options = {}) {
         let root = null;
-        let scope = options.scope || 'local';
-        
-        if (scope === 'watch' && this._variables.watches && this._variables.watches[name]) {
-            root = this._variables.watches[name];
-        } else if (scope === 'local' && this._variables.local && this._variables.local[name]) {
-            root = this._variables.local[name];
-        } else if (scope === 'global' && this._variables.global && this._variables.global[name]) {
-            root = this._variables.global[name];
-        }
-
+        const scope = options.scope || 'local';
+        if (scope === 'watch' && this._variables.watches[name]) root = this._variables.watches[name];
+        else if (scope === 'local' && this._variables.local[name]) root = this._variables.local[name];
+        else if (scope === 'global' && this._variables.global[name]) root = this._variables.global[name];
         if (!root) {
-            if (this._variables.watches && this._variables.watches[name]) {
-                root = this._variables.watches[name];
-                scope = 'watch';
-            } else if (this._variables.local && this._variables.local[name]) {
-                root = this._variables.local[name];
-                scope = 'local';
-            } else if (this._variables.global && this._variables.global[name]) {
-                 root = this._variables.global[name];
-                 scope = 'global';
-            }
+            if (this._variables.watches[name]) root = this._variables.watches[name];
+            else if (this._variables.local[name]) root = this._variables.local[name];
+            else if (this._variables.global[name]) root = this._variables.global[name];
         }
-        
-        if (!root) {
-             throw new Error(`Variable ${name} not found`);
-        }
-
+        if (!root) throw new Error(`Variable ${name} not found`);
         if ((!options.path || options.path.length === 0) && (!root.children || root.children.length === 0)) {
-            try {
-                const output = await this._sendCLI(`output ${name}`);
-                parseGDBWatchValue(root, output);
-            } catch (e) {
-                global.logWarn?.(`[GDB] 无法获取 ${name} 的子项`, e);
-            }
+            try { const out = await this._send(`output ${name}`); parseGDBWatchValue(root, out || ''); } catch (e) { global.logWarn?.(`[GDB] 无法获取 ${name} 子项`, e); }
         }
-        
         let current = root;
-        if (options.path && Array.isArray(options.path)) {
-            for (const p of options.path) {
-                const idx = Number(p);
-                if (current.children && current.children[idx]) {
-                    current = current.children[idx];
-                } else {
-                    break;
-                }
-            }
-        }
-        
-        return {
-            name,
-            scope,
-            path: options.path,
-            data: current
-        };
+        if (options.path) for (const p of options.path) { const idx = Number(p); if (current.children && current.children[idx]) current = current.children[idx]; else break; }
+        return { name, scope, path: options.path, data: current };
     }
-
-    async collapseVariable(name, options = {}) {
-        return {};
-    }
-
-    _emitTargetOutput(text) {
-        const output = typeof text === 'string' ? text : String(text ?? '');
-        if (!output) return;
-        this.emit('target-output', output);
-    }
-
-    _findMIRecordStart(line) {
-        if (!line) return -1;
-
-        const candidates = [];
-        const streamMatch = /[~@&]"/.exec(line);
-        if (streamMatch) candidates.push(streamMatch.index);
-
-        const tokenMatch = /\d+\^[a-zA-Z\-]+/.exec(line);
-        if (tokenMatch) candidates.push(tokenMatch.index);
-
-        const asyncMatch = /(?:\*stopped|\*running|=thread-|=library-|=breakpoint-)/.exec(line);
-        if (asyncMatch) candidates.push(asyncMatch.index);
-
-        const promptIdx = line.indexOf('(gdb)');
-        if (promptIdx !== -1) candidates.push(promptIdx);
-
-        if (candidates.length === 0) return -1;
-        return Math.min(...candidates);
-    }
-
-    _splitRawOutputAndMI(line) {
-        const miStart = this._findMIRecordStart(line);
-        if (miStart === -1) {
-            return { raw: line, mi: '' };
-        }
-        if (miStart <= 0) {
-            return { raw: '', mi: line };
-        }
-        return {
-            raw: line.substring(0, miStart),
-            mi: line.substring(miStart)
-        };
-    }
-
-    _isCompleteMIStreamRecord(text) {
-        if (!text || text.length < 3) {
-            return false;
-        }
-
-        const lead = text[0];
-        if ((lead !== '~' && lead !== '@' && lead !== '&') || text[1] !== '"') {
-            return false;
-        }
-
-        let escaped = false;
-        for (let i = 2; i < text.length; i += 1) {
-            const ch = text[i];
-            if (escaped) {
-                escaped = false;
-                continue;
-            }
-            if (ch === '\\') {
-                escaped = true;
-                continue;
-            }
-            if (ch === '"') {
-                return i === text.length - 1;
-            }
-        }
-
+    async collapseVariable() { return {}; }
+    async sendInput(input) {
+        if (!this.gdbProcess || !this.gdbProcess.stdin || !this._inferiorRunning) return false;
+        try { const t = String(input ?? '').replace(/\r/g, '\n'); if (t) { this.gdbProcess.stdin.write(t); return true; } } catch (_) { }
         return false;
     }
-
-    _handleOutputLine(line, hasLineBreak = false) {
-        const { raw, mi } = this._splitRawOutputAndMI(line);
-        if (raw) {
-            this._emitTargetOutput(hasLineBreak ? `${raw}\n` : raw);
-        }
-
-        const trimmed = mi.trim();
-        if (!trimmed) return;
-        
-        // Suppress "Failed to set controlling terminal" warning which is expected when hijacking TTY
-        if (trimmed.includes('Failed to set controlling terminal')) {
-            return;
-        }
-
-        try { global.logInfo?.('[GDB>>]', trimmed); } catch (_) { }
-
-        if (mi.startsWith('@')) {
-            try {
-                const text = this._unescapeMIString(mi.substring(1));
-                this._emitTargetOutput(text);
-            } catch (_) { }
-            return;
-        }
-
-        if (mi.startsWith('~')) {
-            for (const req of this.pending.values()) {
-                if (req.captureOutput) {
-                    req.captureOutput(mi);
-                    break; 
-                }
-            }
-        }
-
-        const tokenMatch = mi.match(/^(\d+)\^([a-zA-Z\-]+)(.*)$/);
-        if (tokenMatch) {
-            const [, tokenStr, status, rest] = tokenMatch;
-            const token = parseInt(tokenStr, 10);
-            const req = this.pending.get(token);
-            if (req) {
-                this.pending.delete(token);
-                if (status === 'done' || status === 'running' || status === 'connected' || status === 'exit') {
-                    req.resolve(this._parseMIResult(rest));
-                } else {
-                    const err = this._parseMIResult(rest);
-                    req.reject(new Error(err.msg || 'GDB Error'));
-                }
+    _onData(chunk) { this._buffer += chunk; this._parseBuffer(); }
+    _parseBuffer() {
+        const idx = this._buffer.indexOf(GDB_PROMPT);
+        if (idx === -1) {
+            if (this._inferiorRunning && this._buffer.length > 0) {
+                const nl = this._buffer.lastIndexOf('\n');
+                if (nl > 0) { this._emitTargetOutput(this._buffer.substring(0, nl + 1)); this._buffer = this._buffer.substring(nl + 1); }
             }
             return;
         }
-
-        if (mi.startsWith('*stopped')) {
-            this._inferiorRunning = false;
-            this._expectingRunning = false;
-            this._lastResumeAt = 0;
-            try { global.logInfo?.('[GDB] 状态: 停止'); } catch (_) { }
-            const data = this._parseMIResult(mi.substring(8));
-            const reason = data.reason;
-            const frame = data.frame || {};
-            
-            this.emit('stopped', { 
-                reason, 
-                frame: {
-                    file: this._normalizePath(frame.fullname || frame.file),
-                    line: parseInt(frame.line, 10),
-                    function: frame.func
-                }
+        let end = idx;
+        while (end > 0 && this._buffer[end - 1] === '>') end--;
+        const content = this._buffer.substring(0, end);
+        this._buffer = this._buffer.substring(idx + GDB_PROMPT.length);
+        const clean = content.replace(/^\n+/, '').replace(/\n+$/, '');
+        this._parseOutput(clean);
+        if (this._buffer.includes(GDB_PROMPT)) this._parseBuffer();
+    }
+    _parseOutput(output) {
+        this._queueBusy = false;
+        const cmd = this._currentCmd;
+        if (cmd) {
+            this._cmdQueue.shift(); this._currentCmd = null;
+            const result = cmd.parser && output ? cmd.parser(output) : (output || '');
+            if (cmd.resolve) cmd.resolve(result);
+        }
+        if (!output) return;
+        try { global.logInfo?.('[GDB>>]', output.substring(0, 500)); } catch (_) { }
+        this._detectChildPid(output);
+        const lines = output.split('\n');
+        const targetLines = [];
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.startsWith('>>>>>>') || line === GDB_PROMPT) continue;
+            if (line.startsWith('GNU gdb')) continue;
+            if (line.startsWith('Error creating process') || line.startsWith('Program exited') ||
+                line.startsWith('Program terminated with signal') || line.startsWith('During startup program exited') ||
+                line.includes('program is not being run') || line.includes('Target detached') ||
+                reInferiorExited.test(line) || reInferiorExitedWithCode.test(line)) {
+                this._programStopped = true; this._isStarted = false;
+                this._inferiorRunning = false; this._queueBusy = false;
+                let ec; const mc = reInferiorExitedWithCode.exec(line); if (mc) ec = parseInt(mc[1], 10);
+                this.emit('program-exited', { exitCode: ec });
+                continue;
+            }
+            if (line.includes('(no debugging symbols found)')) continue;
+            if (line.startsWith('Program received signal SIG')) {
+                this._programStopped = true; this._queueBusy = false; this._inferiorRunning = false;
+                if (!line.startsWith('Program received signal SIGINT') && !line.startsWith('Program received signal SIGTRAP') && !line.startsWith('Program received signal SIGSTOP'))
+                    this.emit('signal-received', { signal: line });
+                continue;
+            }
+            if (line.startsWith('Error ') || line.startsWith('No such') || line.startsWith('Cannot evaluate')) continue;
+            if (line.startsWith('Cannot find bounds of current function') || line.startsWith('No stack')) { this._programStopped = true; this._inferiorRunning = false; continue; }
+            if (line.startsWith('Pending breakpoint ')) { this._handlePendingBreakpoint(line, lines, i); continue; }
+            if (line.startsWith('Breakpoint ') && rePendingFound1.test(line)) continue;
+            if (line.startsWith('Temporary breakpoint') && reTempBreakFound.test(line)) continue;
+            if (line.length > 0 && line.charCodeAt(0) === 0x1A) { this._handleMainBreakpoint(line); continue; }
+            if (this._handleOtherBreakInfo(line)) continue;
+            if (line.trim()) targetLines.push(line);
+        }
+        if (targetLines.length > 0) this._emitTargetOutput(targetLines.join('\n'));
+        if (this._cmdQueue.length === 0 && !this._programStopped && !this._cursor.changed) {
+            this._programStopped = true; this._inferiorRunning = false;
+        }
+        if (this._cursor.changed) {
+            this._programStopped = true; this._inferiorRunning = false; this._queueBusy = false;
+            this.emit('stopped', {
+                reason: this._cursor.line >= 0 ? 'breakpoint-hit' : 'signal-received',
+                file: this._normalizePath(this._cursor.file),
+                line: this._cursor.line, function: this._cursor.function, address: this._cursor.address
             });
-        } else if (mi.startsWith('*running')) {
-            try { global.logInfo?.(`[GDB] 接收到 *running。期望=${this._expectingRunning}`); } catch (_) { }
-            const wasRunning = !!this._inferiorRunning;
-            if (this._expectingRunning) {
-                this._inferiorRunning = true;
-                try { global.logInfo?.('[GDB] 状态: 运行'); } catch (_) { }
-                if (!wasRunning) {
-                    this.emit('running');
-                }
-            } else {
-                try { global.logInfo?.('[GDB] 警告: 收到意外的 *running 事件，已同步状态'); } catch (_) { }
-                this._inferiorRunning = true;
-                if (!wasRunning) {
-                    this.emit('running');
-                }
-            }
-        } else if (mi.startsWith('=thread-group-exited')) {
-            const exitedData = this._parseMIResult(mi.substring('=thread-group-exited'.length));
-            const exitCodeRaw = exitedData?.['exit-code'] ?? exitedData?.exitCode;
-            const parsedExitCode = typeof exitCodeRaw === 'string' && /^0x[0-9a-f]+$/i.test(exitCodeRaw)
-                ? parseInt(exitCodeRaw, 16)
-                : Number.parseInt(String(exitCodeRaw ?? ''), 10);
-            this.programExited = true;
-            this._inferiorRunning = false;
-            this._expectingRunning = false;
-            this.emit('program-exited', {
-                exitCode: Number.isFinite(parsedExitCode) ? parsedExitCode : undefined
-            });
+            this._cursor.changed = false;
+        } else if (this._programStopped) { this._inferiorRunning = false; }
+        if (this._programStopped) this._runQueue();
+    }
+    _detectChildPid(output) {
+        if (process.platform === 'win32') {
+            const m = reChildPid2.exec(output);
+            if (m) { const p = parseInt(m[0].substring(m[0].lastIndexOf(' ') + 1).split('.')[0], 10); if (p > 0) this.emit('child-pid', p); }
+        } else {
+            const m = reChildPid1.exec(output);
+            if (m) { const p = parseInt(m[1], 10); if (p > 0) this.emit('child-pid', p); }
         }
     }
-
-    _processBufferedOutput(force = false) {
-        if (!this.buffer) {
-            return;
+    _handleMainBreakpoint(line) {
+        const m = reBreak.exec(line.replace(/^\x1a+/, ''));
+        if (m) {
+            this._manualBreakOnEntry = false;
+            this._cursor.file = process.platform === 'win32' ? (m[1] || '') + (m[2] || '') : (m[2] || '');
+            this._cursor.line = parseInt(m[3], 10); this._cursor.address = m[4]; this._cursor.changed = true;
+        } else { this._cursor.changed = true; }
+    }
+    _handleOtherBreakInfo(line) {
+        let m;
+        if ((m = reBreak2.exec(line)) || (m = reThreadSwitch.exec(line))) {
+            this._cursor.address = m[1]; this._cursor.function = m[2]; this._cursor.file = m[3]; this._cursor.line = -1; this._cursor.changed = true; return true;
         }
-
-        if (force) {
-            const pending = this.buffer;
-            this.buffer = '';
-            this._handleOutputLine(pending);
-            return;
+        if ((m = reThreadSwitch2.exec(line))) {
+            this._cursor.address = m[1]; this._cursor.function = m[2]; this._cursor.file = m[3]; this._cursor.line = -1; this._cursor.changed = true; return true;
         }
-
-        let miStart = this._findMIRecordStart(this.buffer);
-        if (miStart > 0) {
-            const rawPrefix = this.buffer.substring(0, miStart);
-            if (rawPrefix) {
-                this._emitTargetOutput(rawPrefix);
-            }
-            this.buffer = this.buffer.substring(miStart);
-        }
-
-        if (!this.buffer) {
-            return;
-        }
-
-        if (this.buffer.includes('(gdb)')) {
-            const parts = this.buffer.split('(gdb)');
-            this.buffer = parts.pop() || '';
-            for (const part of parts) {
-                this._handleOutputLine(`${part}(gdb)`);
-            }
-            return;
-        }
-
-        miStart = this._findMIRecordStart(this.buffer);
-        if (miStart === -1) {
-            this._emitTargetOutput(this.buffer);
-            this.buffer = '';
-            return;
-        }
-
-        if (miStart === 0 && this._isCompleteMIStreamRecord(this.buffer)) {
-            const record = this.buffer;
-            this.buffer = '';
-            this._handleOutputLine(record);
+        if ((m = reBreak3.exec(line))) { this._cursor.address = m[1]; this._cursor.function = m[2]; this._cursor.file = ''; this._cursor.line = -1; this._cursor.changed = true; return true; }
+        if ((m = reCatchThrow.exec(line))) { this._cursor.address = m[2]; this._cursor.function = m[3]; this._cursor.file = m[4]; this._cursor.line = -1; this._cursor.changed = true; return true; }
+        if ((m = reCatchThrowNoFile.exec(line))) { this._cursor.address = m[2]; this._cursor.function = m[3]; this._cursor.file = ''; this._cursor.line = -1; this._cursor.changed = true; return true; }
+        return false;
+    }
+    _handlePendingBreakpoint(line, lines, idx) {
+        const rePF = process.platform === 'win32' ? rePendingFoundWin : rePendingFoundUnix;
+        const m = rePF.exec(line); if (!m) return;
+        let nbp = ''; for (let j = idx + 1; j < lines.length; j++) { if (!lines[j].startsWith('[')) { nbp = lines[j]; break; } }
+        if (nbp && rePendingFound1.test(nbp)) {
+            const nm = rePendingFound1.exec(nbp); const ni = parseInt(nm[1], 10);
+            let f, ls;
+            if (process.platform === 'win32') { f = m[1] + m[2]; ls = m[3]; } else { f = m[1]; ls = m[2]; }
+            const nl = parseInt(ls, 10);
+            const bp = this._breakpoints.find(b => this._normalizePath(b.file) === this._normalizePath(f) && b.line === nl);
+            if (bp) { bp.number = ni; bp.pending = false; this.emit('breakpoint-resolved', bp); }
         }
     }
-
-    _onData(chunk) {
-        this.buffer += chunk;
-        const lines = this.buffer.split(/\r?\n/);
-        this.buffer = lines.pop() || '';
-
-        for (const line of lines) {
-            this._handleOutputLine(line, true);
-        }
-
-        this._processBufferedOutput(false);
-    }
-
-    _parseMIResult(str) {
-        const res = {};
-        if (!str) return res;
-        
-        if (str.startsWith(',')) str = str.substring(1);
-        
-        let pos = 0;
-        while (pos < str.length) {
-            const eq = str.indexOf('=', pos);
-            if (eq === -1) break;
-            const key = str.substring(pos, eq).trim();
-            pos = eq + 1;
-            
-            let value;
-            if (str[pos] === '"') {
-                let end = pos + 1;
-                while (end < str.length) {
-                    if (str[end] === '"' && str[end-1] !== '\\') break;
-                    end++;
-                }
-                value = this._unescapeMIString(str.substring(pos, end + 1));
-                pos = end + 1;
-            } else if (str[pos] === '{') {
-                let brace = 1;
-                let end = pos + 1;
-                while (end < str.length && brace > 0) {
-                    if (str[end] === '{') brace++;
-                    if (str[end] === '}') brace--;
-                    end++;
-                }
-                value = str.substring(pos, end); 
-                if (value.length > 2) {
-                    value = this._parseMIResult(value.substring(1, value.length - 1));
-                } else {
-                    value = {};
-                }
-                pos = end;
-            } else if (str[pos] === '[') {
-                 let brace = 1;
-                let end = pos + 1;
-                while (end < str.length && brace > 0) {
-                    if (str[end] === '[') brace++;
-                    if (str[end] === ']') brace--;
-                    end++;
-                }
-                
-                const listContent = str.substring(pos + 1, end - 1);
-                const items = [];
-                let d = 0;
-                let itemStart = 0;
-                let b = 0;
-                let q = false;
-                while (d < listContent.length) {
-                    if (listContent[d] === '"' && (d === 0 || listContent[d-1] !== '\\')) q = !q;
-                    if (!q) {
-                        if (listContent[d] === '{' || listContent[d] === '[') b++;
-                        if (listContent[d] === '}' || listContent[d] === ']') b--;
-                        if (listContent[d] === ',' && b === 0) {
-                            items.push(listContent.substring(itemStart, d).trim());
-                            itemStart = d + 1;
-                        }
-                    }
-                    d++;
-                }
-                if (itemStart < listContent.length) {
-                    items.push(listContent.substring(itemStart).trim());
-                }
-
-                value = items.map(item => {
-                    if (!item) return null;
-                    const eq = item.indexOf('=');
-                    if (eq !== -1 && item.substring(0, eq).trim().match(/^[a-zA-Z0-9_\-]+$/)) {
-                        const v = item.substring(eq + 1).trim();
-                        if (v.startsWith('{')) {
-                             return this._parseMIResult(v.substring(1, v.length - 1));
-                        } else if (v.startsWith('"')) {
-                             return this._unescapeMIString(v);
-                        } else if (v.startsWith('[')) {
-                             return v;
-                        }
-                        return v;
-                    } else {
-                        if (item.startsWith('"')) return this._unescapeMIString(item);
-                        if (item.startsWith('{')) return this._parseMIResult(item.substring(1, item.length - 1));
-                        return item;
-                    }
-                }).filter(x => x !== null);
-
-                pos = end;
-            } else {
-                let end = str.indexOf(',', pos);
-                if (end === -1) end = str.length;
-                value = str.substring(pos, end);
-                pos = end;
-            }
-            
-            res[key] = value;
-            if (str[pos] === ',') pos++;
-        }
-        return res;
-    }
-
+    _emitTargetOutput(text) { const c = String(text || '').replace(/^>+/, '').trim(); if (c) this.emit('target-output', c); }
     _escapePath(p) {
-        const target = this._toDebuggerPath(p);
-        if (os.platform() === 'win32') return target.replace(/\\/g, '/');
-        return target;
+        const t = this._toDebuggerPath(p);
+        return os.platform() === 'win32' ? t.replace(/\\/g, '/') : t;
     }
-
-    _normalizePath(p, originalPath) {
-        const candidate = p || originalPath;
-        if (!candidate) return candidate;
-
-        if (os.platform() === 'win32') {
-            const restored = this._restoreLongPath(candidate) || this._restoreLongPath(originalPath);
-            if (restored) return restored;
-            return path.normalize(candidate);
-        }
-        return candidate;
+    _normalizePath(p) {
+        if (!p) return p || '';
+        if (os.platform() === 'win32') { try { const r = fs.realpathSync.native ? fs.realpathSync.native(p) : fs.realpathSync(p); if (r) return r; } catch (_) { } return path.normalize(p); }
+        return p;
     }
-
-    _restoreLongPath(p) {
-        if (!p) return null;
-        try {
-            const real = fs.realpathSync.native ? fs.realpathSync.native(p) : fs.realpathSync(p);
-            if (real) return real;
-        } catch (_) { }
-        return null;
-    }
-
     _toDebuggerPath(p) {
-        if (!p || typeof p !== 'string') return p;
+        if (!p || typeof p !== 'string') return p || '';
         if (os.platform() !== 'win32') return p;
-
-        const normalized = path.normalize(p);
-        if (!this._hasNonAscii(normalized)) return normalized;
-
-        try {
-            const shortPath = this._getShortPath(normalized);
-            if (shortPath && shortPath !== normalized) {
-                try { global.logInfo?.(`[GDB] 使用短路径以规避编码问题: ${shortPath}`); } catch (_) { }
-                return shortPath;
-            }
-        } catch (e) {
-            try { global.logWarn?.('[GDB] 获取短路径失败', e); } catch (_) { }
-        }
-
-        return normalized;
+        const n = path.normalize(p);
+        if (!/[^\x00-\x7F]/.test(n)) return n;
+        try { const s = this._getShortPath(n); if (s && s !== n) return s; } catch (_) { }
+        return n;
     }
-
-    _hasNonAscii(p) {
-        return /[^\x00-\x7F]/.test(p);
-    }
-
     _getShortPath(p) {
         if (this._shortPathCache.has(p)) return this._shortPathCache.get(p);
-
-        let shortPath = p;
+        let sp = p;
         try {
-            const cmdExe = process.env.ComSpec || 'cmd.exe';
-            const escaped = p.replace(/"/g, '""');
-            const command = `for %I in ("${escaped}") do @echo %~sI`;
-            const result = spawnSync(cmdExe, ['/c', command], { encoding: 'utf8', windowsHide: true });
-            const output = result && result.stdout ? String(result.stdout).trim() : '';
-            if (output) {
-                shortPath = output;
-            }
-        } catch (e) {
-            shortPath = p;
-        }
-
-        this._shortPathCache.set(p, shortPath);
-        return shortPath;
+            const cmd = process.env.ComSpec || 'cmd.exe';
+            const r = spawnSync(cmd, ['/c', `for %I in ("${p.replace(/"/g, '""')}") do @echo %~sI`], { encoding: 'utf8', windowsHide: true });
+            const o = (r && r.stdout) ? String(r.stdout).trim() : '';
+            if (o) sp = o;
+        } catch (_) { }
+        this._shortPathCache.set(p, sp);
+        return sp;
     }
-
-    async _waitReady() {
-        await new Promise(r => setTimeout(r, 100));
-    }
-    
     async _cleanupLinuxTTY() {
-        if (this._ttyProcessPid) {
-            try { process.kill(this._ttyProcessPid, 'SIGTERM'); } catch (_) { }
-        }
-        if (this._ttyProcess) {
-            try { this._ttyProcess.kill(); } catch (_) { }
-        }
-        if (this._ttyShellPid) {
-            try { process.kill(this._ttyShellPid, 'SIGTERM'); } catch (_) { }
-        }
-        this._ttyProcess = null;
-        this._ttyProcessPid = 0;
-        this._ttyPath = null;
-        this._ttyShellPid = null;
+        if (this._ttyProcessPid) { try { process.kill(this._ttyProcessPid, 'SIGTERM'); } catch (_) { } }
+        if (this._ttyProcess) { try { this._ttyProcess.kill(); } catch (_) { } }
+        if (this._ttyShellPid) { try { process.kill(this._ttyShellPid, 'SIGTERM'); } catch (_) { } }
+        this._ttyProcess = null; this._ttyProcessPid = 0; this._ttyPath = null; this._ttyShellPid = null;
     }
-
     async _ensureLinuxTTY() {
         if (this._ttyPath) return { ttyPath: this._ttyPath };
         if (this._linuxTTYOptions.noNewConsole) return null;
         if (this._linuxTTYOptions.inferiorTTY) return { ttyPath: this._linuxTTYOptions.inferiorTTY };
-
-        const hasDisplay = !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY || process.env.MIR_SOCKET);
-        if (!hasDisplay) {
-            global.logWarn?.('[GDB] 当前不是图形会话，无法创建外部调试终端');
-            return null;
-        }
-
-        const defaultTemplate = 'xterm -T $TITLE -e';
-        const templateRaw = String(this._linuxTTYOptions.consoleTerminalTemplate || defaultTemplate).trim() || defaultTemplate;
-        const sleepToken = 80000000 + Math.floor(Math.random() * 100000);
-        const sleepCmd = `sleep ${sleepToken}`;
-
-        let command = templateRaw;
-        command = command.replace(/\$TITLE/g, "'Program Console'");
-        if (command.includes('$SCRIPT')) {
-            command = command.replace(/\$SCRIPT/g, sleepCmd);
-        } else {
-            command = `${command} ${sleepCmd}`;
-        }
-
+        if (!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY || process.env.MIR_SOCKET)) return null;
+        const tmpl = String(this._linuxTTYOptions.consoleTerminalTemplate || 'xterm -T \'$TITLE\' -e').trim() || 'xterm -T \'$TITLE\' -e';
+        const token = 80000000 + Math.floor(Math.random() * 100000);
+        const sleepCmd = `sleep ${token}`;
+        let cmd = tmpl.replace(/\$TITLE/g, "'Program Console'");
+        cmd = cmd.includes('$SCRIPT') ? cmd.replace(/\$SCRIPT/g, sleepCmd) : `${cmd} ${sleepCmd}`;
         try {
-            this._ttyProcess = spawn('/bin/sh', ['-c', command], {
-                detached: true,
-                stdio: 'ignore',
-                env: { ...process.env }
-            });
-            this._ttyProcessPid = this._ttyProcess.pid || 0;
-            this._ttyProcess.unref();
-        } catch (e) {
-            global.logWarn?.('[GDB] 启动终端失败', e);
-            return null;
-        }
-
+            this._ttyProcess = spawn('/bin/sh', ['-c', cmd], { detached: true, stdio: 'ignore', env: { ...process.env } });
+            this._ttyProcessPid = this._ttyProcess.pid || 0; this._ttyProcess.unref();
+        } catch (e) { return null; }
         for (let i = 0; i < 100; i++) {
             await new Promise(r => setTimeout(r, 200));
-
-            let psOut = '';
-            try {
-                const ps = spawnSync('ps', ['x', '-o', 'tty,pid,command'], { encoding: 'utf8' });
-                if (ps && ps.status === 0) {
-                    psOut = String(ps.stdout || '');
-                }
-            } catch (_) {
-            }
-
-            if (!psOut) {
-                continue;
-            }
-
-            const lines = psOut.split(/\r?\n/);
-            for (const line of lines) {
-                if (!line || !line.includes(sleepCmd) || line.includes('ps x -o tty,pid,command')) {
-                    continue;
-                }
-
-                const match = line.trim().match(/^(\S+)\s+(\d+)\s+(.+)$/);
-                if (!match) {
-                    continue;
-                }
-
-                const ttyRaw = match[1];
-                const pidRaw = match[2];
-                const pidForLine = Number.parseInt(pidRaw, 10);
-                if (!Number.isInteger(pidForLine) || pidForLine <= 0) {
-                    continue;
-                }
-
-                if (this._ttyProcessPid > 0 && pidForLine === this._ttyProcessPid) {
-                    continue;
-                }
-
-                if (!ttyRaw || ttyRaw === '?' || ttyRaw === '-') {
-                    continue;
-                }
-
-                const ttyPath = ttyRaw.startsWith('/dev/') ? ttyRaw : `/dev/${ttyRaw}`;
-                this._ttyPath = ttyPath;
-                this._ttyShellPid = pidForLine;
-
-                try {
-                    if (this._ttyProcessPid > 0) {
-                        process.kill(this._ttyProcessPid, 0);
-                    }
-                } catch (err) {
-                    if (err && err.code === 'ESRCH') {
-                        this._ttyProcessPid = pidForLine;
-                    }
-                }
-
-                try { global.logInfo?.(`[GDB] 找到 TTY: ${ttyPath} (PID: ${pidForLine})`); } catch (_) { }
-                return { ttyPath };
+            let po = '';
+            try { const ps = spawnSync('ps', ['x', '-o', 'tty,pid,command'], { encoding: 'utf8' }); if (ps && ps.status === 0) po = String(ps.stdout || ''); } catch (_) { }
+            if (!po) continue;
+            for (const pl of po.split(/\r?\n/)) {
+                if (!pl || !pl.includes(sleepCmd) || pl.includes('ps x -o tty,pid,command')) continue;
+                const m = pl.trim().match(/^(\S+)\s+(\d+)\s+(.+)$/); if (!m) continue;
+                const tr = m[1]; const pid = parseInt(m[2], 10);
+                if (!Number.isInteger(pid) || pid <= 0) continue;
+                if (this._ttyProcessPid > 0 && pid === this._ttyProcessPid) continue;
+                if (!tr || tr === '?' || tr === '-') continue;
+                this._ttyPath = tr.startsWith('/dev/') ? tr : `/dev/${tr}`;
+                this._ttyShellPid = pid;
+                return { ttyPath: this._ttyPath };
             }
         }
-
-        global.logWarn?.('[GDB] 找不到终端的 TTY');
-        try {
-            if (this._ttyProcessPid > 0) {
-                process.kill(this._ttyProcessPid, 'SIGTERM');
-            }
-        } catch (_) { }
-        this._ttyProcessPid = 0;
-        this._ttyShellPid = null;
-        this._ttyPath = null;
+        try { if (this._ttyProcessPid > 0) process.kill(this._ttyProcessPid, 'SIGTERM'); } catch (_) { }
+        this._ttyProcessPid = 0; this._ttyShellPid = null; this._ttyPath = null;
         return null;
     }
 }
-
 module.exports = GDBDebugger;
