@@ -278,6 +278,9 @@
             case 'check-update':
                 this.checkForUpdates();
                 break;
+            case 'open-source-licenses':
+                this.showOpenSourceLicenses();
+                break;
             case 'ide-login':
                 await this.startIdeLogin();
                 break;
@@ -3842,6 +3845,98 @@ ${data.message || '程序已加载，等待开始执行'}
         this.setFeedbackDialogIcon();
         this.setupAboutDialogListeners(dialog);
         
+    }
+
+    showOpenSourceLicenses() {
+        const openSourceLibs = [
+            { name: 'Electron', license: 'MIT', url: 'https://github.com/electron/electron' },
+            { name: 'Monaco Editor', license: 'MIT', url: 'https://github.com/microsoft/monaco-editor' },
+            { name: 'clangd', license: 'Apache-2.0', url: 'https://github.com/llvm/llvm-project' },
+            { name: 'xterm.js', license: 'MIT', url: 'https://github.com/xtermjs/xterm.js' },
+            { name: 'xterm-addon-fit', license: 'MIT', url: 'https://github.com/xtermjs/xterm.js' },
+            { name: 'node-pty', license: 'MIT', url: 'https://github.com/nicely-bot/node-pty' },
+            { name: 'markdown-it', license: 'MIT', url: 'https://github.com/markdown-it/markdown-it' },
+            { name: 'markdown-it-katex', license: 'MIT', url: 'https://github.com/iktakahiro/markdown-it-katex' },
+            { name: 'markdown-it-task-lists', license: 'ISC', url: 'https://github.com/revin/markdown-it-task-lists' },
+            { name: 'markdown-it-image-figures', license: 'MIT', url: 'https://github.com/Antonio-Laguna/markdown-it-image-figures' },
+            { name: 'highlight.js', license: 'BSD-3-Clause', url: 'https://github.com/highlightjs/highlight.js' },
+            { name: 'KaTeX', license: 'MIT', url: 'https://github.com/KaTeX/KaTeX' },
+            { name: 'PDF.js (pdfjs-dist)', license: 'Apache-2.0', url: 'https://github.com/mozilla/pdf.js' },
+            { name: 'axios', license: 'MIT', url: 'https://github.com/axios/axios' },
+            { name: 'sharp', license: 'Apache-2.0', url: 'https://github.com/lovell/sharp' },
+            { name: 'webpack', license: 'MIT', url: 'https://github.com/webpack/webpack' },
+            { name: 'webpack-cli', license: 'MIT', url: 'https://github.com/webpack/webpack-cli' },
+            { name: 'electron-builder', license: 'MIT', url: 'https://github.com/electron-userland/electron-builder' },
+            { name: 'html-webpack-plugin', license: 'MIT', url: 'https://github.com/jantimon/html-webpack-plugin' },
+            { name: 'iconv-lite', license: 'MIT', url: 'https://github.com/ashtuchkin/iconv-lite' },
+            { name: 'turndown', license: 'MIT', url: 'https://github.com/mixmark-io/turndown' },
+            { name: 'extract-zip', license: 'BSD-2-Clause', url: 'https://github.com/maxogden/extract-zip' },
+            { name: 'node-stream-zip', license: 'MIT', url: 'https://github.com/antelle/node-stream-zip' },
+            { name: '7zip-bin', license: 'MIT', url: 'https://github.com/develar/7zip-bin' },
+            { name: 'winreg', license: 'BSD-2-Clause', url: 'https://github.com/fresc81/node-winreg' },
+            { name: 'monaco-editor-webpack-plugin', license: 'MIT', url: 'https://github.com/microsoft/monaco-editor' },
+            { name: 'icojs', license: 'MIT', url: 'https://github.com/nicely-bot/icojs' }
+        ];
+
+        const libRows = openSourceLibs.map(lib => `
+            <tr>
+                <td class="oss-lib-name">${lib.name}</td>
+                <td class="oss-lib-license">${lib.license}</td>
+                <td class="oss-lib-url">${lib.url}</td>
+            </tr>
+        `).join('');
+
+        const dialog = document.createElement('div');
+        dialog.className = 'about-dialog-overlay';
+        dialog.innerHTML = `
+            <div class="about-dialog oss-dialog">
+                <div class="about-header">
+                    <h2>开源软件使用声明</h2>
+                </div>
+                <div class="about-content oss-content">
+                    <p class="oss-intro">OICPP IDE 使用了以下开源软件，在此向这些项目的开发者和贡献者表示感谢。</p>
+                    <div class="oss-table-wrap">
+                        <table class="oss-table">
+                            <thead>
+                                <tr>
+                                    <th>名称</th>
+                                    <th>许可证</th>
+                                    <th>项目地址</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${libRows}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="about-footer">
+                    <button id="oss-close-btn">关闭</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(dialog);
+
+        const closeBtn = dialog.querySelector('#oss-close-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                dialog.remove();
+            });
+        }
+
+        dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) {
+                dialog.remove();
+            }
+        });
+
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                dialog.remove();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
     }
 
     async setAboutDialogIcon() {
