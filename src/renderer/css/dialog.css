@@ -535,3 +535,79 @@
     font-family: 'Consolas', 'Courier New', monospace;
     letter-spacing: 0.2px;
 }
+
+/* 开源软件使用声明 */
+.oss-dialog {
+    min-width: 650px;
+    max-width: 800px;
+}
+
+.oss-content {
+    padding: 16px 20px;
+}
+
+.oss-intro {
+    margin: 0 0 14px 0;
+    color: var(--text-secondary, #9a9a9a);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.oss-table-wrap {
+    max-height: 50vh;
+    overflow-y: auto;
+    border: 1px solid var(--border-color, #3c3c3c);
+    border-radius: 8px;
+}
+
+.oss-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.oss-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.oss-table thead th {
+    background: var(--card-bg, #2d2d30);
+    color: var(--text-color, #cccccc);
+    font-weight: 600;
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 2px solid var(--border-color, #3c3c3c);
+    font-size: 13px;
+}
+
+.oss-table tbody td {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border-color, #3c3c3c);
+    color: var(--text-color, #cccccc);
+}
+
+.oss-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.oss-table tbody tr:hover {
+    background: var(--hover-bg, #2a2d2e);
+}
+
+.oss-lib-name {
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.oss-lib-license {
+    white-space: nowrap;
+    color: var(--text-secondary, #9a9a9a);
+}
+
+.oss-lib-url {
+    color: var(--text-secondary, #9a9a9a);
+    font-size: 12px;
+    word-break: break-all;
+}
