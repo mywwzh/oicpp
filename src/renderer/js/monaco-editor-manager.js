@@ -812,18 +812,24 @@ class MonacoEditorManager {
                         return locations
                             .filter(Boolean)
                             .map((loc) => {
-                                const targetUri = loc.uri || '';
-                                const targetRange = loc.range || {};
-                                return {
-                                    uri: monaco.Uri.parse(targetUri),
-                                    range: new monaco.Range(
-                                        (targetRange.start?.line || 0) + 1,
-                                        (targetRange.start?.character || 0) + 1,
-                                        (targetRange.end?.line || 0) + 1,
-                                        (targetRange.end?.character || 0) + 1
-                                    )
-                                };
-                            });
+                                try {
+                                    const targetUri = loc.uri || '';
+                                    const targetRange = loc.range || {};
+                                    return {
+                                        uri: monaco.Uri.parse(targetUri),
+                                        range: new monaco.Range(
+                                            (targetRange.start?.line || 0) + 1,
+                                            (targetRange.start?.character || 0) + 1,
+                                            (targetRange.end?.line || 0) + 1,
+                                            (targetRange.end?.character || 0) + 1
+                                        )
+                                    };
+                                } catch (err) {
+                                    logWarn('[LSP] 定义位置处理失败:', err?.message || String(err));
+                                    return null;
+                                }
+                            })
+                            .filter(Boolean);
                     } catch (_) {
                         return null;
                     }
