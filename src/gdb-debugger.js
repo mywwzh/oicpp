@@ -97,7 +97,11 @@ class GDBDebugger extends EventEmitter {
         if (options.disableInit) args.unshift('-nx');
         this.gdbProcess = spawn(gdbExe, args, { stdio: ['pipe', 'pipe', 'pipe'], env, windowsHide: false });
         this.gdbProcess.stdout.on('data', (d) => this._onData(d.toString()));
-        this.gdbProcess.stderr.on('data', (d) => { try { global.logWarn?.('[GDB-STDERR]', d.toString()); } catch (_) { } });
+        this.gdbProcess.stderr.on('data', (d) => {
+            const text = d.toString();
+            if (text.includes('Failed to set controlling terminal')) return;
+            try { global.logWarn?.('[GDB-STDERR]', text); } catch (_) { }
+        });
         this.gdbProcess.on('exit', (code, signal) => {
             if (this._buffer) { this._parseOutput(this._buffer); this._buffer = ''; }
             this.isRunning = false; this.programExited = true;
@@ -165,6 +169,9 @@ class GDBDebugger extends EventEmitter {
         }
         this._isStarted = true;
         this._sendContinue('run').catch(e => global.logWarn?.('[GDB] run 失败:', e?.message || e));
+        if ((process.platform === 'linux' || process.platform === 'darwin') && this._ttyPath) {
+            this.emit('inferior-started', { pid: 0, ttyPath: this._ttyPath });
+        }
     }
     async continue() {
         if (this.programExited) throw new Error('Program has exited');
@@ -317,6 +324,7 @@ class GDBDebugger extends EventEmitter {
     _parseOutput(output) {
         this._queueBusy = false;
         const cmd = this._currentCmd;
+        const wasContinueCmd = !!(cmd && cmd.isContinue);
         if (cmd) {
             this._cmdQueue.shift(); this._currentCmd = null;
             const result = cmd.parser && output ? cmd.parser(output) : (output || '');
@@ -355,9 +363,11 @@ class GDBDebugger extends EventEmitter {
             if (line.startsWith('Temporary breakpoint') && reTempBreakFound.test(line)) continue;
             if (line.length > 0 && line.charCodeAt(0) === 0x1A) { this._handleMainBreakpoint(line); continue; }
             if (this._handleOtherBreakInfo(line)) continue;
+            if (this._isGDBInternalNoise(line)) continue;
             if (line.trim()) targetLines.push(line);
         }
-        if (targetLines.length > 0) this._emitTargetOutput(targetLines.join('\n'));
+
+        if (targetLines.length > 0 && wasContinueCmd) this._emitTargetOutput(targetLines.join('\n'));
         if (this._cmdQueue.length === 0 && !this._programStopped && !this._cursor.changed) {
             this._programStopped = true; this._inferiorRunning = false;
         }
@@ -375,10 +385,19 @@ class GDBDebugger extends EventEmitter {
     _detectChildPid(output) {
         if (process.platform === 'win32') {
             const m = reChildPid2.exec(output);
-            if (m) { const p = parseInt(m[0].substring(m[0].lastIndexOf(' ') + 1).split('.')[0], 10); if (p > 0) this.emit('child-pid', p); }
+            if (m) { const p = parseInt(m[0].substring(m[0].lastIndexOf(' ') + 1).split('.')[0], 10); if (p > 0) { this.emit('child-pid', p); } }
         } else {
             const m = reChildPid1.exec(output);
-            if (m) { const p = parseInt(m[1], 10); if (p > 0) this.emit('child-pid', p); }
+            if (m) {
+                const p = parseInt(m[1], 10);
+                if (p > 0) {
+                    this.emit('child-pid', p);
+                    const ttyPath = this._ttyPath || '';
+                    if (ttyPath) {
+                        this.emit('inferior-started', { pid: p, ttyPath: ttyPath });
+                    }
+                }
+            }
         }
     }
     _handleMainBreakpoint(line) {
@@ -485,6 +504,32 @@ class GDBDebugger extends EventEmitter {
         try { if (this._ttyProcessPid > 0) process.kill(this._ttyProcessPid, 'SIGTERM'); } catch (_) { }
         this._ttyProcessPid = 0; this._ttyShellPid = null; this._ttyPath = null;
         return null;
+    }
+
+    _isGDBInternalNoise(line) {
+        const s = line.trim();
+        if (!s) return true;
+        if (s.startsWith('Type "show configuration"')) return true;
+        if (s.startsWith('For bug reporting')) return true;
+        if (s.startsWith('Find the GDB manual')) return true;
+        if (s.startsWith('For help, type')) return true;
+        if (s.startsWith('Type "apropos word"')) return true;
+        if (/^https?:\/\//.test(s) && s.length < 120 && !/\s/.test(s)) return true;
+        if (s.startsWith('Reading symbols from')) return true;
+        if (s.startsWith('Starting program:')) return true;
+        if (/^Breakpoint\s+\d+\s+at\s+/.test(s) && !s.includes('pending')) return true;
+        if (/^Thread\s+\d+\s+hit\s+(Breakpoint|Catchpoint)\s+\d+/.test(s)) return true;
+        if (s === 'Continuing.') return true;
+        if (s === 'No arguments.' || s === 'No locals.') return true;
+        if (/^#\d+\s+/.test(s) && /\s+at\s+/.test(s)) return true;
+        if (/^\$\d+\s*=/.test(s)) return true;
+        if (/^\[New Thread\s/.test(s)) return true;
+        if (/^\[Thread\s.*\sexited\]/.test(s)) return true;
+        if (/^\[Thread\s.*\sexited\swith\scode/.test(s)) return true;
+        if (/^\[Loading\s/.test(s)) return true;
+        if (/^\[Switching to thread\s/.test(s)) return true;
+        if (/^\d+\t/.test(line)) return true;
+        return false;
     }
 }
 module.exports = GDBDebugger;
