@@ -1210,6 +1210,9 @@ let isDebugging = false;
 let debugSessionRootDir = null;
 let lastDebugCommand = null;
 let autoSkipInternalCounter = 0;
+let _debugShellPid = 0;
+let _debugInferiorPid = 0;
+let _debugTTYPath = '';
 const AUTO_SKIP_INTERNAL_LIMIT = 8;
 const AUTO_SKIP_ELIGIBLE_COMMANDS = new Set(['continue', 'step', 'stepi', 'finish']);
 
@@ -2761,6 +2764,12 @@ function setupIPC() {
             gdbDebugger.addWatchVariable(expr).then(() => {
                 event.reply('debug-output', { message: `已添加监视变量: ${expr}`, type: 'info' });
                 try {
+                    const isInferiorRunning = !!gdbDebugger._inferiorRunning;
+                    if (isInferiorRunning) {
+                        broadcastPendingWatchSnapshot(event, '(运行中，等待暂停)');
+                        return;
+                    }
+
                     gdbDebugger.updateVariables().then(() => {
                         const vars = gdbDebugger.getVariables();
                         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -3234,7 +3243,7 @@ function setupIPC() {
         info.count += 1;
         entry.subscribers.set(contentsId, info);
 
-        return { success: true };
+        return { success: true, reason: 'stopped' };
     });
 
     ipcMain.handle('unwatch-file', async (event, filePath) => {
@@ -8767,8 +8776,48 @@ async function startDebugSession(filePath, options = {}) {
     }
 }
 
+/**
+ * 通过 fuser 命令（回退到 /proc 扫描）找到实际打开了指定 TTY 设备的所有 PID。
+ * 不能用 ps -t，因为 GDB 的 set inferior-tty 只重定向 fd，不改变控制终端。
+ */
+function _resolvePidsOnTTY(ttyPath) {
+    const pids = new Set();
+    if (!ttyPath) return pids;
+    try {
+        // 优先用 fuser，速度快且不受进程数限制
+        let output = '';
+        const fuserResult = spawnSync('fuser', [ttyPath], { encoding: 'utf8', timeout: 2000 });
+        if (fuserResult.status === 0 && fuserResult.stdout) {
+            // fuser 输出格式: "/dev/pts/2: 6844 6855"
+            output = String(fuserResult.stdout || '');
+        }
+        if (output) {
+            const match = output.match(/:\s*([0-9\s]+)$/m);
+            if (match) {
+                for (const token of match[1].trim().split(/\s+/)) {
+                    const pid = parseInt(token, 10);
+                    if (pid > 0) pids.add(pid);
+                }
+            }
+        }
+        // 回退方案：扫描 /proc/[pid]/fd/（用 find 避免 glob 展开超限）
+        if (pids.size === 0) {
+            const cmd = `find /proc -maxdepth 2 -name fd -type d 2>/dev/null | while read d; do ls -l "$d" 2>/dev/null; done | grep -F '${ttyPath}' | awk -F/ '{print $3}' | sort -n | uniq`;
+            const result = spawnSync('sh', ['-c', cmd], { encoding: 'utf8', timeout: 5000 });
+            output = String(result.stdout || '').trim();
+            if (output) {
+                for (const line of output.split(/\r?\n/)) {
+                    const pid = parseInt(line.trim(), 10);
+                    if (pid > 0) pids.add(pid);
+                }
+            }
+        }
+    } catch (_) { }
+    return pids;
+}
+
 function _restoreTTYShell() {
-    if (process.platform !== 'darwin') return;
+    if (process.platform !== 'linux' && process.platform !== 'darwin') return;
     const shellPid = _debugShellPid;
     const ttyPath = _debugTTYPath;
     _debugShellPid = 0;
@@ -8777,7 +8826,7 @@ function _restoreTTYShell() {
     if (!shellPid || !ttyPath) return;
 
     try {
-        // 1. 恢复 shell 前台进程组
+        // 1. 恢复 shell 前台进程组（必须在 SIGCONT 之前，避免 shell 醒来后收到 SIGTTIN）
         const tcsetScript = `import os, termios; fd = os.open('${ttyPath}', os.O_RDONLY); termios.tcsetpgrp(fd, ${shellPid}); os.close(fd)`;
         spawnSync('python3', ['-c', tcsetScript], { encoding: 'utf8', timeout: 3000 });
 
@@ -8953,26 +9002,60 @@ function setupDebuggerEvents() {
         } catch (_) { }
     });
 
-    // macOS TTY 接管：将被调试进程设为终端前台进程组
-    let _debugShellPid = 0;
-    let _debugInferiorPid = 0;
-    let _debugTTYPath = '';
+    // Linux / macOS TTY 接管：将被调试进程设为终端前台进程组
+    _debugShellPid = 0;
+    _debugInferiorPid = 0;
+    _debugTTYPath = '';
 
-    gdbDebugger.on('inferior-started', (data) => {
-        if (process.platform !== 'darwin') return;
-        const inferiorPid = data?.pid;
+    gdbDebugger.on('inferior-started', async (data) => {
+        // Linux / macOS TTY 接管：将被调试进程设为终端前台进程组
+        if (process.platform !== 'linux' && process.platform !== 'darwin') return;
         const ttyPath = data?.ttyPath;
-        if (!inferiorPid || !ttyPath) return;
-        _debugInferiorPid = inferiorPid;
+        if (!ttyPath) return;
+        let inferiorPid = data?.pid || 0;
+
+        // 保存 TTY 路径，即使接管失败也能用于后续恢复
         _debugTTYPath = ttyPath;
 
+        // 如果 PID 未知，通过扫描 /proc 中实际打开了该 TTY 的进程来查找
+        // 不能用 ps -t，因为 GDB 的 set inferior-tty 不会改变被调试进程的控制终端
+        if (!inferiorPid) {
+            // 先记录当前 TTY 上的 PID（shell 等）
+            const beforePids = _resolvePidsOnTTY(ttyPath);
+            // 短暂延迟等待 inferior 启动
+            await new Promise(r => setTimeout(r, 120));
+            const afterPids = _resolvePidsOnTTY(ttyPath);
+            // 找出新出现的 PID
+            for (const pid of afterPids) {
+                if (!beforePids.has(pid)) {
+                    inferiorPid = pid;
+                    break;
+                }
+            }
+            if (!inferiorPid) {
+                logWarn('[主进程] TTY接管: 无法通过 /proc 扫描找到 inferior PID（程序可能已快速退出），跳过接管');
+                // 记录最小的 shell PID 以备恢复
+                if (beforePids.size > 0) {
+                    _debugShellPid = Math.min(...beforePids);
+                    logInfo('[主进程] TTY接管: 已记录 shell PID=', _debugShellPid, '（未暂停 shell）');
+                }
+                return;
+            }
+        }
+
+        _debugInferiorPid = inferiorPid;
+
         try {
-            // 获取终端 shell 的 PID
-            const ps = spawnSync('ps', ['-t', ttyPath.replace('/dev/', ''), '-o', 'pid='], { encoding: 'utf8' });
-            const shellPidStr = String(ps.stdout || '').trim().split(/\r?\n/)[0];
-            const shellPid = parseInt(shellPidStr, 10);
+            // 获取终端 shell 的 PID：取 TTY 上最小的 PID（排除 inferior 自身）
+            const allPids = _resolvePidsOnTTY(ttyPath);
+            let shellPid = 0;
+            for (const pid of allPids) {
+                if (pid !== inferiorPid && (!shellPid || pid < shellPid)) {
+                    shellPid = pid;
+                }
+            }
             if (!shellPid || shellPid <= 0) {
-                logWarn('[主进程] TTY接管失败: 无法获取 shell PID');
+                logWarn('[主进程] TTY接管失败: 无法获取 shell PID, TTY上的PID:', [...allPids]);
                 return;
             }
             _debugShellPid = shellPid;

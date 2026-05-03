@@ -456,12 +456,41 @@ class IntegratedTerminalPanel {
             const meta = !!event.metaKey;
             const alt = !!event.altKey;
             const shift = !!event.shiftKey;
+            const ctrlOrMeta = ctrl || meta;
+            const shiftOnly = shift && !ctrl && !meta && !alt;
+
+            // ---- 终端复制/粘贴快捷键（比 xterm attachCustomKeyEventHandler 更早拦截） ----
+            const session = sessionRef;
+            const term = session?.terminal;
+            const hasSelection = term && typeof term.getSelection === 'function' && !!term.getSelection();
+            const wantsCopy = (ctrlOrMeta && key === 'c' && (shift || hasSelection))
+                || (ctrlOrMeta && key === 'insert');
+            const wantsPaste = (ctrlOrMeta && key === 'v')
+                || (shiftOnly && key === 'insert');
+
+            if (wantsCopy) {
+                event.preventDefault();
+                event.stopPropagation();
+                const sel = term && typeof term.getSelection === 'function' ? term.getSelection() : '';
+                this.copyTextToClipboard(sel);
+                return;
+            }
+
+            if (wantsPaste) {
+                event.preventDefault();
+                event.stopPropagation();
+                const remoteId = session?.remoteId;
+                if (remoteId) {
+                    this.pasteClipboardToTerminal(remoteId);
+                }
+                return;
+            }
 
             // Ensure terminal input is not stolen by focus traversal or global handlers.
             if (key === 'tab' && !ctrl && !meta && !alt) {
                 event.preventDefault();
                 event.stopPropagation();
-                const seq = shift ? '\u001b[Z' : '\t';
+                const seq = shift ? '\u001b[Z]' : '\t';
                 sendInput(seq);
                 return;
             }

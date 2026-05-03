@@ -752,7 +752,15 @@ class DebugPanel {
 
     _formatValue(data) {
         if (!data) return '';
-        let display = data.value || '';
+        const rawValue = data.value != null ? String(data.value) : '';
+        const rawType = data.type != null ? String(data.type) : '';
+        let display = rawValue || '';
+
+        const stdMatch = rawValue.match(/\bstd::([a-zA-Z_0-9]+)\b/)
+            || rawType.match(/\bstd::([a-zA-Z_0-9]+)\b/);
+        if (stdMatch && stdMatch[1]) {
+            display = stdMatch[1];
+        }
         if (data.isArray || data.isContainer) {
             const cnt = data.elementCount != null ? data.elementCount : '?';
             display = `${data.isArray ? '数组' : '容器'}[${cnt}] ${display}`;
