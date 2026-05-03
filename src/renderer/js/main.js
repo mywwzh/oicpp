@@ -23,6 +23,7 @@
     this._debugExited = false;
     this._debugTerminalId = null;
     this._debugTerminalBridgeEnabled = false;
+    this._debugSessionTerminalId = null;
         this.terminalPanel = null;
         this.updateDownloadState = {
             autoChecking: false,
@@ -1964,31 +1965,58 @@
             return '';
         }
 
-        const isWindows = !!(typeof process !== 'undefined' && process.platform === 'win32');
-        if (!isWindows) {
-            return text;
-        }
-
-        // Hide common GDB runtime noise while keeping user program output.
+        // Hide common GDB runtime noise while keeping user program output (all platforms).
         text = text
             .replace(/\[(?:New Thread [^\]\r\n]*)\]\r?\n?/g, '')
             .replace(/\[(?:Thread [^\]\r\n]* exited(?: with code [^\]\r\n]*)?)\]\r?\n?/g, '')
-            .replace(/\[(?:Inferior [^\]\r\n]* exited[^\]\r\n]*)\]\r?\n?/g, '');
+            .replace(/\[(?:Inferior [^\]\r\n]* exited[^\]\r\n]*)\]\r?\n?/g, '')
+            .replace(/\[(?:Switching to thread [^\]\r\n]*)\]\r?\n?/g, '')
+            .replace(/^Type\s+"show\s+configuration".*\r?\n?/gm, '')
+            .replace(/^For\s+bug\s+reporting\s+instructions.*\r?\n?/gm, '')
+            .replace(/^Find\s+the\s+GDB\s+manual.*\r?\n?/gm, '')
+            .replace(/^For\s+help,\s+type\s+"help".*\r?\n?/gm, '')
+            .replace(/^Type\s+"apropos\s+word".*\r?\n?/gm, '')
+            .replace(/^https?:\/\/[^\s]+\r?\n?/gm, '')
+            .replace(/^Reading\s+symbols\s+from\s+.*\r?\n?/gm, '')
+            .replace(/^Starting\s+program:\s+.*\r?\n?/gm, '')
+            .replace(/^Breakpoint\s+\d+\s+at\s+.*\r?\n?/gm, '')
+            .replace(/^Thread\s+\d+\s+hit\s+(?:Breakpoint|Catchpoint)\s+\d+.*\r?\n?/gm, '')
+            .replace(/^Continuing\.\r?\n?/gm, '')
+            .replace(/^No\s+arguments\.\r?\n?/gm, '')
+            .replace(/^No\s+locals\.\r?\n?/gm, '')
+            .replace(/^#\d+\s+.*\s+at\s+.*\r?\n?/gm, '')
+            .replace(/^\$\d+\s*=.*\r?\n?/gm, '')
+            .replace(/^\[Loading\s+[^\]]*\]\r?\n?/gm, '');
 
         return text;
     }
 
     unbindDebugTerminalBridge() {
-        if (!this.terminalPanel || !this._debugTerminalId) {
-            this._debugTerminalBridgeEnabled = false;
-            this._debugTerminalId = null;
-            return;
+        const terminalId = this._debugTerminalId || this._debugSessionTerminalId;
+
+        // 清除输入桥接（如果存在）
+        if (this._debugTerminalId && this.terminalPanel) {
+            this.terminalPanel.clearInputBridge(this._debugTerminalId);
+            this.terminalPanel.setRemoteOutputMuted(this._debugTerminalId, false);
         }
 
-        this.terminalPanel.clearInputBridge(this._debugTerminalId);
-        this.terminalPanel.setRemoteOutputMuted(this._debugTerminalId, false);
+        // 恢复终端：发送换行以强制 shell 打印新提示符
+        if (terminalId && this.terminalPanel) {
+            // 先尝试通过 IPC 写入 PTY
+            try {
+                if (window.electronAPI && typeof window.electronAPI.writeTerminal === 'function') {
+                    window.electronAPI.writeTerminal(terminalId, '\n');
+                }
+            } catch (_) { }
+            // 同时直接写入 xterm.js 显示层，确保用户能看到换行
+            try {
+                this.terminalPanel.writeTerminalOutput(terminalId, '\r\n');
+            } catch (_) { }
+        }
+
         this._debugTerminalBridgeEnabled = false;
         this._debugTerminalId = null;
+        this._debugSessionTerminalId = null;
     }
 
     appendDebugTerminalOutput(data) {
@@ -2644,6 +2672,7 @@
                 } catch (_) { }
                 const openedTerminalId = await this.openIntegratedTerminal({ forceCreate: true });
                 terminalId = openedTerminalId || this.terminalPanel?.activeId || '';
+                this._debugSessionTerminalId = terminalId || null;
                 this.unbindDebugTerminalBridge();
                 const isUnixLike = this.isUnixLikePlatform();
 
@@ -2652,7 +2681,7 @@
                 }
 
                 if (this.isLinuxPlatform()) {
-                    // Linux integrated terminal is more stable with direct input bridge.
+                    // Linux: 使用输入桥接模式（稳定可靠，不经 inferior-tty + tcsetpgrp）
                     useInputBridge = this.bindDebugTerminalBridge(terminalId);
                     if (!useInputBridge) {
                         inferiorTTY = await this.resolveTerminalTTYForDebug(terminalId);
@@ -2663,6 +2692,9 @@
                     if (!inferiorTTY) {
                         useInputBridge = this.bindDebugTerminalBridge(terminalId);
                     }
+                } else {
+                    // Windows: 内置终端调试通过输入桥接模式将用户输入转发到 GDB
+                    useInputBridge = this.bindDebugTerminalBridge(terminalId);
                 }
 
                 if (!inferiorTTY && !useInputBridge) {
@@ -2916,6 +2948,7 @@
         logInfo('[前端] 调试已停止(原始事件):', data);
         const reason = String(data?.reason || '').toLowerCase();
         const isExit = reason.includes('program-exited') || reason === 'exited' || reason.includes('exit');
+        const isManualStop = data?.success === true || reason === 'stopped' || reason === 'manual-stop';
 
         if (isExit) {
             this.isDebugging = false;
@@ -2924,6 +2957,18 @@
             this.updateDebugControlsState(false);
             this.updateDebugStatus(`程序运行完成，退出码: ${data.exitCode ?? data.code ?? 0}`);
             this.showDebugInfo(`程序运行完成，退出码: ${data.exitCode ?? data.code ?? 0}\n\n程序输出应该在终端窗口中显示。`);
+            this.showWaitingMessages();
+            try { window.monacoEditorManager?.clearAllExecHighlights?.(); } catch (_) {}
+            return;
+        }
+
+        if (isManualStop) {
+            this.isDebugging = false;
+            this._debugExited = true;
+            this.unbindDebugTerminalBridge();
+            this.updateDebugControlsState(false);
+            this.updateDebugStatus('调试已停止');
+            this.showDebugInfo('调试已停止。');
             this.showWaitingMessages();
             try { window.monacoEditorManager?.clearAllExecHighlights?.(); } catch (_) {}
             return;
