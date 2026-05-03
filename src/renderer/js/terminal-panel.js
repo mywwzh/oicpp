@@ -621,21 +621,33 @@ class IntegratedTerminalPanel {
     }
 
     async pasteClipboardToTerminal(terminalId) {
+        let text = '';
         try {
-            const text = await navigator.clipboard.readText();
-            if (!text) {
-                return;
-            }
-            await window.electronAPI.writeTerminal(terminalId, text);
-            return;
+            text = await navigator.clipboard.readText();
         } catch (_) { }
 
+        if (!text) {
+            try {
+                const result = await window.electronAPI?.clipboardReadText?.();
+                text = result?.success ? String(result.text || '') : '';
+            } catch (_) { }
+        }
+
+        if (!text) {
+            return;
+        }
+
+        // 调试输入桥接模式：通过 inputBridge 发送，确保粘贴内容到达被调试程序
+        const session = this.sessions.get(terminalId);
+        if (session && typeof session.inputBridge === 'function') {
+            this.echoBridgedInput(session, text);
+            try {
+                session.inputBridge(text);
+            } catch (_) { }
+            return;
+        }
+
         try {
-            const result = await window.electronAPI?.clipboardReadText?.();
-            const text = result?.success ? String(result.text || '') : '';
-            if (!text) {
-                return;
-            }
             await window.electronAPI.writeTerminal(terminalId, text);
         } catch (_) { }
     }
