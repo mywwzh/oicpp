@@ -43,6 +43,103 @@ function getClangdExecutableName() {
     return process.platform === 'win32' ? 'clangd.exe' : 'clangd';
 }
 
+let cachedWindowsAnsiCodePage = null;
+let cachedWindowsAnsiEncoding = undefined;
+
+function getWindowsAnsiEncodingName() {
+    if (process.platform !== 'win32') {
+        return null;
+    }
+
+    if (cachedWindowsAnsiEncoding !== undefined) {
+        return cachedWindowsAnsiEncoding;
+    }
+
+    try {
+        const result = spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-Command', '[System.Text.Encoding]::Default.CodePage'], {
+            encoding: 'utf8',
+            timeout: 2000,
+            windowsHide: true
+        });
+        const codePage = parseInt(String(result.stdout || '').trim(), 10);
+        cachedWindowsAnsiCodePage = Number.isFinite(codePage) ? codePage : null;
+    } catch (_) {
+        cachedWindowsAnsiCodePage = null;
+    }
+
+    switch (cachedWindowsAnsiCodePage) {
+        case 65001:
+            cachedWindowsAnsiEncoding = 'utf8';
+            break;
+        case 936:
+            cachedWindowsAnsiEncoding = 'gbk';
+            break;
+        case 950:
+            cachedWindowsAnsiEncoding = 'big5';
+            break;
+        case 932:
+            cachedWindowsAnsiEncoding = 'shift_jis';
+            break;
+        case 949:
+            cachedWindowsAnsiEncoding = 'cp949';
+            break;
+        case 1250:
+            cachedWindowsAnsiEncoding = 'windows-1250';
+            break;
+        case 1251:
+            cachedWindowsAnsiEncoding = 'windows-1251';
+            break;
+        case 1252:
+            cachedWindowsAnsiEncoding = 'windows-1252';
+            break;
+        case 1253:
+            cachedWindowsAnsiEncoding = 'windows-1253';
+            break;
+        case 1254:
+            cachedWindowsAnsiEncoding = 'windows-1254';
+            break;
+        case 1255:
+            cachedWindowsAnsiEncoding = 'windows-1255';
+            break;
+        case 1256:
+            cachedWindowsAnsiEncoding = 'windows-1256';
+            break;
+        case 1257:
+            cachedWindowsAnsiEncoding = 'windows-1257';
+            break;
+        case 1258:
+            cachedWindowsAnsiEncoding = 'windows-1258';
+            break;
+        default:
+            cachedWindowsAnsiEncoding = null;
+            break;
+    }
+
+    return cachedWindowsAnsiEncoding;
+}
+
+function shouldUseAsciiTempCompileFile(inputFile) {
+    if (process.platform !== 'win32' || typeof inputFile !== 'string' || !inputFile) {
+        return false;
+    }
+    if (!/[^\x00-\x7F]/.test(inputFile)) {
+        return false;
+    }
+
+    const encoding = getWindowsAnsiEncodingName();
+    if (!encoding) {
+        return false;
+    }
+
+    try {
+        const iconv = require('iconv-lite');
+        const encoded = iconv.encode(inputFile, encoding);
+        return iconv.decode(encoded, encoding) !== inputFile;
+    } catch (_) {
+        return false;
+    }
+}
+
 function resolveClangdRootFromBundle() {
     const platformKey = getClangdPlatformKey();
     const bundled = app.isPackaged
@@ -6490,14 +6587,35 @@ async function compileFile(options) {
             }
         }
 
-        // 直接使用真实文件路径编译，避免非 ASCII 文件名被改写成临时副本后引发路径不一致。
-        const actualInputFile = inputFile;
+        // Only fall back to an ASCII-safe temp copy when the current Windows ANSI code page cannot
+        // represent the source path.
+        let actualInputFile = inputFile;
+        let tempInputFile = null;
+        if (shouldUseAsciiTempCompileFile(inputFile)) {
+            const hash = crypto.createHash('md5').update(inputFile).digest('hex').substring(0, 8);
+            const ext = path.extname(inputFile);
+            tempInputFile = path.join(outputDir, `_oicpp_native_${hash}${ext}`);
+            try {
+                fs.copyFileSync(inputFile, tempInputFile);
+                actualInputFile = tempInputFile;
+                logInfo('[编译] 路径无法被当前 ANSI 代码页表示，已创建临时文件:', tempInputFile);
+            } catch (copyErr) {
+                logWarn('[编译] 无法创建临时文件，使用原始路径（可能编译失败）:', copyErr.message);
+                tempInputFile = null;
+                actualInputFile = inputFile;
+            }
+        }
 
         const args = [
             ...parsedUserArgs,
             '-o', outputFile,
             actualInputFile
         ];
+
+        if (tempInputFile) {
+            const originalDir = path.dirname(inputFile);
+            args.unshift('-iquote', originalDir);
+        }
 
         logInfo('编译命令:', compilerPath, args.join(' '));
 
