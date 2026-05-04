@@ -29,6 +29,7 @@ class UnifiedSettingsManager {
             runMode: isIntegratedOnlyPlatform ? 'integrated-terminal' : 'popup',
             font: 'Consolas',
             fontSize: 14,
+            terminalFontSize: 14,
             lineHeight: 0,
             theme: 'dark',
             tabSize: 4,
@@ -178,7 +179,7 @@ class UnifiedSettingsManager {
             if (typeof require !== 'undefined') {
                 const { ipcRenderer } = require('electron');
                 const allowedKeys = new Set([
-                    'font','fontSize','lineHeight','theme','tabSize','enableAutoCompletion','foldingEnabled','stickyScrollEnabled','compilerPath','compilerArgs','runMode','testlibPath','codeSnippets','cppTemplate','fontLigaturesEnabled','autoSave','autoSaveInterval','autoBackupSettings','windowOpacity','backgroundImage','markdownMode','keybindings'
+                    'font','fontSize','terminalFontSize','lineHeight','theme','tabSize','enableAutoCompletion','foldingEnabled','stickyScrollEnabled','compilerPath','compilerArgs','runMode','testlibPath','codeSnippets','cppTemplate','fontLigaturesEnabled','autoSave','autoSaveInterval','autoBackupSettings','windowOpacity','backgroundImage','markdownMode','keybindings'
                 ]);
                 const filtered = {};
                 Object.keys(newSettings || {}).forEach(k=>{ if (allowedKeys.has(k)) filtered[k]=newSettings[k]; });
