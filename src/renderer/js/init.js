@@ -172,6 +172,11 @@ window.addEventListener('unhandledrejection', function(e) {
         const reason = e?.reason;
         const info = reason instanceof Error ? { message: reason.message, stack: reason.stack } : { reason };
         logError('[RendererUnhandledRejection]', info);
+        const message = String(reason?.message || reason || '');
+        const stack = String(reason?.stack || '');
+        if (message === 'Model not found' && stack.includes('startFindDefinition')) {
+            return;
+        }
     } catch (_) {}
     showErrorMessage('异步错误: ' + (e?.reason?.message || String(e?.reason)));
 });

@@ -795,10 +795,16 @@ class MonacoEditorManager {
             const disposable = monaco.languages.registerDefinitionProvider(language, {
                 provideDefinition: async (model, position) => {
                     try {
-                        await this._ensureLspDocumentReady(model);
+                        if (!model || (typeof model.isDisposed === 'function' && model.isDisposed())) {
+                            return null;
+                        }
                         if (!this.lspClient) return null;
                         const uri = await this.getDocumentUriForModel(model);
                         if (!uri) return null;
+
+                        if (typeof model.isDisposed === 'function' && model.isDisposed()) {
+                            return null;
+                        }
 
                         const result = await this.lspClient.request('textDocument/definition', {
                             textDocument: { uri },
@@ -2769,8 +2775,12 @@ class MonacoEditorManager {
             monacoContainer.addEventListener('contextmenu', () => {
                 try {
                     this.currentEditor = editor;
-                    if (editor.filePath) this.currentFilePath = editor.filePath;
-                    if (editor.fileName) this.currentFileName = editor.fileName;
+                    if (editor.filePath) {
+                        this.currentFilePath = editor.filePath;
+                        this.currentFileName = this.getFileNameFromPath(editor.filePath);
+                    } else if (editor.fileName) {
+                        this.currentFileName = editor.fileName;
+                    }
                 } catch (_) {}
             });
             
@@ -2781,8 +2791,12 @@ class MonacoEditorManager {
                     editor.onDidFocusEditorWidget(() => {
                         try {
                             this.currentEditor = editor;
-                            if (editor.filePath) this.currentFilePath = editor.filePath;
-                            if (editor.fileName) this.currentFileName = editor.fileName;
+                            if (editor.filePath) {
+                                this.currentFilePath = editor.filePath;
+                                this.currentFileName = this.getFileNameFromPath(editor.filePath);
+                            } else if (editor.fileName) {
+                                this.currentFileName = editor.fileName;
+                            }
                         } catch (_) {}
                     });
                 }
