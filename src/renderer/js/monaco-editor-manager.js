@@ -2468,6 +2468,7 @@ class MonacoEditorManager {
                 folding: foldingEnabled,
                 foldingStrategy: 'auto',
                 foldingHighlight: true,
+                foldingMaximumRegions: 50000,
                 foldingImportsByDefault: false,
                 showFoldingControls: 'always',
                 contextmenu: true,
