@@ -5,6 +5,7 @@
         this.settings = {
             theme: 'dark',
             fontSize: 14,
+            terminalFontSize: 14,
             syntaxColorsByTheme: {},
             syntaxFontStyles: {},
             tabSize: 4,
@@ -2402,6 +2403,7 @@
                 const currentFont = this.settings.font || 'Consolas';
                 const currentTheme = this.settings.theme || 'dark';
                 const currentFontSize = this.settings.fontSize || 14;
+                const currentTerminalFontSize = this.settings.terminalFontSize || 14;
                 
                 logInfo('编辑器设置对话框 - 当前设置:', {
                     font: currentFont,
@@ -2440,6 +2442,10 @@
                     <div class="setting-item">
                         <label>字体大小:</label>
                         <input type="number" id="editor-font-size" value="${currentFontSize}" min="8" max="32">
+                    </div>
+                    <div class="setting-item">
+                        <label>终端字号:</label>
+                        <input type="number" id="editor-terminal-font-size" value="${currentTerminalFontSize}" min="8" max="32">
                     </div>
                     <div class="setting-item">
                         <label style="color: #ff9500;">注意:</label>
@@ -4053,6 +4059,7 @@ ${data.message || '程序已加载，等待开始执行'}
                 const font = dialog.querySelector('#editor-font')?.value || 'Consolas';
                 const theme = dialog.querySelector('#editor-theme')?.value || 'dark';
                 const fontSize = parseInt(dialog.querySelector('#editor-font-size')?.value || '14');
+                const terminalFontSize = parseInt(dialog.querySelector('#editor-terminal-font-size')?.value || '14');
                 
                 logInfo('保存编辑器设置 - 读取到的值:', {
                     font,
@@ -4067,6 +4074,7 @@ ${data.message || '程序已加载，等待开始执行'}
                 newSettings.font = font;
                 newSettings.theme = theme;
                 newSettings.fontSize = fontSize;
+                newSettings.terminalFontSize = terminalFontSize;
                 
                 if (themeChanged) {
                     logInfo('检测到主题变化，将在保存后重启编辑器');

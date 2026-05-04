@@ -201,7 +201,10 @@ class IntegratedTerminalPanel {
         const fontFamily = (typeof settings.font === 'string' && settings.font.trim())
             ? settings.font.trim()
             : 'Consolas';
-        const fontSize = this.fixedTerminalFontSize;
+        const configuredFontSize = Number(settings.terminalFontSize);
+        const fontSize = Number.isFinite(configuredFontSize) && configuredFontSize > 0
+            ? Math.round(configuredFontSize)
+            : this.fixedTerminalFontSize;
         return { fontFamily, fontSize };
     }
 

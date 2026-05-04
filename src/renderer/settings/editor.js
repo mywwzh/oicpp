@@ -3,6 +3,7 @@ class EditorSettings {
         this.settings = {
             font: 'Consolas, "Courier New", monospace',
             fontSize: 14,
+            terminalFontSize: 14,
             lineHeight: 0,
             theme: 'dark',
             syntaxColorsByTheme: {},
@@ -979,6 +980,7 @@ class EditorSettings {
                 this.settings = {
                     font: allSettings.font || 'Consolas',
                     fontSize: allSettings.fontSize || 14,
+                    terminalFontSize: allSettings.terminalFontSize || 14,
                     lineHeight: typeof allSettings.lineHeight === 'number' && allSettings.lineHeight > 0 ? allSettings.lineHeight : 0,
                     theme: allSettings.theme || 'dark',
                     syntaxColorsByTheme: (() => {
@@ -1015,6 +1017,7 @@ class EditorSettings {
                 this.settings = {
                     font: 'Consolas',
                     fontSize: 14,
+                    terminalFontSize: 14,
                     lineHeight: 0,
                     theme: 'dark',
                     syntaxColorsByTheme: {},
@@ -1038,6 +1041,7 @@ class EditorSettings {
             this.settings = {
                 font: 'Consolas',
                 fontSize: 14,
+                    terminalFontSize: 14,
                 lineHeight: 0,
                 theme: 'dark',
                 syntaxColorsByTheme: {},
@@ -1142,6 +1146,7 @@ class EditorSettings {
         const fontSelect = document.getElementById('editor-font');
         const themeSelect = document.getElementById('editor-theme');
         const fontSizeInput = document.getElementById('editor-font-size');
+        const terminalFontSizeInput = document.getElementById('editor-terminal-font-size');
         const lineHeightInput = document.getElementById('editor-line-height');
 
         const newSettings = {};
@@ -1149,6 +1154,7 @@ class EditorSettings {
         if (fontSelect) newSettings.font = fontSelect.value;
         if (themeSelect) newSettings.theme = themeSelect.value;
         if (fontSizeInput) newSettings.fontSize = parseInt(fontSizeInput.value);
+        if (terminalFontSizeInput) newSettings.terminalFontSize = parseInt(terminalFontSizeInput.value);
         if (lineHeightInput) {
             const parsedLineHeight = parseInt(lineHeightInput.value, 10);
             newSettings.lineHeight = !Number.isNaN(parsedLineHeight) && parsedLineHeight > 0 ? parsedLineHeight : 0;
@@ -1340,6 +1346,7 @@ class EditorSettings {
     updateUI() {
         const fontSelect = document.getElementById('editor-font');
         const fontSizeInput = document.getElementById('editor-font-size');
+        const terminalFontSizeInput = document.getElementById('editor-terminal-font-size');
         const lineHeightInput = document.getElementById('editor-line-height');
         const themeSelect = document.getElementById('editor-theme');
         const foldingCheckbox = document.getElementById('editor-folding');
@@ -1376,6 +1383,11 @@ class EditorSettings {
         if (fontSizeInput && this.settings.fontSize) {
             fontSizeInput.value = this.settings.fontSize;
             logInfo('字体大小已更新:', fontSizeInput.value);
+        }
+
+        if (terminalFontSizeInput && this.settings.terminalFontSize) {
+            terminalFontSizeInput.value = this.settings.terminalFontSize;
+            logInfo('终端字号已更新:', terminalFontSizeInput.value);
         }
 
         if (lineHeightInput) {
