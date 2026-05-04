@@ -66,19 +66,39 @@ function resolveClangdExecutable(rootDir) {
 }
 
 function collectStdCxxIncludeDirs(compilerPath) {
-    if (!compilerPath || !fs.existsSync(compilerPath)) {
-        return [];
+    const candidateRoots = [];
+
+    if (compilerPath && fs.existsSync(compilerPath)) {
+        const compilerDir = path.dirname(compilerPath);
+        const compilerRoot = path.dirname(compilerDir);
+        candidateRoots.push(
+            path.join(compilerRoot, 'include', 'c++'),
+            path.join(compilerRoot, 'lib', 'gcc'),
+            path.join(compilerRoot, 'lib64', 'gcc'),
+            path.join(compilerRoot, 'mingw64', 'include', 'c++'),
+            path.join(compilerRoot, 'mingw32', 'include', 'c++')
+        );
     }
 
-    const compilerDir = path.dirname(compilerPath);
-    const compilerRoot = path.dirname(compilerDir);
-    const candidateRoots = [
-        path.join(compilerRoot, 'include', 'c++'),
-        path.join(compilerRoot, 'lib', 'gcc'),
-        path.join(compilerRoot, 'lib64', 'gcc'),
-        path.join(compilerRoot, 'mingw64', 'include', 'c++'),
-        path.join(compilerRoot, 'mingw32', 'include', 'c++')
-    ];
+    const commonRoots = process.platform === 'win32'
+        ? [
+            'C:\\msys64\\mingw64\\include\\c++',
+            'C:\\msys64\\ucrt64\\include\\c++',
+            'C:\\mingw64\\include\\c++',
+            'C:\\mingw32\\include\\c++',
+            'C:\\TDM-GCC-64\\include\\c++',
+            'C:\\TDM-GCC-32\\include\\c++',
+            'C:\\MinGW\\include\\c++'
+        ]
+        : [
+            '/usr/include/c++',
+            '/usr/local/include/c++',
+            '/opt/homebrew/include/c++',
+            '/opt/homebrew/opt/llvm/include/c++',
+            '/usr/lib/gcc'
+        ];
+
+    candidateRoots.push(...commonRoots);
 
     const result = []; 
     const seen = new Set();
