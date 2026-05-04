@@ -1595,6 +1595,33 @@ function findCompilerExecutable(baseDir) {
     return null;
 }
 
+function findCompilerExecutableOnPath() {
+    try {
+        const candidates = process.platform === 'win32'
+            ? ['g++.exe', 'gcc.exe', 'clang++.exe']
+            : ['g++', 'clang++', 'gcc'];
+
+        for (const candidate of candidates) {
+            try {
+                const result = spawnSync(process.platform === 'win32' ? 'where' : 'which', [candidate], {
+                    encoding: 'utf8',
+                    windowsHide: true
+                });
+                if (result && result.status === 0 && typeof result.stdout === 'string') {
+                    const firstMatch = result.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
+                    if (firstMatch && fs.existsSync(firstMatch)) {
+                        logInfo('[查找编译器] 从 PATH 找到编译器:', firstMatch);
+                        return firstMatch;
+                    }
+                }
+            } catch (_) { }
+        }
+    } catch (error) {
+        logWarn('[查找编译器] 从 PATH 探测编译器失败:', error?.message || error);
+    }
+    return null;
+}
+
 function walkDir(dir) {
     const files = [];
     function walk(currentDir) {
@@ -6120,6 +6147,17 @@ function loadSettings() {
                 if (settings.compilerPath) saveSettings();
             } catch (e) {
                 logWarn('[设置] 检测系统编译器失败:', e.message);
+            }
+        } else if (process.platform === 'win32' && !settings.compilerPath) {
+            try {
+                const detectedCompiler = findCompilerExecutableOnPath();
+                if (detectedCompiler) {
+                    settings.compilerPath = detectedCompiler;
+                    saveSettings();
+                    logInfo('[设置] Windows 自动检测到编译器:', detectedCompiler);
+                }
+            } catch (e) {
+                logWarn('[设置] Windows 检测系统编译器失败:', e.message);
             }
         }
 
