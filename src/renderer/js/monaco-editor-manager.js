@@ -11,30 +11,6 @@ if (!self.MonacoEnvironment) {
     };
 }
 
-function findCompilerExecutableOnPath() {
-    try {
-        const { spawnSync } = require('child_process');
-        const fs = require('fs');
-        const candidates = window.process?.platform === 'win32'
-            ? ['g++.exe', 'gcc.exe', 'clang++.exe']
-            : ['g++', 'clang++', 'gcc'];
-
-        for (const candidate of candidates) {
-            const result = spawnSync(window.process?.platform === 'win32' ? 'where' : 'which', [candidate], {
-                encoding: 'utf8',
-                windowsHide: true
-            });
-            if (result && result.status === 0 && typeof result.stdout === 'string') {
-                const found = result.stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
-                if (found && fs.existsSync(found)) {
-                    return found;
-                }
-            }
-        }
-    } catch (_) {}
-    return '';
-}
-
 class MonacoEditorManager {
     constructor() {
         this.currentEditor = null;
@@ -460,7 +436,7 @@ class MonacoEditorManager {
                 if (window.electronAPI?.getAllSettings) {
                     const settings = await window.electronAPI.getAllSettings();
                     fallbackFlags = this.tokenizeCompilerArgs(settings?.compilerArgs || '');
-                    compilerPath = settings?.compilerPath || findCompilerExecutableOnPath() || '';
+                    compilerPath = settings?.compilerPath || '';
                 }
             } catch (_) {
                 fallbackFlags = [];
