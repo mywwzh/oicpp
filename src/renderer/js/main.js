@@ -6,6 +6,7 @@
             theme: 'dark',
             fontSize: 14,
             terminalFontSize: 14,
+            syntaxCheckEnabled: true,
             syntaxColorsByTheme: {},
             syntaxFontStyles: {},
             tabSize: 4,
@@ -1147,6 +1148,7 @@
             font: this.settings.font || 'Consolas',
             fontSize: this.settings.fontSize || 14,
             theme: this.settings.theme || 'dark',
+            syntaxCheckEnabled: this.settings.syntaxCheckEnabled !== false,
             syntaxColorsByTheme: this.settings.syntaxColorsByTheme,
             syntaxFontStyles: this.settings.syntaxFontStyles,
             syntaxColors: this.settings.syntaxColors,
@@ -2446,6 +2448,12 @@
                     <div class="setting-item">
                         <label>终端字号:</label>
                         <input type="number" id="editor-terminal-font-size" value="${currentTerminalFontSize}" min="8" max="32">
+                    </div>
+                    <div class="setting-item">
+                        <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="editor-syntax-check-enabled" ${this.settings.syntaxCheckEnabled !== false ? 'checked' : ''}>
+                            <span>启用实时语法检查</span>
+                        </label>
                     </div>
                     <div class="setting-item">
                         <label style="color: #ff9500;">注意:</label>
@@ -4060,12 +4068,15 @@ ${data.message || '程序已加载，等待开始执行'}
                 const theme = dialog.querySelector('#editor-theme')?.value || 'dark';
                 const fontSize = parseInt(dialog.querySelector('#editor-font-size')?.value || '14');
                 const terminalFontSize = parseInt(dialog.querySelector('#editor-terminal-font-size')?.value || '14');
+                const syntaxCheckEnabled = !!dialog.querySelector('#editor-syntax-check-enabled')?.checked;
                 
                 logInfo('保存编辑器设置 - 读取到的值:', {
                     font,
                     theme,
                     fontSize,
-                    fontSizeInputValue: dialog.querySelector('#editor-font-size')?.value
+                    fontSizeInputValue: dialog.querySelector('#editor-font-size')?.value,
+                    terminalFontSize,
+                    syntaxCheckEnabled
                 });
                 
                 const themeChanged = theme !== this.settings.theme;
@@ -4075,6 +4086,7 @@ ${data.message || '程序已加载，等待开始执行'}
                 newSettings.theme = theme;
                 newSettings.fontSize = fontSize;
                 newSettings.terminalFontSize = terminalFontSize;
+                newSettings.syntaxCheckEnabled = syntaxCheckEnabled;
                 
                 if (themeChanged) {
                     logInfo('检测到主题变化，将在保存后重启编辑器');
