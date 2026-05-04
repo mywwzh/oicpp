@@ -6490,38 +6490,14 @@ async function compileFile(options) {
             }
         }
 
-        // 处理Windows下非ASCII路径：MinGW的g++.exe使用ANSI代码页解析命令行参数，
-        // 导致非ASCII字符（如Š）变成?，造成文件无法找到。
-        // 解决方案：创建ASCII安全的临时副本进行编译，编译完成后清理。
-        let actualInputFile = inputFile;
-        let tempInputFile = null;
-        if (process.platform === 'win32' && /[^\x00-\x7F]/.test(inputFile)) {
-            const crypto = require('crypto');
-            const hash = crypto.createHash('md5').update(inputFile).digest('hex').substring(0, 8);
-            const ext = path.extname(inputFile);
-            tempInputFile = path.join(outputDir, `_oicpp_native_${hash}${ext}`);
-            try {
-                fs.copyFileSync(inputFile, tempInputFile);
-                actualInputFile = tempInputFile;
-                logInfo('[编译] 检测到非ASCII路径，已创建临时文件:', tempInputFile);
-            } catch (copyErr) {
-                logWarn('[编译] 无法创建临时文件，使用原始路径（可能编译失败）:', copyErr.message);
-                tempInputFile = null;
-                actualInputFile = inputFile;
-            }
-        }
+        // 直接使用真实文件路径编译，避免非 ASCII 文件名被改写成临时副本后引发路径不一致。
+        const actualInputFile = inputFile;
 
         const args = [
             ...parsedUserArgs,
             '-o', outputFile,
             actualInputFile
         ];
-
-        // 如果使用了临时文件，添加原始目录到include路径以保证相对路径的#include能正常工作
-        if (tempInputFile) {
-            const originalDir = path.dirname(inputFile);
-            args.unshift('-iquote', originalDir);
-        }
 
         logInfo('编译命令:', compilerPath, args.join(' '));
 
@@ -6746,18 +6722,6 @@ async function compileFile(options) {
                 }
             }
 
-            // 清理非ASCII路径的临时文件
-            if (tempInputFile) {
-                try {
-                    if (fs.existsSync(tempInputFile)) {
-                        fs.unlinkSync(tempInputFile);
-                        logInfo('[编译] 已清理临时文件:', tempInputFile);
-                    }
-                } catch (cleanupErr) {
-                    logWarn('[编译] 清理临时文件失败:', cleanupErr.message);
-                }
-            }
-
             if (code === 0) {
                 resolve(result);
             } else {
@@ -6771,18 +6735,6 @@ async function compileFile(options) {
             logError('错误路径:', error.path);
             logError('系统错误号:', error.errno);
             logError('系统调用:', error.syscall);
-
-            // 清理非ASCII路径的临时文件
-            if (tempInputFile) {
-                try {
-                    if (fs.existsSync(tempInputFile)) {
-                        fs.unlinkSync(tempInputFile);
-                        logInfo('[编译] 已清理临时文件:', tempInputFile);
-                    }
-                } catch (cleanupErr) {
-                    logWarn('[编译] 清理临时文件失败:', cleanupErr.message);
-                }
-            }
 
             let errorMessage = `编译器启动失败: ${error.message}`;
             if (error.code === 'ENOENT') {
