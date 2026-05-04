@@ -65,6 +65,79 @@ function resolveClangdExecutable(rootDir) {
     return fs.existsSync(candidate) ? candidate : null;
 }
 
+function collectStdCxxIncludeDirs(compilerPath) {
+    if (!compilerPath || !fs.existsSync(compilerPath)) {
+        return [];
+    }
+
+    const compilerDir = path.dirname(compilerPath);
+    const compilerRoot = path.dirname(compilerDir);
+    const candidateRoots = [
+        path.join(compilerRoot, 'include', 'c++'),
+        path.join(compilerRoot, 'lib', 'gcc'),
+        path.join(compilerRoot, 'lib64', 'gcc'),
+        path.join(compilerRoot, 'mingw64', 'include', 'c++'),
+        path.join(compilerRoot, 'mingw32', 'include', 'c++')
+    ];
+
+    const result = []; 
+    const seen = new Set();
+
+    const pushIfValid = (dir) => {
+        if (!dir) return;
+        const headerPath = path.join(dir, 'bits', 'stdc++.h');
+        if (!fs.existsSync(headerPath)) {
+            return;
+        }
+        const normalized = path.resolve(dir);
+        if (seen.has(normalized)) {
+            return;
+        }
+        seen.add(normalized);
+        result.push(normalized);
+    };
+
+    const scanDirTree = (rootDir, maxDepth) => {
+        if (!rootDir || !fs.existsSync(rootDir)) {
+            return;
+        }
+        const queue = [{ dir: rootDir, depth: 0 }];
+        while (queue.length > 0) {
+            const current = queue.shift();
+            if (!current) continue;
+            pushIfValid(current.dir);
+            if (current.depth >= maxDepth) {
+                continue;
+            }
+            let entries = [];
+            try {
+                entries = fs.readdirSync(current.dir, { withFileTypes: true });
+            } catch (_) {
+                continue;
+            }
+            for (const entry of entries) {
+                if (!entry.isDirectory() || entry.name.startsWith('.')) {
+                    continue;
+                }
+                queue.push({
+                    dir: path.join(current.dir, entry.name),
+                    depth: current.depth + 1
+                });
+            }
+        }
+    };
+
+    for (const rootDir of candidateRoots) {
+        if (!fs.existsSync(rootDir)) {
+            continue;
+        }
+        const depth = rootDir.endsWith(path.join('include', 'c++')) ? 2 : 4;
+        scanDirTree(rootDir, depth);
+    }
+
+    return result;
+}
+
 function ensureClangdUserBundle() {
     try {
         const userRoot = getUserClangdRoot();
@@ -268,6 +341,17 @@ class ClangdLspManager {
                 }
 
                 fallbackFlags.push('-Wno-system-headers');
+
+                const stdCxxIncludeDirs = collectStdCxxIncludeDirs(compilerPath);
+                if (stdCxxIncludeDirs.length > 0) {
+                    for (const includeDir of stdCxxIncludeDirs) {
+                        const alreadyAdded = fallbackFlags.some((flag, index) => flag === '-isystem' && fallbackFlags[index + 1] === includeDir);
+                        if (!alreadyAdded) {
+                            fallbackFlags.push('-isystem', includeDir);
+                        }
+                    }
+                    logInfo('[LSP] 已补充标准 C++ 头文件路径:', stdCxxIncludeDirs.join('; '));
+                }
             } catch (err) {
                 logWarn('[LSP] 查询编译器信息时出错:', err?.message || err);
             }
