@@ -906,6 +906,46 @@ class CompilerManager {
         return true;
     }
 
+    showCurrentEditorProblems() {
+        try {
+            if (typeof monaco === 'undefined' || !monaco.editor) return false;
+            const editor = window.editorManager?.getCurrentEditor?.();
+            const model = editor?.getModel ? editor.getModel() : null;
+            if (!model) return false;
+
+            const markers = monaco.editor.getModelMarkers
+                ? monaco.editor.getModelMarkers({ resource: model.uri })
+                : [];
+
+            const diagnostics = markers.map((marker) => ({
+                severity: marker.severity === monaco.MarkerSeverity.Warning
+                    ? 'warning'
+                    : (marker.severity === monaco.MarkerSeverity.Info ? 'note' : 'error'),
+                message: marker.message || '',
+                raw: marker.message || '',
+                file: editor?.filePath || model.uri?.fsPath || model.uri?.path || '',
+                line: marker.startLineNumber || 1,
+                column: marker.startColumn || 1
+            }));
+
+            const rendered = this.renderSmartAnalysis({ diagnostics });
+
+            // 确保编译面板可见
+            if (!this.compileOutput) {
+                this.createCompileOutputWindow();
+            }
+            this.showOutput();
+            this.analysisAvailable = true;
+            this.updateAnalysisVisibility();
+            this.switchOutputPane('analysis');
+
+            return rendered;
+        } catch (err) {
+            logWarn('显示当前编辑器问题失败:', err);
+            return false;
+        }
+    }
+
     buildAnalysisItems(payload = {}) {
         const items = [];
         const seen = new Set();
@@ -1344,7 +1384,7 @@ class CompilerManager {
                             const ln = parseInt(lineNum, 10) || 1;
                             const cn = colNum ? parseInt(colNum, 10) : 1;
                             try { editor.revealLineInCenter(ln); } catch {}
-                            try { editor.setPosition({ lineNumber: ln, column: cn }); editor.focus(); } catch {}
+                            try { editor.setPosition({ lineNumber: ln, column: cn }); } catch {}
                         }
                     });
                 }
