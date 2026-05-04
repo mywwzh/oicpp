@@ -49,6 +49,7 @@ class MonacoEditorManager {
         this._lspChangeTimers = new Map();
         this._lspReadyPromise = null;
         this._lspCompletionEnabled = true;
+        this._syntaxCheckEnabled = true;
         this._lspCompilerPath = undefined;
         this._lspProviders = new Map();
         this._lspProvidersReady = false;
@@ -2396,6 +2397,7 @@ class MonacoEditorManager {
                         stickyScrollEnabled = allSettings.stickyScrollEnabled !== false;
                         fontLigaturesEnabled = allSettings.fontLigaturesEnabled !== false;
                         autoCompletionEnabled = allSettings.enableAutoCompletion !== false;
+                        this._syntaxCheckEnabled = allSettings.syntaxCheckEnabled !== false;
                         this._lspCompletionEnabled = autoCompletionEnabled;
                         this.syntaxColorsByTheme = this.normalizeSyntaxColorsByTheme(allSettings.syntaxColorsByTheme);
                         this.syntaxStyles = this.normalizeSyntaxStyles(allSettings.syntaxFontStyles);
@@ -3059,6 +3061,7 @@ class MonacoEditorManager {
         try {
             if (typeof monaco === 'undefined' || !monaco.editor) return;
             if (!uri || typeof uri !== 'string') return;
+            if (!this._syntaxCheckEnabled) return;
 
             const isWin = !!(typeof window !== 'undefined' && window.process && window.process.platform === 'win32');
             const normalizeFilePath = (rawUri) => {
@@ -3771,6 +3774,10 @@ class MonacoEditorManager {
                 updateOptions.fontLigatures = !!settings.fontLigaturesEnabled;
             }
 
+            if (settings.syntaxCheckEnabled !== undefined) {
+                this.setSyntaxCheckEnabled(settings.syntaxCheckEnabled);
+            }
+
             if (settings.enableAutoCompletion !== undefined) {
                 const enabled = settings.enableAutoCompletion !== false;
                 this._lspCompletionEnabled = enabled;
@@ -4008,6 +4015,10 @@ class MonacoEditorManager {
                     updateOptions.fontLigatures = !!settings.fontLigaturesEnabled;
                 }
 
+                if (settings.syntaxCheckEnabled !== undefined) {
+                    this.setSyntaxCheckEnabled(settings.syntaxCheckEnabled);
+                }
+
                 if (settings.enableAutoCompletion !== undefined) {
                     const enabled = settings.enableAutoCompletion !== false;
                     this._lspCompletionEnabled = enabled;
@@ -4067,6 +4078,47 @@ class MonacoEditorManager {
             } catch (e) {
                 logWarn('切换主题失败:', e);
             }
+        }
+    }
+
+    setSyntaxCheckEnabled(enabled) {
+        const nextEnabled = enabled !== false;
+        const changed = this._syntaxCheckEnabled !== nextEnabled;
+        this._syntaxCheckEnabled = nextEnabled;
+
+        if (!nextEnabled) {
+            this.clearAllLspDiagnostics();
+            return;
+        }
+
+        if (changed) {
+            this.refreshAllLspDiagnostics();
+        }
+    }
+
+    clearAllLspDiagnostics() {
+        try {
+            if (typeof monaco === 'undefined' || !monaco.editor) return;
+            const models = monaco.editor.getModels ? monaco.editor.getModels() : [];
+            for (const model of models) {
+                try {
+                    monaco.editor.setModelMarkers(model, this.lspMarkerOwner, []);
+                } catch (_) { }
+            }
+        } catch (err) {
+            logWarn('[LSP] 清理语法检查标记失败:', err?.message || err);
+        }
+    }
+
+    refreshAllLspDiagnostics() {
+        try {
+            for (const model of this._lspDocuments.keys()) {
+                if (model) {
+                    this.sendLspDidChange(model);
+                }
+            }
+        } catch (err) {
+            logWarn('[LSP] 刷新语法检查失败:', err?.message || err);
         }
     }
 

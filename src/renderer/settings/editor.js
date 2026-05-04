@@ -4,6 +4,7 @@ class EditorSettings {
             font: 'Consolas, "Courier New", monospace',
             fontSize: 14,
             terminalFontSize: 14,
+            syntaxCheckEnabled: true,
             lineHeight: 0,
             theme: 'dark',
             syntaxColorsByTheme: {},
@@ -981,6 +982,7 @@ class EditorSettings {
                     font: allSettings.font || 'Consolas',
                     fontSize: allSettings.fontSize || 14,
                     terminalFontSize: allSettings.terminalFontSize || 14,
+                    syntaxCheckEnabled: allSettings.syntaxCheckEnabled !== false,
                     lineHeight: typeof allSettings.lineHeight === 'number' && allSettings.lineHeight > 0 ? allSettings.lineHeight : 0,
                     theme: allSettings.theme || 'dark',
                     syntaxColorsByTheme: (() => {
@@ -1018,6 +1020,7 @@ class EditorSettings {
                     font: 'Consolas',
                     fontSize: 14,
                     terminalFontSize: 14,
+                    syntaxCheckEnabled: true,
                     lineHeight: 0,
                     theme: 'dark',
                     syntaxColorsByTheme: {},
@@ -1042,6 +1045,7 @@ class EditorSettings {
                 font: 'Consolas',
                 fontSize: 14,
                     terminalFontSize: 14,
+                    syntaxCheckEnabled: true,
                 lineHeight: 0,
                 theme: 'dark',
                 syntaxColorsByTheme: {},
@@ -1171,6 +1175,11 @@ class EditorSettings {
             if (!Number.isNaN(parsedTabSize) && parsedTabSize > 0) {
                 newSettings.tabSize = parsedTabSize;
             }
+        }
+
+        const syntaxCheckCheckbox = document.getElementById('editor-syntax-check-enabled');
+        if (syntaxCheckCheckbox) {
+            newSettings.syntaxCheckEnabled = !!syntaxCheckCheckbox.checked;
         }
 
         const autoCompletionCheckbox = document.getElementById('editor-auto-completion');
@@ -1354,6 +1363,7 @@ class EditorSettings {
         const ligaturesCheckbox = document.getElementById('editor-font-ligatures');
         const tabSizeInput = document.getElementById('editor-tab-size');
         const autoCompletionCheckbox = document.getElementById('editor-auto-completion');
+        const syntaxCheckCheckbox = document.getElementById('editor-syntax-check-enabled');
         const autoSaveCheckbox = document.getElementById('editor-auto-save-enabled');
         const autoSaveIntervalInput = document.getElementById('editor-auto-save-interval');
         const autoOpenLastWorkspaceCheckbox = document.getElementById('editor-auto-open-last-workspace');
@@ -1420,6 +1430,10 @@ class EditorSettings {
 
         if (autoCompletionCheckbox) {
             autoCompletionCheckbox.checked = this.settings.enableAutoCompletion !== false;
+        }
+
+        if (syntaxCheckCheckbox) {
+            syntaxCheckCheckbox.checked = this.settings.syntaxCheckEnabled !== false;
         }
 
         const autoSaveEnabled = this.settings.autoSave !== false;
