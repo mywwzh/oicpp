@@ -174,9 +174,9 @@ body[data-editor-theme="light"] .active {
 }
 */
 
-[title] {
-    position: relative;
-}
+/* scope [title] positioning only where explicitly needed — DO NOT apply globally,
+   as Monaco (and other libs) rely on title attributes for accessibility and
+   a global position:relative breaks their absolute positioning chains. */
 
 .separator {
     background: #464647;

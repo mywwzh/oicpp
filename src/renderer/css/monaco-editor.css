@@ -777,7 +777,7 @@ body[data-theme="solarized-light"] {
     display: none;
 }
 
-.monaco-editor-container {
+.editor-wrapper .monaco-editor-container {
     position: absolute;
     top: 0;
     left: 0;

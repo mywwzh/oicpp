@@ -2522,6 +2522,7 @@ class MonacoEditorManager {
                 monaco.editor.setTheme(monacoTheme);
                 this.updateIndentGuideTone(monacoTheme);
             } catch (_) {}
+            this._installMarkerWidgetInterceptor(editor);
             
             if (autoCompletionEnabled) {
                 this.registerEnhancedCompletionProvider(editor);
@@ -3169,6 +3170,77 @@ class MonacoEditorManager {
             monaco.editor.setModelMarkers(model, this.lspMarkerOwner, markers);
         } catch (err) {
             logWarn('[LSP] applyLspDiagnostics 失败:', err);
+        }
+    }
+    _installMarkerWidgetInterceptor(editor) {
+        try {
+            if (!editor || editor.__oicppMarkerWidgetInstalled) return;
+            const container = editor.getDomNode?.();
+            if (!container) return;
+
+            // 收集所有可能的观察目标：编辑器自身、父容器、overflowWidgetsDomNode
+            const watchNodes = [container];
+            if (container.parentElement) watchNodes.push(container.parentElement);
+            try {
+                const overflowNode = editor.getOverflowWidgetsDomNode?.();
+                if (overflowNode) watchNodes.push(overflowNode);
+            } catch (_) {}
+
+            const tryRedirect = () => {
+                try {
+                    // 在整个文档范围查找 marker widget（ZoneWidget + marker-widget 结构）
+                    const doc = container.ownerDocument || document;
+                    const markerWidget = doc.querySelector('.zone-widget .marker-widget');
+                    if (!markerWidget) return false;
+
+                    logInfo('[MarkerWidget] 检测到 marker zone widget，准备拦截重定向');
+                    const widget = markerWidget.closest('.zone-widget');
+                    if (widget && widget.parentElement) {
+                        const closeBtn = widget.querySelector('.codicon-close');
+                        if (closeBtn) {
+                            closeBtn.click();
+                        } else {
+                            widget.remove();
+                        }
+                    }
+                    // 转到我方分析面板
+                    if (window.compilerManager &&
+                        typeof window.compilerManager.showCurrentEditorProblems === 'function') {
+                        window.compilerManager.showCurrentEditorProblems();
+                    }
+                    return true;
+                } catch (_) {
+                    return false;
+                }
+            };
+
+            const observer = new MutationObserver(() => {
+                // 立即尝试一次
+                if (!tryRedirect()) {
+                    // 如果没找到，延迟再试一次（widget 内容可能异步渲染）
+                    setTimeout(() => tryRedirect(), 150);
+                }
+            });
+
+            for (const node of watchNodes) {
+                if (node && node.nodeType === 1) {
+                    observer.observe(node, { childList: true, subtree: true });
+                }
+            }
+
+            editor.__oicppMarkerWidgetInstalled = true;
+            editor.__oicppMarkerWidgetObserver = observer;
+            // 支持主动调用的快捷方式
+            editor.__oicppTryRedirectMarkerWidget = tryRedirect;
+
+            // 编辑器销毁时自动断开 observer
+            if (typeof editor.onDidDispose === 'function') {
+                editor.onDidDispose(() => {
+                    try { observer.disconnect(); } catch (_) {}
+                });
+            }
+        } catch (err) {
+            logWarn('安装 marker widget 拦截器失败:', err);
         }
     }
 
