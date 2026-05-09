@@ -162,6 +162,32 @@ function resolveClangdExecutable(rootDir) {
     return fs.existsSync(candidate) ? candidate : null;
 }
 
+function addSystemIncludeDir(flags, includeDir) {
+    if (!Array.isArray(flags) || !includeDir) {
+        return false;
+    }
+
+    const normalizedIncludeDir = path.resolve(includeDir);
+    if (!fs.existsSync(normalizedIncludeDir)) {
+        return false;
+    }
+
+    const alreadyAdded = flags.some((flag, index) => {
+        if (flag !== '-isystem') {
+            return false;
+        }
+        const currentDir = flags[index + 1];
+        return currentDir && path.resolve(currentDir) === normalizedIncludeDir;
+    });
+
+    if (alreadyAdded) {
+        return false;
+    }
+
+    flags.push('-isystem', normalizedIncludeDir);
+    return true;
+}
+
 function collectStdCxxIncludeDirs(compilerPath) {
     const candidateRoots = [];
 
@@ -228,8 +254,135 @@ function collectStdCxxIncludeDirs(compilerPath) {
         if (!fs.existsSync(rootDir)) {
             continue;
         }
-        const depth = rootDir.endsWith(path.join('include', 'c++')) ? 2 : 4;
+        const depth = rootDir.endsWith(path.join('include', 'c++')) ? 4 : 6;
         scanDirTree(rootDir, depth);
+    }
+
+    return result;
+}
+
+function queryCompilerHeaderIncludeDir(compilerPath, headerName = 'bits/stdc++.h') {
+    return new Promise((resolve) => {
+        if (!compilerPath || !fs.existsSync(compilerPath)) {
+            resolve('');
+            return;
+        }
+
+        const args = ['-print-file-name=' + headerName];
+        logInfo('[LSP] 正在查询编译器头文件位置:', compilerPath, args.join(' '));
+
+        let stdout = '';
+        let stderr = '';
+
+        const proc = spawn(compilerPath, args, {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            windowsHide: true
+        });
+
+        const timer = setTimeout(() => {
+            try { proc.kill(); } catch (_) {}
+        }, 8000);
+
+        proc.stdout.on('data', (data) => {
+            stdout += data.toString('utf8');
+        });
+
+        proc.stderr.on('data', (data) => {
+            stderr += data.toString('utf8');
+        });
+
+        proc.on('close', () => {
+            clearTimeout(timer);
+
+            const rawOutput = (stdout || stderr).trim().split(/\r?\n/).filter(Boolean).pop() || '';
+            if (!rawOutput || rawOutput === headerName) {
+                resolve('');
+                return;
+            }
+
+            const normalizedHeaderPath = path.resolve(rawOutput.trim());
+            if (!fs.existsSync(normalizedHeaderPath)) {
+                resolve('');
+                return;
+            }
+
+            const includeDir = path.dirname(path.dirname(normalizedHeaderPath));
+            if (fs.existsSync(includeDir)) {
+                resolve(includeDir);
+                return;
+            }
+
+            resolve('');
+        });
+
+        proc.on('error', () => {
+            clearTimeout(timer);
+            resolve('');
+        });
+    });
+}
+
+function searchCompilerTreeForStdCxxIncludeDir(compilerPath, headerName = 'bits/stdc++.h') {
+    const result = [];
+    const seen = new Set();
+
+    if (!compilerPath || !fs.existsSync(compilerPath)) {
+        return result;
+    }
+
+    const compilerDir = path.dirname(compilerPath);
+    const compilerRoot = path.dirname(compilerDir);
+    const searchRoots = [compilerRoot, compilerDir].filter((root, index, array) => root && array.indexOf(root) === index);
+
+    const pushIfValid = (dir) => {
+        if (!dir) return;
+        const headerPath = path.join(dir, headerName);
+        if (!fs.existsSync(headerPath)) {
+            return;
+        }
+        const normalized = path.resolve(dir);
+        if (seen.has(normalized)) {
+            return;
+        }
+        seen.add(normalized);
+        result.push(normalized);
+    };
+
+    const scanDirTree = (rootDir, maxDepth) => {
+        if (!rootDir || !fs.existsSync(rootDir)) {
+            return;
+        }
+
+        const queue = [{ dir: rootDir, depth: 0 }];
+        while (queue.length > 0) {
+            const current = queue.shift();
+            if (!current) continue;
+            pushIfValid(current.dir);
+            if (current.depth >= maxDepth) {
+                continue;
+            }
+
+            let entries = [];
+            try {
+                entries = fs.readdirSync(current.dir, { withFileTypes: true });
+            } catch (_) {
+                continue;
+            }
+
+            for (const entry of entries) {
+                if (!entry.isDirectory() || entry.name.startsWith('.')) {
+                    continue;
+                }
+                queue.push({
+                    dir: path.join(current.dir, entry.name),
+                    depth: current.depth + 1
+                });
+            }
+        }
+    };
+
+    for (const rootDir of searchRoots) {
+        scanDirTree(rootDir, 8);
     }
 
     return result;
@@ -432,22 +585,35 @@ class ClangdLspManager {
                 // 将 include 路径添加为 -isystem 参数
                 if (compilerInfo.includePaths.length > 0) {
                     for (const incPath of compilerInfo.includePaths) {
-                        fallbackFlags.push('-isystem', incPath);
+                        addSystemIncludeDir(fallbackFlags, incPath);
                     }
                     logInfo('[LSP] 已将 ' + compilerInfo.includePaths.length + ' 个编译器 include 路径添加到回退参数');
                 }
 
-                fallbackFlags.push('-Wno-system-headers');
+                const probedStdCxxIncludeDir = await queryCompilerHeaderIncludeDir(compilerPath, 'bits/stdc++.h');
+                if (probedStdCxxIncludeDir) {
+                    addSystemIncludeDir(fallbackFlags, probedStdCxxIncludeDir);
+                    logInfo('[LSP] 通过编译器直接探测到标准 C++ 头文件路径:', probedStdCxxIncludeDir);
+                }
+
+                if (!fallbackFlags.includes('-Wno-system-headers')) {
+                    fallbackFlags.push('-Wno-system-headers');
+                }
 
                 const stdCxxIncludeDirs = collectStdCxxIncludeDirs(compilerPath);
                 if (stdCxxIncludeDirs.length > 0) {
                     for (const includeDir of stdCxxIncludeDirs) {
-                        const alreadyAdded = fallbackFlags.some((flag, index) => flag === '-isystem' && fallbackFlags[index + 1] === includeDir);
-                        if (!alreadyAdded) {
-                            fallbackFlags.push('-isystem', includeDir);
-                        }
+                        addSystemIncludeDir(fallbackFlags, includeDir);
                     }
                     logInfo('[LSP] 已补充标准 C++ 头文件路径:', stdCxxIncludeDirs.join('; '));
+                } else {
+                    const searchedStdCxxIncludeDirs = searchCompilerTreeForStdCxxIncludeDir(compilerPath, 'bits/stdc++.h');
+                    if (searchedStdCxxIncludeDirs.length > 0) {
+                        for (const includeDir of searchedStdCxxIncludeDirs) {
+                            addSystemIncludeDir(fallbackFlags, includeDir);
+                        }
+                        logInfo('[LSP] 已从编译器目录递归搜索到标准 C++ 头文件路径:', searchedStdCxxIncludeDirs.join('; '));
+                    }
                 }
             } catch (err) {
                 logWarn('[LSP] 查询编译器信息时出错:', err?.message || err);
