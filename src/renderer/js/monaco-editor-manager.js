@@ -4728,9 +4728,11 @@ class MonacoEditorManager {
                     if (!pos) return;
                     e.event.preventDefault?.();
                     e.event.stopPropagation?.();
-                    Promise.resolve(this.handleCtrlClickNavigation(editor, pos)).finally(() => {
-                        clearHover();
-                    });
+                    setTimeout(() => {
+                        Promise.resolve(this.handleCtrlClickNavigation(editor, pos)).finally(() => {
+                            clearHover();
+                        });
+                    }, 0);
                 } catch (_) {}
             });
         } catch (err) {
@@ -5607,8 +5609,11 @@ class MonacoEditorManager {
 
     async handleCtrlClickNavigation(editor, position) {
         try {
+            if (!editor || (typeof editor.isDisposed === 'function' && editor.isDisposed())) {
+                return;
+            }
             const model = editor?.getModel?.();
-            if (!model) return;
+            if (!model || (typeof model.isDisposed === 'function' && model.isDisposed())) return;
             const symbol = this.identifySymbolAtPosition(model, position);
             if (!symbol) return;
             const modelFilePath = this.getModelFilePath(model);
