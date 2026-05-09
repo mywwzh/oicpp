@@ -681,6 +681,11 @@ class MonacoEditorManager {
 
     _registerLspSignatureHelpProvider() {
         const languages = ['cpp', 'c'];
+        const emptySignatureHelp = {
+            activeSignature: 0,
+            activeParameter: 0,
+            signatures: []
+        };
         for (const language of languages) {
             const key = `${language}:signatureHelp`;
             if (this._lspProviders.has(key)) continue;
@@ -691,9 +696,9 @@ class MonacoEditorManager {
                 provideSignatureHelp: async (model, position) => {
                     try {
                         await this._ensureLspDocumentReady(model);
-                        if (!this.lspClient) return null;
+                        if (!this.lspClient) return emptySignatureHelp;
                         const uri = await this.getDocumentUriForModel(model);
-                        if (!uri) return null;
+                        if (!uri) return emptySignatureHelp;
 
                         const result = await this.lspClient.request('textDocument/signatureHelp', {
                             textDocument: { uri },
@@ -703,11 +708,11 @@ class MonacoEditorManager {
                             }
                         });
                         if (!result || !Array.isArray(result.signatures) || result.signatures.length === 0) {
-                            return null;
+                            return emptySignatureHelp;
                         }
                         return {
-                            activeSignature: result.activeSignature || 0,
-                            activeParameter: result.activeParameter || 0,
+                            activeSignature: Number.isInteger(result.activeSignature) ? result.activeSignature : 0,
+                            activeParameter: Number.isInteger(result.activeParameter) ? result.activeParameter : 0,
                             signatures: result.signatures.map((sig) => ({
                                 label: sig.label || '',
                                 documentation: sig.documentation
@@ -724,7 +729,7 @@ class MonacoEditorManager {
                             }))
                         };
                     } catch (_) {
-                        return null;
+                        return emptySignatureHelp;
                     }
                 }
             });
