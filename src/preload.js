@@ -457,6 +457,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openBackupSettings: () => ipcRenderer.invoke('open-backup-settings'),
 
     getPlatform: () => ipcRenderer.invoke('get-platform'),
+    isPortableMode: () => ipcRenderer.invoke('is-portable-mode'),
     getUserHome: () => ipcRenderer.invoke('get-user-home'),
     getUserIconPath: () => ipcRenderer.invoke('get-user-icon-path'),
     getBuildInfo: () => ipcRenderer.invoke('get-build-info'),

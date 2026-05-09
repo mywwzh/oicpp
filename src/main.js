@@ -25,7 +25,35 @@ const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 const APP_VERSION = '1.4.4';
 const SAVE_ALL_TIMEOUT = 4000;
 
+let isPortableMode = false;
+let portableRoot = null;
+
+function detectPortableMode() {
+    const appDir = path.dirname(app.getAppPath());
+    const portableFile = path.join(appDir, 'PORTABLE');
+    if (fs.existsSync(portableFile)) {
+        isPortableMode = true;
+        portableRoot = appDir;
+        logInfo('[便携模式] 检测到便携版，根目录:', portableRoot);
+        return true;
+    }
+    return false;
+}
+
+function getUserDataDir() {
+    if (isPortableMode && portableRoot) {
+        return path.join(portableRoot, 'data');
+    }
+    return os.homedir();
+}
+
 function getUserIconPath() {
+    if (isPortableMode && portableRoot) {
+        const portableIconPath = path.join(portableRoot, 'oicpp.ico');
+        if (fs.existsSync(portableIconPath)) {
+            return portableIconPath;
+        }
+    }
     const userIconPath = path.join(os.homedir(), '.oicpp', 'oicpp.ico');
     if (fs.existsSync(userIconPath)) {
         return userIconPath;
@@ -142,9 +170,16 @@ function shouldUseAsciiTempCompileFile(inputFile) {
 
 function resolveClangdRootFromBundle() {
     const platformKey = getClangdPlatformKey();
-    const bundled = app.isPackaged
-        ? path.join(process.resourcesPath, 'clangd')
-        : path.join(__dirname, '..', 'build', 'clangd', platformKey);
+    let bundled;
+    
+    if (isPortableMode && portableRoot) {
+        bundled = path.join(portableRoot, 'clangd', platformKey);
+    } else {
+        bundled = app.isPackaged
+            ? path.join(process.resourcesPath, 'clangd')
+            : path.join(__dirname, '..', 'build', 'clangd', platformKey);
+    }
+    
     if (bundled && fs.existsSync(bundled)) {
         return bundled;
     }
@@ -152,6 +187,9 @@ function resolveClangdRootFromBundle() {
 }
 
 function getUserClangdRoot() {
+    if (isPortableMode && portableRoot) {
+        return path.join(portableRoot, 'LSP');
+    }
     return path.join(os.homedir(), '.oicpp', 'LSP');
 }
 
@@ -401,6 +439,11 @@ function ensureClangdUserBundle() {
         if (!bundledRoot) {
             logWarn('[LSP] 未找到打包的 clangd，用户可能不会获得 LSP 支持');
             return { ok: false, error: 'clangd bundle not found' };
+        }
+
+        if (isPortableMode) {
+            logInfo('[便携模式] 直接使用内置 clangd:', bundledRoot);
+            return { ok: true, root: bundledRoot };
         }
 
         logInfo('[LSP] 从安装包复制 clangd 到用户目录:', bundledRoot, '->', userRoot);
@@ -4360,6 +4403,10 @@ function setupIPC() {
         return 'linux';
     });
 
+    ipcMain.handle('is-portable-mode', async () => {
+        return isPortableMode;
+    });
+
     ipcMain.handle('get-user-home', async () => {
         return os.homedir();
     });
@@ -5771,6 +5818,18 @@ function openBackupSettings() {
 }
 
 async function checkForUpdates(isManual = false) {
+    if (isPortableMode) {
+        logInfo('[便携模式] 跳过更新检查');
+        if (isManual) {
+            dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                title: '检查更新',
+                message: '便携版禁用更新',
+                detail: '便携模式下已禁用在线更新功能，如需更新请下载最新版本。'
+            });
+        }
+        return;
+    }
     try {
         if (isManual && isAutoUpdateCheckInProgress) {
             dialog.showMessageBox(mainWindow, {
@@ -6255,6 +6314,11 @@ function checkPendingUpdate() {
 }
 
 async function checkDailyUpdate() {
+    if (isPortableMode) {
+        logInfo('[便携模式] 跳过启动时更新检查');
+        return;
+    }
+    
     const lastCheckDate = settings.lastUpdateCheck || '1970-01-01';
     logInfo('启动时检查更新...');
     logInfo('上次检查日期:', lastCheckDate);
@@ -6269,6 +6333,13 @@ async function checkDailyUpdate() {
 }
 
 function getSettingsPath() {
+    if (isPortableMode && portableRoot) {
+        const portableDataDir = path.join(portableRoot, 'data');
+        if (!fs.existsSync(portableDataDir)) {
+            fs.mkdirSync(portableDataDir, { recursive: true });
+        }
+        return path.join(portableDataDir, 'settings.json');
+    }
     const settingsDir = path.join(os.homedir(), '.oicpp');
     if (!fs.existsSync(settingsDir)) {
         fs.mkdirSync(settingsDir, { recursive: true });
@@ -7322,6 +7393,9 @@ function compareVersions(currentVersion, latestVersion) {
 
 app.whenReady().then(() => {
     app.commandLine.appendSwitch('charset', 'utf-8');
+    
+    detectPortableMode();
+    
     try {
         const clangdStatus = ensureClangdUserBundle();
         if (clangdStatus.ok) {

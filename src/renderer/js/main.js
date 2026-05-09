@@ -91,6 +91,8 @@
             this.setAppIcon();
             this.initialized = true;
 
+            await this.initPortableMode();
+
             // 主动启动 LSP 语言服务器（设置已加载，可获得正确编译参数）
             this.startLspIfNeeded();
 
@@ -342,6 +344,31 @@
             logWarn('获取登录状态失败:', error?.message || error);
         }
         this.updateAccountMenu();
+    }
+
+    async initPortableMode() {
+        if (!window.electronAPI || typeof window.electronAPI.isPortableMode !== 'function') {
+            return;
+        }
+        try {
+            const isPortable = await window.electronAPI.isPortableMode();
+            this.isPortableMode = isPortable;
+            logInfo('[便携模式] 当前状态:', isPortable ? '已启用' : '未启用');
+            
+            if (isPortable) {
+                this.hideUpdateMenuInPortableMode();
+            }
+        } catch (error) {
+            logWarn('检测便携模式失败:', error?.message || error);
+        }
+    }
+
+    hideUpdateMenuInPortableMode() {
+        const updateMenuItem = document.querySelector('.menu-dropdown-item[data-action="check-update"]');
+        if (updateMenuItem) {
+            updateMenuItem.style.display = 'none';
+            logInfo('[便携模式] 已隐藏检查更新菜单');
+        }
     }
 
     updateAccountMenu() {
