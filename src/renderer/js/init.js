@@ -120,23 +120,26 @@ function setupDefaultContent() {
 }
 
 function showErrorMessage(message) {
+    const safeMessage = String(message ?? '').split(/\r?\n/)[0].trim() || '发生错误，请稍后重试';
     var errorDiv = document.createElement('div');
     errorDiv.style.cssText = `
         position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: #ff4444;
-        color: white;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        right: 20px;
+        bottom: 20px;
+        background: #fff7ed;
+        color: #7c2d12;
+        padding: 12px 16px;
+        border-radius: 10px;
+        border: 1px solid #fdba74;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
         z-index: 10000;
         font-family: Arial, sans-serif;
-        max-width: 400px;
-        text-align: center;
+        max-width: 360px;
+        line-height: 1.5;
+        text-align: left;
+        pointer-events: none;
     `;
-    errorDiv.textContent = message;
+    errorDiv.textContent = safeMessage;
     
     document.body.appendChild(errorDiv);
     
