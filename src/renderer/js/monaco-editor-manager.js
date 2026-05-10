@@ -2227,9 +2227,6 @@ class MonacoEditorManager {
             if (window.electronAPI && window.electronAPI.getAllSettings) {
                 const all = await window.electronAPI.getAllSettings();
                 this.userSnippets = Array.isArray(all?.codeSnippets) ? all.codeSnippets : [];
-            } else if (window.getSettingsManager) {
-                const m = window.getSettingsManager();
-                this.userSnippets = Array.isArray(m?.getSettings('codeSnippets')) ? m.getSettings('codeSnippets') : [];
             }
             if (!Array.isArray(this.userSnippets)) this.userSnippets = [];
             logInfo('加载用户片段完成，数量:', this.userSnippets.length);
@@ -6185,10 +6182,10 @@ class MonacoEditorManager {
     async getCompilerSettingsSnapshot() {
         const result = { compilerPath: '', compilerArgs: '' };
         try {
-            const manager = window.settingsManager || (typeof window.getSettingsManager === 'function' ? window.getSettingsManager() : null);
-            if (manager?.getSettings) {
-                result.compilerPath = manager.getSettings('compilerPath') || '';
-                result.compilerArgs = manager.getSettings('compilerArgs') || '';
+            if (window.electronAPI?.getAllSettings) {
+                const all = await window.electronAPI.getAllSettings();
+                result.compilerPath = all?.compilerPath || '';
+                result.compilerArgs = all?.compilerArgs || '';
             }
         } catch (_) {}
 
