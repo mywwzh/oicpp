@@ -20,6 +20,7 @@ class EditorSettings {
             autoSave: true,
             autoSaveInterval: 60000,
             autoOpenLastWorkspace: true,
+            receiveBetaUpdates: false,
             glassEffectEnabled: false,
             markdownMode: 'split',
             keybindings: this.getDefaultKeybindings()
@@ -691,6 +692,13 @@ class EditorSettings {
             });
         }
 
+        const receiveBetaUpdatesCheckbox = document.getElementById('editor-receive-beta-updates');
+        if (receiveBetaUpdatesCheckbox) {
+            receiveBetaUpdatesCheckbox.addEventListener('change', () => {
+                this.notifyMainWindowPreview();
+            });
+        }
+
         const autoCompletionCheckbox = document.getElementById('editor-auto-completion');
         if (autoCompletionCheckbox) {
             autoCompletionCheckbox.addEventListener('change', () => {
@@ -1195,6 +1203,10 @@ class EditorSettings {
         if (autoOpenLastWorkspaceCheckbox) {
             newSettings.autoOpenLastWorkspace = !!autoOpenLastWorkspaceCheckbox.checked;
         }
+        const receiveBetaUpdatesCheckbox = document.getElementById('editor-receive-beta-updates');
+        if (receiveBetaUpdatesCheckbox) {
+            newSettings.receiveBetaUpdates = !!receiveBetaUpdatesCheckbox.checked;
+        }
         const autoSaveIntervalInput = document.getElementById('editor-auto-save-interval');
         if (autoSaveIntervalInput) {
             const parsedInterval = parseInt(autoSaveIntervalInput.value, 10);
@@ -1367,6 +1379,7 @@ class EditorSettings {
         const autoSaveCheckbox = document.getElementById('editor-auto-save-enabled');
         const autoSaveIntervalInput = document.getElementById('editor-auto-save-interval');
         const autoOpenLastWorkspaceCheckbox = document.getElementById('editor-auto-open-last-workspace');
+        const receiveBetaUpdatesCheckbox = document.getElementById('editor-receive-beta-updates');
         const opacityInput = document.getElementById('editor-opacity');
         const opacityValue = document.getElementById('editor-opacity-value');
         const glassEffectCheckbox = document.getElementById('editor-glass-effect-enabled');
@@ -1449,6 +1462,10 @@ class EditorSettings {
 
         if (autoOpenLastWorkspaceCheckbox) {
             autoOpenLastWorkspaceCheckbox.checked = this.settings.autoOpenLastWorkspace !== false;
+        }
+
+        if (receiveBetaUpdatesCheckbox) {
+            receiveBetaUpdatesCheckbox.checked = this.settings.receiveBetaUpdates === true;
         }
 
         if (opacityInput && opacityValue) {
