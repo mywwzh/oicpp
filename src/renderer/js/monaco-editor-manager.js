@@ -686,6 +686,10 @@ class MonacoEditorManager {
             activeParameter: 0,
             signatures: []
         };
+        const createSignatureHelpResult = (signatureHelp) => ({
+            value: signatureHelp,
+            dispose() { }
+        });
         for (const language of languages) {
             const key = `${language}:signatureHelp`;
             if (this._lspProviders.has(key)) continue;
@@ -696,9 +700,9 @@ class MonacoEditorManager {
                 provideSignatureHelp: async (model, position) => {
                     try {
                         await this._ensureLspDocumentReady(model);
-                        if (!this.lspClient) return emptySignatureHelp;
+                        if (!this.lspClient) return createSignatureHelpResult(emptySignatureHelp);
                         const uri = await this.getDocumentUriForModel(model);
-                        if (!uri) return emptySignatureHelp;
+                        if (!uri) return createSignatureHelpResult(emptySignatureHelp);
 
                         const result = await this.lspClient.request('textDocument/signatureHelp', {
                             textDocument: { uri },
@@ -708,9 +712,9 @@ class MonacoEditorManager {
                             }
                         });
                         if (!result || !Array.isArray(result.signatures) || result.signatures.length === 0) {
-                            return emptySignatureHelp;
+                            return createSignatureHelpResult(emptySignatureHelp);
                         }
-                        return {
+                        return createSignatureHelpResult({
                             activeSignature: Number.isInteger(result.activeSignature) ? result.activeSignature : 0,
                             activeParameter: Number.isInteger(result.activeParameter) ? result.activeParameter : 0,
                             signatures: result.signatures.map((sig) => ({
@@ -727,9 +731,9 @@ class MonacoEditorManager {
                                     }))
                                     : []
                             }))
-                        };
+                        });
                     } catch (_) {
-                        return emptySignatureHelp;
+                        return createSignatureHelpResult(emptySignatureHelp);
                     }
                 }
             });
