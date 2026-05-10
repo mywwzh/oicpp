@@ -167,6 +167,12 @@ const main = async () => {
         throw new Error(`Unsupported platform: ${platform}`);
     }
 
+    const targetRoot = path.join(outputRoot, platform);
+    if (fs.existsSync(targetRoot)) {
+        console.log(`[clangd] Target exists: ${targetRoot}, skipping`);
+        return;
+    }
+
     const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
     const releaseUrl = `https://api.github.com/repos/${repo}/releases/tags/${tag}`;
     console.log(`[clangd] Fetching release ${releaseUrl}`);
@@ -209,7 +215,6 @@ const main = async () => {
         throw new Error('Unable to locate clangd root (bin/clangd) after extraction');
     }
 
-    const targetRoot = path.join(outputRoot, platform);
     fs.rmSync(targetRoot, { recursive: true, force: true });
     ensureDir(outputRoot);
 

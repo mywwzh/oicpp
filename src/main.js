@@ -188,6 +188,32 @@ function addSystemIncludeDir(flags, includeDir) {
     return true;
 }
 
+function addStdCxxIncludeBundle(flags, includeDir) {
+    if (!addSystemIncludeDir(flags, includeDir)) {
+        return false;
+    }
+
+    let currentDir = path.dirname(path.resolve(includeDir));
+    let safetyDepth = 0;
+    while (currentDir && safetyDepth < 6) {
+        const cassertPath = path.join(currentDir, 'cassert');
+        if (fs.existsSync(cassertPath)) {
+            addSystemIncludeDir(flags, currentDir);
+            break;
+        }
+
+        const parentDir = path.dirname(currentDir);
+        if (!parentDir || parentDir === currentDir) {
+            break;
+        }
+
+        currentDir = parentDir;
+        safetyDepth += 1;
+    }
+
+    return true;
+}
+
 function collectStdCxxIncludeDirs(compilerPath) {
     const candidateRoots = [];
 
@@ -417,7 +443,7 @@ function ensureClangdUserBundle() {
 
 /**
  * 运行编译器获取其内置 include 路径 和 target triple
- * 执行 g++ -E -x c++ - -v 并解析 stderr
+ * 执行 g++ -E -x c++ - -v 并解析输出
  * @param {string} compilerPath - 编译器完整路径
  * @param {string[]} extraArgs - 额外的编译参数（如 -std=c++14）
  * @returns {Promise<{includePaths: string[], target: string}>}
@@ -440,11 +466,21 @@ function queryCompilerInfo(compilerPath, extraArgs = []) {
 
         logInfo('[LSP] 正在查询编译器信息:', compilerPath, args.join(' '));
 
+        const runtimeBinPaths = getCompilerRuntimeBinPaths(compilerPath);
+        const compilerEnv = {
+            ...process.env
+        };
+        if (runtimeBinPaths.length > 0) {
+            compilerEnv.PATH = [...runtimeBinPaths, process.env.PATH || ''].join(path.delimiter);
+        }
+
+        let stdout = '';
         let stderr = '';
         let timedOut = false;
 
         const proc = spawn(compilerPath, args, {
             stdio: ['pipe', 'pipe', 'pipe'],
+            env: compilerEnv,
             windowsHide: true
         });
 
@@ -457,6 +493,10 @@ function queryCompilerInfo(compilerPath, extraArgs = []) {
             stderr += data.toString('utf8');
         });
 
+        proc.stdout.on('data', (data) => {
+            stdout += data.toString('utf8');
+        });
+
         proc.on('close', (code) => {
             clearTimeout(timer);
             if (timedOut) {
@@ -464,13 +504,16 @@ function queryCompilerInfo(compilerPath, extraArgs = []) {
                 resolve(result);
                 return;
             }
-            const targetMatch = stderr.match(/^Target:\s*(\S+)/m);
+
+            const output = [stderr, stdout].filter(Boolean).join('\n');
+
+            const targetMatch = output.match(/^Target:\s*(\S+)/m);
             if (targetMatch) {
                 result.target = targetMatch[1];
                 logInfo('[LSP] 从编译器获取 target:', result.target);
             }
 
-            const lines = stderr.split(/\r?\n/);
+            const lines = output.split(/\r?\n/);
             let inSearchList = false;
 
             for (const line of lines) {
@@ -592,7 +635,7 @@ class ClangdLspManager {
 
                 const probedStdCxxIncludeDir = await queryCompilerHeaderIncludeDir(compilerPath, 'bits/stdc++.h');
                 if (probedStdCxxIncludeDir) {
-                    addSystemIncludeDir(fallbackFlags, probedStdCxxIncludeDir);
+                    addStdCxxIncludeBundle(fallbackFlags, probedStdCxxIncludeDir);
                     logInfo('[LSP] 通过编译器直接探测到标准 C++ 头文件路径:', probedStdCxxIncludeDir);
                 }
 
@@ -603,14 +646,14 @@ class ClangdLspManager {
                 const stdCxxIncludeDirs = collectStdCxxIncludeDirs(compilerPath);
                 if (stdCxxIncludeDirs.length > 0) {
                     for (const includeDir of stdCxxIncludeDirs) {
-                        addSystemIncludeDir(fallbackFlags, includeDir);
+                        addStdCxxIncludeBundle(fallbackFlags, includeDir);
                     }
                     logInfo('[LSP] 已补充标准 C++ 头文件路径:', stdCxxIncludeDirs.join('; '));
                 } else {
                     const searchedStdCxxIncludeDirs = searchCompilerTreeForStdCxxIncludeDir(compilerPath, 'bits/stdc++.h');
                     if (searchedStdCxxIncludeDirs.length > 0) {
                         for (const includeDir of searchedStdCxxIncludeDirs) {
-                            addSystemIncludeDir(fallbackFlags, includeDir);
+                            addStdCxxIncludeBundle(fallbackFlags, includeDir);
                         }
                         logInfo('[LSP] 已从编译器目录递归搜索到标准 C++ 头文件路径:', searchedStdCxxIncludeDirs.join('; '));
                     }
