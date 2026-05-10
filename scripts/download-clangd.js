@@ -102,6 +102,16 @@ const downloadFile = (url, dest, token) => new Promise((resolve, reject) => {
     });
 });
 
+const ensureDownload = async (url, dest, token) => {
+    if (!fs.existsSync(dest)) {
+        console.log(`[clangd] Downloading to ${dest}`);
+        await downloadFile(url, dest, token);
+        return;
+    }
+
+    console.log('[clangd] Using cached download');
+};
+
 const run7z = (argsList) => {
     const result = spawnSync(path7za, argsList, { stdio: 'inherit' });
     if (result.status !== 0) {
@@ -196,19 +206,25 @@ const main = async () => {
     ensureDir(tempRoot);
     const downloadPath = path.join(tempRoot, selected.name);
 
-    if (!fs.existsSync(downloadPath)) {
-        console.log(`[clangd] Downloading to ${downloadPath}`);
-        await downloadFile(selected.browser_download_url, downloadPath, token || undefined);
-    } else {
-        console.log('[clangd] Using cached download');
-    }
-
     const extractRoot = path.join(tempRoot, 'extract');
-    fs.rmSync(extractRoot, { recursive: true, force: true });
-    ensureDir(extractRoot);
+    const extractWithRetry = async () => {
+        fs.rmSync(extractRoot, { recursive: true, force: true });
+        ensureDir(extractRoot);
 
-    console.log('[clangd] Extracting...');
-    await extractArchive(downloadPath, extractRoot);
+        console.log('[clangd] Extracting...');
+        await extractArchive(downloadPath, extractRoot);
+    };
+
+    await ensureDownload(selected.browser_download_url, downloadPath, token || undefined);
+
+    try {
+        await extractWithRetry();
+    } catch (err) {
+        console.log('[clangd] Cached archive failed to extract, re-downloading...');
+        try { fs.unlinkSync(downloadPath); } catch (_) {}
+        await downloadFile(selected.browser_download_url, downloadPath, token || undefined);
+        await extractWithRetry();
+    }
 
     const installRoot = walkForClangdRoot(extractRoot);
     if (!installRoot) {
