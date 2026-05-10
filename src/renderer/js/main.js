@@ -12,7 +12,8 @@
             tabSize: 4,
             wordWrap: false,
             enableAutoCompletion: true,
-            glassEffectEnabled: false
+            glassEffectEnabled: false,
+            receiveBetaUpdates: false
         };
         this.editorManager = null;
         this.initialized = false;

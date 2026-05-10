@@ -48,7 +48,8 @@ class SettingsManager {
                 autoSave: true,
                 autoSaveInterval: 60000,
                 showWelcomeScreen: true,
-                language: 'zh-cn'
+                language: 'zh-cn',
+                receiveBetaUpdates: false
             }
         };
 
