@@ -5857,8 +5857,7 @@ async function checkForUpdates(isManual = false) {
         const description = updateInfo.description || '';
 
         try {
-            const today = new Date().toISOString().split('T')[0];
-            settings.lastUpdateCheck = today;
+            settings.lastUpdateCheck = new Date().toISOString();
             saveSettings();
         } catch (_) { }
 
@@ -6298,16 +6297,54 @@ function checkPendingUpdate() {
     }
 }
 
+const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000;
+let updateCheckTimerId = null;
+
+function getLastUpdateCheckTimestamp() {
+    const value = settings.lastUpdateCheck;
+    if (!value) {
+        return 0;
+    }
+
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function scheduleNextUpdateCheck(delayMs = UPDATE_CHECK_INTERVAL_MS) {
+    if (updateCheckTimerId) {
+        clearTimeout(updateCheckTimerId);
+    }
+
+    updateCheckTimerId = setTimeout(() => {
+        updateCheckTimerId = null;
+        checkDailyUpdate().catch(err => logError('定时检查更新失败:', err));
+    }, delayMs);
+}
+
 async function checkDailyUpdate() {
-    const lastCheckDate = settings.lastUpdateCheck || '1970-01-01';
+    const lastCheckTimestamp = getLastUpdateCheckTimestamp();
+    const now = Date.now();
+    const elapsed = lastCheckTimestamp > 0 ? now - lastCheckTimestamp : Number.POSITIVE_INFINITY;
+    const remainingMs = lastCheckTimestamp > 0 ? Math.max(0, UPDATE_CHECK_INTERVAL_MS - elapsed) : 0;
+
     logInfo('启动时检查更新...');
-    logInfo('上次检查日期:', lastCheckDate);
+    logInfo('上次检查时间:', lastCheckTimestamp > 0 ? new Date(lastCheckTimestamp).toISOString() : '从未检查');
 
     return new Promise(resolve => {
         setTimeout(async () => {
-            logInfo('开始执行启动时自动检查更新');
-            await checkForUpdates(false); // false 表示自动检查
-            resolve();
+            try {
+                if (lastCheckTimestamp > 0 && elapsed < UPDATE_CHECK_INTERVAL_MS) {
+                    logInfo('距离上次检查不足 3 小时，本次自动检查已跳过');
+                } else {
+                    logInfo('开始执行启动时自动检查更新');
+                    await checkForUpdates(false); // false 表示自动检查
+                }
+            } catch (err) {
+                logError('启动时检查更新失败:', err);
+            } finally {
+                scheduleNextUpdateCheck(lastCheckTimestamp > 0 && elapsed < UPDATE_CHECK_INTERVAL_MS ? remainingMs : UPDATE_CHECK_INTERVAL_MS);
+                resolve();
+            }
         }, 5000);
     });
 }
