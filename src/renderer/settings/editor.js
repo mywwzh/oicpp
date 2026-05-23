@@ -131,8 +131,7 @@ class EditorSettings {
             'preprocessor',
             'operator',
             'pointer',
-            'localVariable',
-            'globalVariable'
+            'variable'
         ];
     }
 
@@ -151,8 +150,7 @@ class EditorSettings {
                 preprocessor: '#c586c0',
                 operator: '#d4d4d4',
                 pointer: '#d4d4d4',
-                localVariable: '#9cdcfe',
-                globalVariable: '#4fc1ff'
+                variable: '#9cdcfe'
             },
             light: {
                 keyword: '#0000ff',
@@ -166,8 +164,7 @@ class EditorSettings {
                 preprocessor: '#0000ff',
                 operator: '#000000',
                 pointer: '#001080',
-                localVariable: '#001080',
-                globalVariable: '#005cc5'
+                variable: '#001080'
             },
             monokai: {
                 keyword: '#f92672',
@@ -181,8 +178,7 @@ class EditorSettings {
                 preprocessor: '#f92672',
                 operator: '#f8f8f2',
                 pointer: '#fd971f',
-                localVariable: '#f8f8f2',
-                globalVariable: '#66d9ef'
+                variable: '#f8f8f2'
             },
             'github-light': {
                 keyword: '#d73a49',
@@ -196,8 +192,7 @@ class EditorSettings {
                 preprocessor: '#d73a49',
                 operator: '#24292e',
                 pointer: '#e36209',
-                localVariable: '#24292e',
-                globalVariable: '#005cc5'
+                variable: '#24292e'
             },
             'github-dark': {
                 keyword: '#ff7b72',
@@ -211,8 +206,7 @@ class EditorSettings {
                 preprocessor: '#ff7b72',
                 operator: '#e6edf3',
                 pointer: '#ffa657',
-                localVariable: '#c9d1d9',
-                globalVariable: '#79c0ff'
+                variable: '#c9d1d9'
             },
             'solarized-light': {
                 keyword: '#859900',
@@ -226,8 +220,7 @@ class EditorSettings {
                 preprocessor: '#859900',
                 operator: '#586e75',
                 pointer: '#cb4b16',
-                localVariable: '#657b83',
-                globalVariable: '#268bd2'
+                variable: '#657b83'
             },
             'solarized-dark': {
                 keyword: '#859900',
@@ -241,8 +234,7 @@ class EditorSettings {
                 preprocessor: '#859900',
                 operator: '#93a1a1',
                 pointer: '#cb4b16',
-                localVariable: '#93a1a1',
-                globalVariable: '#268bd2'
+                variable: '#93a1a1'
             },
             dracula: {
                 keyword: '#ff79c6',
@@ -256,8 +248,7 @@ class EditorSettings {
                 preprocessor: '#ff79c6',
                 operator: '#f8f8f2',
                 pointer: '#ffb86c',
-                localVariable: '#f8f8f2',
-                globalVariable: '#8be9fd'
+                variable: '#f8f8f2'
             }
         };
         return { ...(presets[themeKey] || presets.dark) };
@@ -283,12 +274,26 @@ class EditorSettings {
         return fallback;
     }
 
+    resolveSyntaxTokenValue(raw, key, legacyKeys = []) {
+        if (!raw || typeof raw !== 'object') {
+            return undefined;
+        }
+        const candidates = [key, ...legacyKeys];
+        for (const candidate of candidates) {
+            if (Object.prototype.hasOwnProperty.call(raw, candidate)) {
+                return raw[candidate];
+            }
+        }
+        return undefined;
+    }
+
     normalizeSyntaxColors(raw, theme = 'dark') {
         const defaults = this.getDefaultSyntaxColors(theme);
         const normalized = { ...defaults };
         if (raw && typeof raw === 'object') {
             Object.keys(defaults).forEach((key) => {
-                normalized[key] = this.normalizeHexColor(raw[key], defaults[key]);
+                const legacyKeys = key === 'variable' ? ['localVariable', 'globalVariable'] : [];
+                normalized[key] = this.normalizeHexColor(this.resolveSyntaxTokenValue(raw, key, legacyKeys), defaults[key]);
             });
         }
         return normalized;
@@ -299,7 +304,8 @@ class EditorSettings {
         const normalized = JSON.parse(JSON.stringify(defaults));
         if (raw && typeof raw === 'object') {
             Object.keys(defaults).forEach((key) => {
-                const style = raw[key];
+                const legacyKeys = key === 'variable' ? ['localVariable', 'globalVariable'] : [];
+                const style = this.resolveSyntaxTokenValue(raw, key, legacyKeys);
                 if (style && typeof style === 'object') {
                     normalized[key].bold = !!style.bold;
                     normalized[key].italic = !!style.italic;

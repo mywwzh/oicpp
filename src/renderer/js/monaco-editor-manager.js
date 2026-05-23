@@ -1115,6 +1115,19 @@ class MonacoEditorManager {
         return raw;
     }
 
+    resolveSyntaxTokenValue(raw, key, legacyKeys = []) {
+        if (!raw || typeof raw !== 'object') {
+            return undefined;
+        }
+        const candidates = [key, ...legacyKeys];
+        for (const candidate of candidates) {
+            if (Object.prototype.hasOwnProperty.call(raw, candidate)) {
+                return raw[candidate];
+            }
+        }
+        return undefined;
+    }
+
     getSyntaxTokenKeys() {
         return [
             'keyword',
@@ -1128,8 +1141,7 @@ class MonacoEditorManager {
             'preprocessor',
             'operator',
             'pointer',
-            'localVariable',
-            'globalVariable'
+            'variable'
         ];
     }
 
@@ -1148,8 +1160,7 @@ class MonacoEditorManager {
                 preprocessor: '#c586c0',
                 operator: '#d4d4d4',
                 pointer: '#d4d4d4',
-                localVariable: '#9cdcfe',
-                globalVariable: '#4fc1ff'
+                variable: '#9cdcfe'
             },
             light: {
                 keyword: '#0000ff',
@@ -1163,8 +1174,7 @@ class MonacoEditorManager {
                 preprocessor: '#0000ff',
                 operator: '#000000',
                 pointer: '#001080',
-                localVariable: '#001080',
-                globalVariable: '#005cc5'
+                variable: '#001080'
             },
             monokai: {
                 keyword: '#f92672',
@@ -1178,8 +1188,7 @@ class MonacoEditorManager {
                 preprocessor: '#f92672',
                 operator: '#f8f8f2',
                 pointer: '#fd971f',
-                localVariable: '#f8f8f2',
-                globalVariable: '#66d9ef'
+                variable: '#f8f8f2'
             },
             'github-light': {
                 keyword: '#d73a49',
@@ -1193,8 +1202,7 @@ class MonacoEditorManager {
                 preprocessor: '#d73a49',
                 operator: '#24292e',
                 pointer: '#e36209',
-                localVariable: '#24292e',
-                globalVariable: '#005cc5'
+                variable: '#24292e'
             },
             'github-dark': {
                 keyword: '#ff7b72',
@@ -1208,8 +1216,7 @@ class MonacoEditorManager {
                 preprocessor: '#ff7b72',
                 operator: '#e6edf3',
                 pointer: '#ffa657',
-                localVariable: '#c9d1d9',
-                globalVariable: '#79c0ff'
+                variable: '#c9d1d9'
             },
             'solarized-light': {
                 keyword: '#859900',
@@ -1223,8 +1230,7 @@ class MonacoEditorManager {
                 preprocessor: '#859900',
                 operator: '#586e75',
                 pointer: '#cb4b16',
-                localVariable: '#657b83',
-                globalVariable: '#268bd2'
+                variable: '#657b83'
             },
             'solarized-dark': {
                 keyword: '#859900',
@@ -1238,8 +1244,7 @@ class MonacoEditorManager {
                 preprocessor: '#859900',
                 operator: '#93a1a1',
                 pointer: '#cb4b16',
-                localVariable: '#93a1a1',
-                globalVariable: '#268bd2'
+                variable: '#93a1a1'
             },
             dracula: {
                 keyword: '#ff79c6',
@@ -1253,8 +1258,7 @@ class MonacoEditorManager {
                 preprocessor: '#ff79c6',
                 operator: '#f8f8f2',
                 pointer: '#ffb86c',
-                localVariable: '#f8f8f2',
-                globalVariable: '#8be9fd'
+                variable: '#f8f8f2'
             }
         };
         return { ...(presets[themeKey] || presets.dark) };
@@ -1274,7 +1278,8 @@ class MonacoEditorManager {
         const normalized = { ...defaults };
         if (raw && typeof raw === 'object') {
             Object.keys(defaults).forEach((key) => {
-                const value = raw[key];
+                const legacyKeys = key === 'variable' ? ['localVariable', 'globalVariable'] : [];
+                const value = this.resolveSyntaxTokenValue(raw, key, legacyKeys);
                 if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.trim())) {
                     normalized[key] = value.trim().toLowerCase();
                 }
@@ -1288,7 +1293,8 @@ class MonacoEditorManager {
         const normalized = JSON.parse(JSON.stringify(defaults));
         if (raw && typeof raw === 'object') {
             Object.keys(defaults).forEach((key) => {
-                const value = raw[key];
+                const legacyKeys = key === 'variable' ? ['localVariable', 'globalVariable'] : [];
+                const value = this.resolveSyntaxTokenValue(raw, key, legacyKeys);
                 if (value && typeof value === 'object') {
                     normalized[key].bold = !!value.bold;
                     normalized[key].italic = !!value.italic;
@@ -1390,10 +1396,11 @@ class MonacoEditorManager {
             makeRule('delimiter', 'operator'),
             makeRule('operator.pointer', 'pointer'),
             makeRule('pointer', 'pointer'),
-            makeRule('variable.local', 'localVariable'),
-            makeRule('localVar', 'localVariable'),
-            makeRule('variable.global', 'globalVariable'),
-            makeRule('globalVar', 'globalVariable'),
+            makeRule('variable', 'variable'),
+            makeRule('variable.local', 'variable'),
+            makeRule('variable.global', 'variable'),
+            makeRule('localVar', 'variable'),
+            makeRule('globalVar', 'variable'),
             makeRule('comment', 'comment')
         ];
     }
@@ -1414,10 +1421,10 @@ class MonacoEditorManager {
             interface: withStyle('class', 'class'),
             enum: withStyle('type', 'type'),
             typeParameter: withStyle('type', 'type'),
-            parameter: withStyle('localVariable', 'localVariable'),
-            variable: withStyle('localVariable', 'localVariable'),
-            property: withStyle('localVariable', 'localVariable'),
-            enumMember: withStyle('globalVariable', 'globalVariable'),
+            parameter: withStyle('variable', 'variable'),
+            variable: withStyle('variable', 'variable'),
+            property: withStyle('variable', 'variable'),
+            enumMember: withStyle('variable', 'variable'),
             function: withStyle('function', 'function'),
             method: withStyle('function', 'function'),
             macro: withStyle('preprocessor', 'preprocessor'),

@@ -427,8 +427,7 @@ body[data-theme="dracula"] {
 .syntax-preview-code .tok-preprocessor { color: var(--syntax-preprocessor); font-weight: var(--syntax-preprocessor-weight, 400); font-style: var(--syntax-preprocessor-style, normal); }
 .syntax-preview-code .tok-operator { color: var(--syntax-operator); font-weight: var(--syntax-operator-weight, 400); font-style: var(--syntax-operator-style, normal); }
 .syntax-preview-code .tok-pointer { color: var(--syntax-pointer); font-weight: var(--syntax-pointer-weight, 400); font-style: var(--syntax-pointer-style, normal); }
-.syntax-preview-code .tok-localVariable { color: var(--syntax-localVariable); font-weight: var(--syntax-localVariable-weight, 400); font-style: var(--syntax-localVariable-style, normal); }
-.syntax-preview-code .tok-globalVariable { color: var(--syntax-globalVariable); font-weight: var(--syntax-globalVariable-weight, 400); font-style: var(--syntax-globalVariable-style, normal); }
+.syntax-preview-code .tok-variable { color: var(--syntax-variable); font-weight: var(--syntax-variable-weight, 400); font-style: var(--syntax-variable-style, normal); }
 
 .setting-group label {
     display: block;
