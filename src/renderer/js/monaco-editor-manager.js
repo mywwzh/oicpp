@@ -4771,6 +4771,8 @@ class MonacoEditorManager {
         try {
             if (!model || !position) return null;
             const lineText = model.getLineContent(position.lineNumber) || '';
+            const urlSymbol = this.identifyUrlAtPosition(lineText, position);
+            if (urlSymbol) return urlSymbol;
             const trimmedLine = lineText.trimStart();
             if (trimmedLine.startsWith('#')) {
                 const directiveMatch = trimmedLine.match(/^#\s*([A-Za-z_]+)/);
@@ -4823,6 +4825,77 @@ class MonacoEditorManager {
         } catch (err) {
             logWarn('identifySymbolAtPosition 失败:', err);
             return null;
+        }
+    }
+
+    identifyUrlAtPosition(lineText, position) {
+        try {
+            if (!lineText || !position || !Number.isFinite(position.column)) return null;
+            const urlPattern = /\b(?:https?:\/\/|www\.)[^\s<>"'()\[\]{}]+/gi;
+            for (const match of lineText.matchAll(urlPattern)) {
+                const rawText = String(match[0] || '').replace(/[).,!?;:]+$/, '');
+                if (!rawText) {
+                    continue;
+                }
+
+                const startIndex = match.index || 0;
+                const endIndex = startIndex + rawText.length;
+                const startColumn = startIndex + 1;
+                const endColumn = endIndex + 1;
+                if (position.column < startColumn || position.column > endColumn) {
+                    continue;
+                }
+
+                return {
+                    kind: 'url',
+                    url: this.normalizeExternalUrl(rawText),
+                    range: new monaco.Range(position.lineNumber, startColumn, position.lineNumber, endColumn),
+                    lineText
+                };
+            }
+        } catch (err) {
+            logWarn('identifyUrlAtPosition 失败:', err);
+        }
+        return null;
+    }
+
+    normalizeExternalUrl(value) {
+        const text = String(value || '').trim();
+        if (!text) return '';
+
+        if (/^www\./i.test(text)) {
+            try {
+                return new URL(`https://${text}`).href;
+            } catch (_) {
+                return '';
+            }
+        }
+
+        try {
+            const parsedUrl = new URL(text);
+            if (['http:', 'https:', 'mailto:', 'file:'].includes(parsedUrl.protocol)) {
+                return parsedUrl.href;
+            }
+        } catch (_) {
+        }
+
+        return '';
+    }
+
+    async openExternalUrl(url) {
+        const targetUrl = String(url || '').trim();
+        if (!targetUrl) return;
+
+        try {
+            if (window.electronAPI && typeof window.electronAPI.openExternal === 'function') {
+                await window.electronAPI.openExternal(targetUrl);
+            } else if (window.electron && window.electron.shell && typeof window.electron.shell.openExternal === 'function') {
+                window.electron.shell.openExternal(targetUrl);
+            } else if (typeof window.open === 'function') {
+                window.open(targetUrl, '_blank', 'noopener');
+            }
+        } catch (err) {
+            logWarn('打开外部链接失败:', err);
         }
     }
 
@@ -5629,6 +5702,13 @@ class MonacoEditorManager {
             if (!model || (typeof model.isDisposed === 'function' && model.isDisposed())) return;
             const symbol = this.identifySymbolAtPosition(model, position);
             if (!symbol) return;
+
+            if (symbol.kind === 'url') {
+                if (symbol.url) {
+                    await this.openExternalUrl(symbol.url);
+                }
+                return;
+            }
             const modelFilePath = this.getModelFilePath(model);
             const modelDir = modelFilePath ? await this.safeDirname(modelFilePath) : null;
 

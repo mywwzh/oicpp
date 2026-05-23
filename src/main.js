@@ -7455,10 +7455,16 @@ app.on('web-contents-created', (event, contents) => {
     });
 
     contents.on('will-navigate', (event, navigationUrl) => {
-        const parsedUrl = new URL(navigationUrl);
+        let parsedUrl = null;
+        try {
+            parsedUrl = new URL(navigationUrl);
+        } catch (_) {
+            return;
+        }
 
         if (parsedUrl.origin !== 'file://') {
             event.preventDefault();
+            shell.openExternal(navigationUrl);
         }
     });
 
