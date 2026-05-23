@@ -7,7 +7,7 @@
 !define PRODUCT_WEB_SITE "https://oicpp.mywwzh.top"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\OICPP IDE.exe"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
-!define PRODUCT_UNINST_ROOT_KEY "HKLM"
+!define PRODUCT_UNINST_ROOT_KEY "HKCU"
 
 ; MUI 1.67 compatible ------
 !include "MUI.nsh"
@@ -16,6 +16,9 @@
 !include "FileFunc.nsh"
 
 Unicode true
+
+RequestExecutionLevel user
+SetShellVarContext current
 
 Var CPP_ASSOC_CHECKBOX
 Var DESKTOP_SHORTCUT_CHECKBOX
@@ -55,8 +58,8 @@ Page custom MyCppAssocShow MyCppAssocLeave
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
 OutFile "OICPP-${PRODUCT_VERSION}-Setup.exe"
-InstallDir "$PROGRAMFILES\OICPP IDE"
-InstallDirRegKey HKLM "${PRODUCT_DIR_REGKEY}" ""
+InstallDir "$LOCALAPPDATA\Programs\OICPP IDE"
+InstallDirRegKey HKCU "${PRODUCT_DIR_REGKEY}" ""
 ShowInstDetails show
 ShowUnInstDetails show
 
@@ -80,7 +83,7 @@ Function .onInit
     SetSilent silent
     SetAutoClose true
     ${If} $UPDATE_INSTALL_DIR == ""
-      ReadRegStr $R3 HKLM "${PRODUCT_DIR_REGKEY}" ""
+      ReadRegStr $R3 HKCU "${PRODUCT_DIR_REGKEY}" ""
       ${If} $R3 != ""
         ${GetParent} $R3 $INSTDIR
       ${EndIf}
@@ -175,7 +178,6 @@ Section "OICPP 主程序" SEC01
   File "dist\win-unpacked\OICPP IDE.exe"
   SetOutPath "$INSTDIR\resources"
   File "dist\win-unpacked\resources\app.asar"
-  File "dist\win-unpacked\resources\elevate.exe"
   SetOutPath "$INSTDIR\resources\app.asar.unpacked"
   File /r "dist\win-unpacked\resources\app.asar.unpacked\*"
   SetOutPath "$INSTDIR"
@@ -199,7 +201,7 @@ SectionEnd
 
 Section -Post
   WriteUninstaller "$INSTDIR\uninst.exe"
-  WriteRegStr HKLM "${PRODUCT_DIR_REGKEY}" "" "$INSTDIR\OICPP IDE.exe"
+  WriteRegStr HKCU "${PRODUCT_DIR_REGKEY}" "" "$INSTDIR\OICPP IDE.exe"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayName" "$(^Name)"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "UninstallString" "$INSTDIR\uninst.exe"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$PROFILE\.oicpp\oicpp.ico"
@@ -296,7 +298,6 @@ Section Uninstall
   Delete "$INSTDIR\v8_context_snapshot.bin"
   Delete "$INSTDIR\snapshot_blob.bin"
   Delete "$INSTDIR\resources.pak"
-  Delete "$INSTDIR\resources\elevate.exe"
   Delete "$INSTDIR\resources\app.asar"
   Delete "$INSTDIR\OICPP IDE.exe"
   Delete "$INSTDIR\locales\zh-TW.pak"
@@ -383,6 +384,6 @@ Section Uninstall
   DeleteRegKey HKCR "OICPPIDE.cpp"
 
   DeleteRegKey ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}"
-  DeleteRegKey HKLM "${PRODUCT_DIR_REGKEY}"
+  DeleteRegKey HKCU "${PRODUCT_DIR_REGKEY}"
   SetAutoClose true
 SectionEnd
