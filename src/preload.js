@@ -364,6 +364,28 @@ try {
     window.addEventListener('click', async (ev) => {
         const target = ev.target;
         if (!(target instanceof HTMLElement)) return;
+
+        const anchor = target.closest('a[href]');
+        if (anchor instanceof HTMLAnchorElement) {
+            const href = anchor.getAttribute('href') || '';
+            if (href && !href.startsWith('#') && !href.toLowerCase().startsWith('javascript:') && (ev.ctrlKey || ev.metaKey)) {
+                try {
+                    const resolvedUrl = new URL(href, window.location.href);
+                    if (!['http:', 'https:', 'mailto:', 'file:'].includes(resolvedUrl.protocol)) {
+                        return;
+                    }
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    if (typeof shell?.openExternal === 'function') {
+                        await shell.openExternal(resolvedUrl.href);
+                    }
+                } catch (error) {
+                    console.error('Failed to open external link:', error);
+                }
+                return;
+            }
+        }
+
         const btn = target.closest('.copy-code-btn');
         if (!(btn instanceof HTMLElement)) return;
         const encoded = btn.getAttribute('data-code');
