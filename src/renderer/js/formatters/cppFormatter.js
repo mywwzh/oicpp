@@ -179,6 +179,14 @@
                     i++; continue;
                 }
 
+                if ((ch === '-' || ch === '+') && /[0-9.]?[eE]$/.test(out.replace(/\s+$/g, ''))) {
+                    pendingSpace = false;
+                    out = out.replace(/[ ]+$/g, '');
+                    out += ch;
+                    i++;
+                    continue;
+                }
+
                 if ('=+-*/%<>&|^'.includes(ch)) {
                     const prev = out.replace(/\s+$/g, '').slice(-1);
                     const unary = (ch === '*' || ch === '&' || ch === '+' || ch === '-') && (!prev || '([,{;=+-*/%&|^!~?:<>'.includes(prev));
