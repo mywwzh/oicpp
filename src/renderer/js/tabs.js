@@ -1969,7 +1969,9 @@ class TabManager {
                         break;
                     case 't':
                         e.preventDefault();
-                        this.createNewTab();
+                        if (window.oicppApp && typeof window.oicppApp.openTemplateSettings === 'function') {
+                            window.oicppApp.openTemplateSettings();
+                        }
                         break;
                 }
             }
