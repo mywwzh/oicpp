@@ -341,16 +341,6 @@ class MonacoEditorManager {
             if (!this.lspClient) return;
             logInfo('[LSP] 正在重启 clangd 以应用新编译器路径:', newCompilerPath);
 
-            if (this._lspReadyPromise) {
-                this._lspReadyPromise = null;
-            }
-
-            try {
-                if (window.electronAPI?.lspStop) {
-                    await window.electronAPI.lspStop();
-                }
-            } catch (_) {}
-
             this._lspDocuments.clear();
             for (const timer of this._lspChangeTimers.values()) {
                 clearTimeout(timer);
@@ -359,7 +349,27 @@ class MonacoEditorManager {
 
             this._lspCompilerPath = newCompilerPath;
 
-            await this.ensureLspReady();
+            const workspaceRoot = this.getWorkspaceRootPath();
+            const rootUri = (workspaceRoot && typeof monaco !== 'undefined' && monaco.Uri)
+                ? monaco.Uri.file(workspaceRoot).toString()
+                : '';
+            const workspaceName = workspaceRoot ? this.getFileNameFromPath(workspaceRoot) : 'workspace';
+            const { compilerPath, compilerArgs } = await this.getCompilerSettingsSnapshot();
+            const fallbackFlags = this.tokenizeCompilerArgs(compilerArgs || '');
+            if (!fallbackFlags.some(f => f.startsWith('-std='))) {
+                fallbackFlags.unshift('-std=c++17');
+            }
+
+            this._lspReadyPromise = this.lspClient.restart({
+                workspaceRoot,
+                rootUri,
+                workspaceName,
+                fallbackFlags,
+                compilerPath: compilerPath || newCompilerPath
+            });
+
+            await this._lspReadyPromise;
+
             const allModels = typeof monaco !== 'undefined' && monaco.editor ? monaco.editor.getModels() : [];
             for (const model of allModels) {
                 const langId = model.getLanguageId ? model.getLanguageId() : '';
@@ -375,6 +385,7 @@ class MonacoEditorManager {
 
             logInfo('[LSP] clangd 重启完成，已应用新编译器路径');
         } catch (err) {
+            this._lspReadyPromise = null;
             logWarn('[LSP] 重启 clangd 失败:', err?.message || err);
         }
     }
