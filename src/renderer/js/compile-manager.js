@@ -1103,6 +1103,12 @@ class CompilerManager {
 
     translateMessage(message = '') {
         const text = String(message);
+        if (/no such file or directory/.test(text)) {
+            const compilerPath = typeof this.settings?.compilerPath === 'string' ? this.settings.compilerPath.trim() : '';
+            return compilerPath
+                ? '包含的文件没找到，请检查头文件路径是否正确。'
+                : '包含的文件没找到，请先设置编译器路径，再检查 #include 的头文件路径是否正确。';
+        }
         if (/expected\s+['"`]?;/.test(text) || /expected\s+['"`]?;\s+or/.test(text)) {
             return '可能缺少分号或冒号，检查报错位置前一行是否遗漏 ; 或语句被截断。';
         }
