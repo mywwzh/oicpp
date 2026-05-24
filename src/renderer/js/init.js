@@ -137,7 +137,6 @@ window.addEventListener('error', function(e) {
         };
         logError('[RendererGlobalError]', info);
     } catch (_) {}
-    showErrorMessage('发生错误: ' + (e?.error?.message || e?.message || '未知错误'));
 });
 
 window.addEventListener('unhandledrejection', function(e) {
@@ -151,7 +150,6 @@ window.addEventListener('unhandledrejection', function(e) {
             return;
         }
     } catch (_) {}
-    showErrorMessage('异步错误: ' + (e?.reason?.message || String(e?.reason)));
 });
 
 window.initializeApp = initializeApp;
