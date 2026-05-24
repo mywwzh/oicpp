@@ -2871,6 +2871,22 @@ function setupIPC() {
         return clangdLspManager.stop();
     });
 
+    ipcMain.handle('lsp-restart', async (_event, options = {}) => {
+        logInfo('[LSP] 渲染进程请求重启 LSP, options:', JSON.stringify(options));
+        const stopResult = await clangdLspManager.stop();
+        if (!stopResult || stopResult.ok !== true) {
+            return stopResult || { ok: false, error: 'clangd stop failed' };
+        }
+
+        const result = await clangdLspManager.start(options || {});
+        if (result.ok) {
+            logInfo('[LSP] 重启成功:', result.clangdPath || 'already running');
+        } else {
+            logError('[LSP] 重启失败:', result.error);
+        }
+        return result;
+    });
+
     ipcMain.handle('lsp-request', async (_event, method, params) => {
         logInfo('[LSP] 请求: ' + method);
         try {

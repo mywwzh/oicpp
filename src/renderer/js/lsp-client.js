@@ -40,6 +40,52 @@ class LspClientBridge {
         return this._readyPromise;
     }
 
+    async restart(options = {}) {
+        this._ready = false;
+        this._readyPromise = null;
+        this._readyPromise = this._restartInternal(options).catch((err) => {
+            this._readyPromise = null;
+            throw err;
+        });
+        return this._readyPromise;
+    }
+
+    async _restartInternal(options = {}) {
+        const api = window.electronAPI;
+        if (!api) {
+            throw new Error('LSP API unavailable');
+        }
+
+        if (typeof api.lspRestart === 'function') {
+            const startResult = await api.lspRestart({
+                workspaceRoot: options.workspaceRoot || '',
+                clangdArgs: Array.isArray(options.clangdArgs) ? options.clangdArgs : [],
+                fallbackFlags: Array.isArray(options.fallbackFlags) ? options.fallbackFlags : [],
+                compilerPath: options.compilerPath || '',
+                rootUri: options.rootUri || ''
+            });
+
+            if (!startResult || startResult.ok !== true) {
+                const errMsg = startResult?.error || 'clangd 重启失败（未知原因）';
+                logError('[LSP] clangd 重启失败:', errMsg);
+                throw new Error('clangd restart failed: ' + errMsg);
+            }
+
+            if (startResult.alreadyRunning) {
+                logInfo('[LSP] clangd 已在运行中，复用现有进程');
+            } else {
+                logInfo('[LSP] clangd 进程已启动:', startResult.clangdPath || '');
+            }
+
+            return await this._finishStartup(startResult, options);
+        }
+
+        if (typeof api.lspStop === 'function') {
+            await api.lspStop();
+        }
+        return await this._startInternal(options);
+    }
+
     async _startInternal(options = {}) {
         const api = window.electronAPI;
         if (!api || typeof api.lspStart !== 'function') {
@@ -87,6 +133,21 @@ class LspClientBridge {
         const effectiveFallbackFlags = Array.isArray(startResult.fallbackFlags)
             ? startResult.fallbackFlags
             : (Array.isArray(options.fallbackFlags) ? options.fallbackFlags : []);
+
+        return await this._finishStartup(startResult, options, api, effectiveFallbackFlags);
+    }
+
+    async _finishStartup(startResult, options = {}, api = window.electronAPI, effectiveFallbackFlags = null) {
+        const rootUri = options.rootUri || '';
+        const workspaceFolders = rootUri
+            ? [{ uri: rootUri, name: options.workspaceName || 'workspace' }]
+            : [];
+
+        const fallbackFlags = Array.isArray(effectiveFallbackFlags)
+            ? effectiveFallbackFlags
+            : (Array.isArray(startResult?.fallbackFlags)
+                ? startResult.fallbackFlags
+                : (Array.isArray(options.fallbackFlags) ? options.fallbackFlags : []));
 
         logInfo('[LSP] 发送 initialize 请求...');
 
@@ -145,7 +206,7 @@ class LspClientBridge {
                 }
             },
             initializationOptions: {
-                fallbackFlags: effectiveFallbackFlags
+                fallbackFlags
             }
         };
 

@@ -596,6 +596,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     lspStart: (options) => ipcRenderer.invoke('lsp-start', options),
     lspStop: () => ipcRenderer.invoke('lsp-stop'),
+    lspRestart: (options) => ipcRenderer.invoke('lsp-restart', options),
     lspRequest: (method, params) => ipcRenderer.invoke('lsp-request', method, params),
     lspNotify: (method, params) => ipcRenderer.invoke('lsp-notify', method, params),
     onLspNotification: (callback) => ipcRenderer.on('lsp-notification', (_event, payload) => callback && callback(payload)),
