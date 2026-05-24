@@ -1200,7 +1200,9 @@ class CloudSyncPanel {
         if (window.oicppApp?.showMessage) {
             window.oicppApp.showMessage(message, type);
         } else {
-            alert(message);
+            try {
+                logWarn('[CloudSyncMessageSuppressed]', { type, message: String(message) });
+            } catch (_) { }
         }
     }
 
