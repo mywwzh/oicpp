@@ -24,6 +24,44 @@ const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
 const APP_VERSION = '1.4.6';
 const SAVE_ALL_TIMEOUT = 4000;
+const EXTERNAL_OPEN_DEDUP_WINDOW_MS = 800;
+const recentExternalOpens = new Map();
+
+function normalizeExternalOpenUrl(url) {
+    const value = String(url || '').trim();
+    if (!value) {
+        return '';
+    }
+
+    try {
+        return new URL(value).href;
+    } catch (_) {
+        return value;
+    }
+}
+
+async function openExternalOnce(url) {
+    const targetUrl = normalizeExternalOpenUrl(url);
+    if (!targetUrl) {
+        return false;
+    }
+
+    const now = Date.now();
+    const lastOpenedAt = recentExternalOpens.get(targetUrl) || 0;
+    if (now - lastOpenedAt < EXTERNAL_OPEN_DEDUP_WINDOW_MS) {
+        return false;
+    }
+
+    recentExternalOpens.set(targetUrl, now);
+    for (const [key, openedAt] of recentExternalOpens.entries()) {
+        if (now - openedAt > EXTERNAL_OPEN_DEDUP_WINDOW_MS * 4) {
+            recentExternalOpens.delete(key);
+        }
+    }
+
+    await shell.openExternal(targetUrl);
+    return true;
+}
 
 function getUserIconPath() {
     const userIconPath = path.join(os.homedir(), '.oicpp', 'oicpp.ico');
@@ -2139,7 +2177,7 @@ function createWindow() {
             if (!url || typeof url !== 'string') {
                 throw new Error('Invalid URL');
             }
-            await shell.openExternal(url);
+            await openExternalOnce(url);
             return { ok: true };
         } catch (err) {
             logError('open-external 失败:', err?.message || err);
@@ -7454,7 +7492,7 @@ app.on('web-contents-created', (event, contents) => {
             try {
                 const parsedUrl = new URL(url);
                 if (parsedUrl.origin !== 'file://') {
-                    shell.openExternal(url);
+                    void openExternalOnce(url);
                     return { action: 'deny' };
                 }
             } catch (_) {
@@ -7474,7 +7512,7 @@ app.on('web-contents-created', (event, contents) => {
 
         if (parsedUrl.origin !== 'file://') {
             event.preventDefault();
-            shell.openExternal(navigationUrl);
+            void openExternalOnce(navigationUrl);
         }
     });
 
