@@ -2133,7 +2133,7 @@ class TabManager {
                     tab.isLoading = false; // 清除加载标志
                     if (error) {
                         logError('读取文件失败:', error);
-                        alert('无法读取文件: ' + error);
+                        logWarn('[TabReadFileErrorSuppressed]', '无法读取文件: ' + error);
                         if (tab.content !== undefined) {
                             this.setEditorContent(tab.content);
                         }
@@ -3873,11 +3873,7 @@ class TabManager {
         } catch (error) {
             logError('打开文件对比失败:', error);
             try {
-                if (window.dialogManager?.showError) {
-                    window.dialogManager.showError(error?.message || '打开文件对比失败');
-                } else {
-                    alert(error?.message || '打开文件对比失败');
-                }
+                logWarn('[TabOpenCompareErrorSuppressed]', error?.message || '打开文件对比失败');
             } catch (e) {
                 logWarn('显示错误提示失败:', e);
             }
@@ -4711,7 +4707,7 @@ class TabManager {
                     if (filePath) {
                         const success = await window.electronAPI.openRecentFile(filePath);
                         if (!success) {
-                            alert('无法打开文件，文件可能已被删除或移动。');
+                            logWarn('[RecentFileOpenErrorSuppressed]', '无法打开文件，文件可能已被删除或移动。');
                         }
                     }
                 });

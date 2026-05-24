@@ -357,21 +357,7 @@ class DialogManager {
     showError(message) {
         this.resetDialogState();
         try { logError('[DialogShowError]', { message: String(message) }); } catch (_) { }
-        const overlay = document.getElementById('dialog-overlay');
-        const container = document.getElementById('dialog-container');
-        container.innerHTML = `
-            <div class="dialog-header" style="background:#b00020;color:#fff;">
-                <h3>错误</h3>
-                <button class="dialog-close" onclick="dialogManager.hideDialog()" style="color:#fff">&times;</button>
-            </div>
-            <div class="dialog-body">
-                <p style="white-space:pre-wrap;color:#b00020;background:#fff3f3;border:1px solid #f5c2c7;padding:8px;border-radius:4px;">${this.escapeHtml(String(message))}</p>
-            </div>
-            <div class="dialog-footer">
-                <button class="dialog-btn dialog-btn-confirm" onclick="dialogManager.hideDialog()">确定</button>
-            </div>
-        `;
-        overlay.style.display = 'flex';
+        try { logWarn('[DialogShowErrorSuppressed]', String(message)); } catch (_) { }
     }
 
     escapeHtml(text) {

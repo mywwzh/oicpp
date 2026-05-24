@@ -84,9 +84,9 @@ class FileExplorer {
                 return;
             }
         } catch (error) {
-            logWarn('showError 调用自定义对话框失败，回退到 alert', error);
+            logWarn('showError 调用自定义对话框失败', error);
         }
-        window.alert?.(text);
+        logWarn('[FileExplorerErrorSuppressed]', text);
     }
 
     refocusSelectedFile() {
