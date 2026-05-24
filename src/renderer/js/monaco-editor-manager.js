@@ -73,11 +73,6 @@ class MonacoEditorManager {
                 window.electronAPI.onSettingsChanged((_type, payload) => {
                     if (payload && Object.prototype.hasOwnProperty.call(payload, 'compilerPath')) {
                         const newCompilerPath = payload.compilerPath || '';
-                        const hadCompilerPath = typeof this._lspCompilerPath === 'string' && this._lspCompilerPath.trim().length > 0;
-                        const hasCompilerPath = typeof newCompilerPath === 'string' && newCompilerPath.trim().length > 0;
-                        if (hasCompilerPath || hadCompilerPath) {
-                            this._missingCompilerPathNoticeShown = false;
-                        }
                         if (this._lspCompilerPath !== newCompilerPath) {
                             logInfo('[LSP] 编译器路径已更改, 将重启 clangd:', this._lspCompilerPath, '->', newCompilerPath);
                             this.restartLspWithCompiler(newCompilerPath);
@@ -1017,8 +1012,7 @@ class MonacoEditorManager {
             const fileName = fileNameHint || (filePathHint ? filePathHint.split(/[\\/]/).pop() : 'untitled');
 
             const { compilerPath } = await this.getCompilerSettingsSnapshot();
-            if (!compilerPath && !this._missingCompilerPathNoticeShown) {
-                this._missingCompilerPathNoticeShown = true;
+            if (!compilerPath) {
                 const notice = '编译器路径未设置，语法检查将找不到头文件，请先设置编译器路径。';
                 if (window.oicppApp?.showMessage) {
                     window.oicppApp.showMessage(notice, 'warning');
