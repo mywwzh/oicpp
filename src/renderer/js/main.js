@@ -720,6 +720,7 @@
     }
 
     applySettings(settingsType = null, newSettings = null) {
+        const previousCompilerPath = this.settings.compilerPath || '';
         if (newSettings) {
             this.settings = { ...this.settings, ...newSettings };
         }
@@ -748,6 +749,21 @@
                 compilerArgs: this.settings.compilerArgs || '-std=c++14 -O2 -static'
             });
         }     
+
+        const currentCompilerPath = this.settings.compilerPath || '';
+        if (newSettings && Object.prototype.hasOwnProperty.call(newSettings, 'compilerPath') && previousCompilerPath !== currentCompilerPath) {
+            logInfo('[LSP] 编译器路径发生更改，正在重启LSP:', previousCompilerPath, '->', currentCompilerPath);
+            try {
+                const restartPromise = window.monacoEditorManager?.restartLspWithCompiler?.(currentCompilerPath);
+                if (restartPromise && typeof restartPromise.catch === 'function') {
+                    restartPromise.catch((err) => {
+                        logWarn('[LSP] 触发重启失败:', err?.message || err);
+                    });
+                }
+            } catch (err) {
+                logWarn('[LSP] 触发重启失败:', err?.message || err);
+            }
+        }
 
         if (!newSettings || newSettings.autoSave !== undefined || newSettings.autoSaveInterval !== undefined) {
             this.configureAutoSave();

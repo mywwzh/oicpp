@@ -73,10 +73,6 @@ class MonacoEditorManager {
                 window.electronAPI.onSettingsChanged((_event, _settingsType, payload) => {
                     if (payload && Object.prototype.hasOwnProperty.call(payload, 'compilerPath')) {
                         const newCompilerPath = payload.compilerPath || '';
-                        if (this._lspCompilerPath !== newCompilerPath) {
-                            logInfo('[LSP] 编译器路径发生更改，正在重启LSP:', this._lspCompilerPath, '->', newCompilerPath);
-                            this.restartLspWithCompiler(newCompilerPath);
-                        }
                         this._lspCompilerPath = newCompilerPath;
 
                         this._compilerIncludeDirsCache = { compilerPath: null, dirs: [] };
