@@ -789,7 +789,7 @@ class ClangdLspManager {
         const payload = { jsonrpc: '2.0', id, method, params: params || {} };
         this._send(payload);
         return new Promise((resolve, reject) => {
-            this.pending.set(id, { resolve, reject });
+            this.pending.set(id, { resolve, reject, method });
         });
     }
 
@@ -2318,6 +2318,19 @@ function createMenuBar() {
                         openCodeTemplates();
                     }
                 }
+            ]
+        },
+        {
+            label: '编辑',
+            submenu: [
+                { label: '撤销', accelerator: 'CmdOrCtrl+Z', role: 'undo' },
+                { label: '重做', accelerator: 'CmdOrCtrl+Shift+Z', role: 'redo' },
+                { type: 'separator' },
+                { label: '剪切', accelerator: 'CmdOrCtrl+X', role: 'cut' },
+                { label: '复制', accelerator: 'CmdOrCtrl+C', role: 'copy' },
+                { label: '粘贴', accelerator: 'CmdOrCtrl+V', role: 'paste' },
+                { type: 'separator' },
+                { label: '全选', accelerator: 'CmdOrCtrl+A', role: 'selectAll' }
             ]
         },
         {
