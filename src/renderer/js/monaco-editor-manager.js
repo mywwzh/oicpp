@@ -2469,6 +2469,7 @@ class MonacoEditorManager {
                     links: true,
                     occurrencesHighlight: true,
                     selectionHighlight: true,
+                    matchBrackets: 'never',
                     colorDecorators: true,
                     bracketPairColorization: { enabled: true },
                 guides: {
