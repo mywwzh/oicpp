@@ -225,7 +225,8 @@ class IntegratedTerminalPanel {
                 foreground: '#1f2328',
                 cursor: '#0b57d0',
                 cursorAccent: '#ffffff',
-                selectionBackground: 'rgba(9, 105, 218, 0.24)'
+                selectionBackground: 'rgba(9, 105, 218, 0.45)',
+                selectionForeground: '#ffffff'
             };
         }
 
@@ -234,7 +235,8 @@ class IntegratedTerminalPanel {
             foreground: '#d0d0d0',
             cursor: '#c8c8c8',
             cursorAccent: '#111111',
-            selectionBackground: 'rgba(255, 255, 255, 0.18)'
+            selectionBackground: 'rgba(90, 170, 255, 0.35)',
+            selectionForeground: '#ffffff'
         };
     }
 
