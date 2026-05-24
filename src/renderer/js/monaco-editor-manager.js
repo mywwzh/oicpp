@@ -70,7 +70,7 @@ class MonacoEditorManager {
 
         if (window.electronAPI?.onSettingsChanged) {
             try {
-                window.electronAPI.onSettingsChanged((_type, payload) => {
+                window.electronAPI.onSettingsChanged((_event, _settingsType, payload) => {
                     if (payload && Object.prototype.hasOwnProperty.call(payload, 'compilerPath')) {
                         const newCompilerPath = payload.compilerPath || '';
                         if (this._lspCompilerPath !== newCompilerPath) {
