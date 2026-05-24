@@ -7464,11 +7464,6 @@ app.on('web-contents-created', (event, contents) => {
         });
     }
 
-    contents.on('new-window', (event, navigationUrl) => {
-        event.preventDefault();
-        shell.openExternal(navigationUrl);
-    });
-
     contents.on('will-navigate', (event, navigationUrl) => {
         let parsedUrl = null;
         try {
