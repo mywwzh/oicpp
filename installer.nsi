@@ -18,7 +18,6 @@
 Unicode true
 
 RequestExecutionLevel user
-SetShellVarContext current
 
 Var CPP_ASSOC_CHECKBOX
 Var DESKTOP_SHORTCUT_CHECKBOX
@@ -64,6 +63,7 @@ ShowInstDetails show
 ShowUnInstDetails show
 
 Function .onInit
+  SetShellVarContext current
   StrCpy $UPDATE_SILENT_MODE "0"
   StrCpy $UPDATE_INSTALL_DIR ""
 
