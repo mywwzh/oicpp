@@ -166,7 +166,7 @@ class CompilerManager {
                 this.handleRunError(error);
             });
 
-            ipcRenderer.on('settings-changed', (settingsType, newSettings) => {
+            ipcRenderer.on('settings-changed', (_event, _settingsType, newSettings) => {
                 logInfo('编译管理器收到设置变化通知:', newSettings);
                 if (newSettings && (newSettings.compilerPath !== undefined || newSettings.compilerArgs !== undefined || newSettings.runMode !== undefined)) {
                     this.updateSettings({
