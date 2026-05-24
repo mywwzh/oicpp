@@ -7449,6 +7449,21 @@ app.on('before-quit', () => {
 });
 
 app.on('web-contents-created', (event, contents) => {
+    if (typeof contents.setWindowOpenHandler === 'function') {
+        contents.setWindowOpenHandler(({ url }) => {
+            try {
+                const parsedUrl = new URL(url);
+                if (parsedUrl.origin !== 'file://') {
+                    shell.openExternal(url);
+                    return { action: 'deny' };
+                }
+            } catch (_) {
+                return { action: 'deny' };
+            }
+            return { action: 'deny' };
+        });
+    }
+
     contents.on('new-window', (event, navigationUrl) => {
         event.preventDefault();
         shell.openExternal(navigationUrl);
