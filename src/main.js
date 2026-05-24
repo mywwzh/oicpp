@@ -603,6 +603,7 @@ class ClangdLspManager {
         this.buffer = Buffer.alloc(0);
         this.pending = new Map();
         this.nextId = 1;
+        this.procGeneration = 0;
     }
 
     isRunning() {
@@ -710,12 +711,18 @@ class ClangdLspManager {
         }
 
         logInfo('[LSP] 正在启动 clangd:', clangdPath, args.join(' '));
-        this.proc = spawn(clangdPath, args, { stdio: 'pipe' });
-        this.proc.stdout.on('data', (data) => this._handleData(data));
-        this.proc.stderr.on('data', (data) => {
+        const proc = spawn(clangdPath, args, { stdio: 'pipe' });
+        const generation = ++this.procGeneration;
+        this.proc = proc;
+        proc.stdout.on('data', (data) => this._handleData(data));
+        proc.stderr.on('data', (data) => {
             try { logWarn('[clangd]', data.toString('utf8').trim()); } catch (_) {}
         });
-        this.proc.on('exit', (code, signal) => {
+        proc.on('exit', (code, signal) => {
+            if (generation !== this.procGeneration) {
+                logInfo('[LSP] clangd 进程已退出, 但已被新的进程替换, code=' + (code ?? 'null') + (signal ? ', signal=' + signal : ''));
+                return;
+            }
             logInfo('[LSP] clangd 进程已退出, code=' + (code ?? 'null') + (signal ? ', signal=' + signal : ''));
             this.proc = null;
             this.buffer = Buffer.alloc(0);
@@ -725,25 +732,51 @@ class ClangdLspManager {
             });
             this.pending.clear();
         });
-        this.proc.on('error', (err) => {
+        proc.on('error', (err) => {
             logError('[LSP] clangd 进程启动失败:', err?.message || err);
         });
-        logInfo('[LSP] clangd 已启动, PID:', this.proc.pid);
+        logInfo('[LSP] clangd 已启动, PID:', proc.pid);
         return { ok: true, clangdPath, args, fallbackFlags };
     }
 
-    stop() {
-        if (!this.proc) {
+    async stop() {
+        const proc = this.proc;
+        if (!proc) {
             return { ok: true };
         }
-        logInfo('[LSP] 正在停止 clangd (PID:', this.proc.pid, ')');
-        try { this.proc.kill(); } catch (_) {}
+        logInfo('[LSP] 正在停止 clangd (PID:', proc.pid, ')');
+        this.procGeneration += 1;
         this.proc = null;
         this.buffer = Buffer.alloc(0);
         this.pending.forEach((entry) => {
             try { entry.reject(new Error('clangd stopped')); } catch (_) {}
         });
         this.pending.clear();
+
+        await new Promise((resolve) => {
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                resolve();
+            };
+            const timeout = setTimeout(() => {
+                logWarn('[LSP] 停止 clangd 超时，继续重启流程');
+                finish();
+            }, 2000);
+            const onExit = () => {
+                clearTimeout(timeout);
+                finish();
+            };
+            proc.once('exit', onExit);
+            try {
+                proc.kill();
+            } catch (_) {
+                clearTimeout(timeout);
+                finish();
+            }
+        });
+
         logInfo('[LSP] clangd 已停止');
         return { ok: true };
     }
