@@ -815,6 +815,7 @@ class MonacoEditorManager {
                         if (!model || (typeof model.isDisposed === 'function' && model.isDisposed())) {
                             return null;
                         }
+                        await this._ensureLspDocumentReady(model);
                         if (!this.lspClient) return null;
                         const uri = await this.getDocumentUriForModel(model);
                         if (!uri) return null;
@@ -1751,6 +1752,10 @@ class MonacoEditorManager {
                 getLegend: () => legend,
                 provideDocumentSemanticTokens: async (model) => {
                     try {
+                        await this._ensureLspDocumentReady(model);
+                        if (!this.lspClient) {
+                            return { data: new Uint32Array(), resultId: null };
+                        }
                         const uri = await this.getDocumentUriForModel(model);
                         if (!uri) {
                             return { data: new Uint32Array(), resultId: null };
