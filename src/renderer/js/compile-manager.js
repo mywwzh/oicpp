@@ -1030,9 +1030,12 @@ class CompilerManager {
         }
 
         if (/no such file or directory/.test(lower)) {
+            const compilerPath = typeof this.settings?.compilerPath === 'string' ? this.settings.compilerPath.trim() : '';
             return {
                 title: '包含的文件没找到',
-                suggestion: '确认 #include 的头文件路径是否正确，或源文件/编译器路径中是否包含空格导致识别失败。'
+                suggestion: compilerPath
+                    ? '确认 #include 的头文件路径是否正确，或源文件/编译器路径中是否包含空格导致识别失败。'
+                    : '请先设置编译器路径，然后再确认 #include 的头文件路径是否正确。'
             };
         }
 
