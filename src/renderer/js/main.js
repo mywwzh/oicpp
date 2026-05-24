@@ -544,7 +544,7 @@
                 else this.startDebug();
             });
 
-            window.electronAPI.onSettingsChanged((settingsType, newSettings) => {
+            window.electronAPI.onSettingsChanged((_event, settingsType, newSettings) => {
                 logInfo(`收到设置变化通知: ${settingsType}`, newSettings);
                 this.applySettings(settingsType, newSettings);
                 if (newSettings && Object.prototype.hasOwnProperty.call(newSettings, 'codeSnippets')) {
