@@ -10,6 +10,9 @@
             syntaxColorsByTheme: {},
             syntaxFontStyles: {},
             tabSize: 4,
+            formatterIndentStyle: 'editor',
+            clangFormatStyle: null,
+            clangFormatRaw: '',
             wordWrap: false,
             enableAutoCompletion: true,
             glassEffectEnabled: false
@@ -1170,6 +1173,9 @@
             syntaxColors: this.settings.syntaxColors,
             enableAutoCompletion: this.settings.enableAutoCompletion !== false,
             tabSize: this.settings.tabSize || 4,
+            formatterIndentStyle: this.settings.formatterIndentStyle || 'editor',
+            clangFormatStyle: this.settings.clangFormatStyle || null,
+            clangFormatRaw: this.settings.clangFormatRaw || '',
             wordWrap: this.settings.wordWrap || false,
             foldingEnabled: this.settings.foldingEnabled !== false,
             stickyScrollEnabled: this.settings.stickyScrollEnabled !== false

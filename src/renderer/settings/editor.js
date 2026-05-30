@@ -10,6 +10,7 @@ class EditorSettings {
             syntaxColorsByTheme: {},
             syntaxFontStyles: {},
             tabSize: 4,
+            formatterIndentStyle: 'editor',
             wordWrap: false,
             foldingEnabled: true,
             stickyScrollEnabled: true,
@@ -28,6 +29,8 @@ class EditorSettings {
 
         this._initialLoadedSettings = null;
         this._saved = false;
+        this._clangFormatRawDirty = false;
+        this._clangFormatControlsDirty = false;
 
         this.keybindingSchema = this.getKeybindingSchema();
     }
@@ -111,6 +114,378 @@ class EditorSettings {
             { key: 'cloudCompile', label: '云端编译' },
             { key: 'openTerminal', label: '打开内置终端' }
         ];
+    }
+
+    getDefaultClangFormatStyle() {
+        return {
+            BasedOnStyle: 'LLVM',
+            IndentWidth: 4,
+            TabWidth: 4,
+            UseTab: 'Never',
+            ColumnLimit: 0,
+            BreakBeforeBraces: 'Attach',
+            AllowShortIfStatementsOnASingleLine: 'Never',
+            AllowShortFunctionsOnASingleLine: 'Empty',
+            IndentCaseLabels: false,
+            PointerAlignment: 'Left',
+            SpaceBeforeParens: 'ControlStatements',
+            SortIncludes: true,
+            AlignConsecutiveAssignments: false,
+            AlignConsecutiveDeclarations: false
+        };
+    }
+
+    normalizeClangFormatStyle(raw = null) {
+        const defaults = this.getDefaultClangFormatStyle();
+        const normalized = { ...defaults };
+        if (!raw || typeof raw !== 'object') {
+            return normalized;
+        }
+
+        const toInt = (value, fallback) => {
+            const parsed = parseInt(value, 10);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+        };
+        const toBool = (value, fallback) => {
+            if (typeof value === 'boolean') return value;
+            if (typeof value === 'string') {
+                const lowered = value.trim().toLowerCase();
+                if (['true', 'yes', 'on'].includes(lowered)) return true;
+                if (['false', 'no', 'off'].includes(lowered)) return false;
+            }
+            return fallback;
+        };
+        const toEnum = (value, allowed, fallback) => {
+            const rawValue = String(value || '').trim();
+            if (!rawValue) return fallback;
+            const matched = allowed.find((item) => item.toLowerCase() === rawValue.toLowerCase());
+            return matched || fallback;
+        };
+
+        normalized.BasedOnStyle = toEnum(raw.BasedOnStyle, ['LLVM', 'Google', 'Mozilla', 'Chromium', 'Microsoft', 'WebKit'], defaults.BasedOnStyle);
+        normalized.IndentWidth = toInt(raw.IndentWidth, defaults.IndentWidth);
+        normalized.TabWidth = toInt(raw.TabWidth, normalized.IndentWidth);
+        normalized.UseTab = toEnum(raw.UseTab, ['Never', 'ForIndentation', 'ForContinuationAndIndentation', 'Always'], defaults.UseTab);
+        normalized.ColumnLimit = toInt(raw.ColumnLimit, defaults.ColumnLimit);
+        normalized.BreakBeforeBraces = toEnum(raw.BreakBeforeBraces, ['Attach', 'LLVM', 'Stroustrup', 'Allman', 'GNU', 'Mozilla', 'WebKit', 'Custom'], defaults.BreakBeforeBraces);
+        normalized.AllowShortIfStatementsOnASingleLine = toEnum(raw.AllowShortIfStatementsOnASingleLine, ['Never', 'WithoutElse', 'OnlyFirstIf', 'AllIfsAndElse', 'Always'], defaults.AllowShortIfStatementsOnASingleLine);
+        normalized.AllowShortFunctionsOnASingleLine = toEnum(raw.AllowShortFunctionsOnASingleLine, ['None', 'Empty', 'Inline', 'All'], defaults.AllowShortFunctionsOnASingleLine);
+        normalized.IndentCaseLabels = toBool(raw.IndentCaseLabels, defaults.IndentCaseLabels);
+        normalized.PointerAlignment = toEnum(raw.PointerAlignment, ['Left', 'Right', 'Middle'], defaults.PointerAlignment);
+        normalized.SpaceBeforeParens = toEnum(raw.SpaceBeforeParens, ['Never', 'ControlStatements', 'Always', 'Custom'], defaults.SpaceBeforeParens);
+        normalized.SortIncludes = toBool(raw.SortIncludes, defaults.SortIncludes);
+        normalized.AlignConsecutiveAssignments = toBool(raw.AlignConsecutiveAssignments, defaults.AlignConsecutiveAssignments);
+        normalized.AlignConsecutiveDeclarations = toBool(raw.AlignConsecutiveDeclarations, defaults.AlignConsecutiveDeclarations);
+
+        if (Object.prototype.hasOwnProperty.call(raw, 'formatterIndentStyle') && !Object.prototype.hasOwnProperty.call(raw, 'UseTab')) {
+            const legacyStyle = String(raw.formatterIndentStyle || '').trim().toLowerCase();
+            if (legacyStyle === 'tabs') {
+                normalized.UseTab = 'Always';
+            } else if (legacyStyle === 'spaces') {
+                normalized.UseTab = 'Never';
+            }
+        }
+
+        return normalized;
+    }
+
+    parseClangFormatText(text = '') {
+        const parsed = {};
+        String(text || '').split(/\r?\n/).forEach((line) => {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#') || trimmed === '---' || trimmed === '...') {
+                return;
+            }
+            const match = trimmed.match(/^([A-Za-z][A-Za-z0-9]*)\s*:\s*(.+)$/);
+            if (!match) {
+                return;
+            }
+            const key = match[1];
+            let value = match[2].trim();
+            if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+                value = value.slice(1, -1);
+            }
+            if (/^(true|false)$/i.test(value)) {
+                value = value.toLowerCase() === 'true';
+            } else if (/^-?\d+$/.test(value)) {
+                value = parseInt(value, 10);
+            }
+            parsed[key] = value;
+        });
+        return parsed;
+    }
+
+    generateClangFormatText(style = null) {
+        const normalized = this.normalizeClangFormatStyle(style || this.settings.clangFormatStyle || this.getDefaultClangFormatStyle());
+        const serialize = (value) => {
+            if (typeof value === 'boolean') return value ? 'true' : 'false';
+            if (typeof value === 'number') return String(value);
+            const text = String(value || '');
+            if (/\s/.test(text)) {
+                return `"${text.replace(/"/g, '\\"')}"`;
+            }
+            return text;
+        };
+
+        return [
+            `BasedOnStyle: ${serialize(normalized.BasedOnStyle)}`,
+            `IndentWidth: ${serialize(normalized.IndentWidth)}`,
+            `TabWidth: ${serialize(normalized.TabWidth)}`,
+            `UseTab: ${serialize(normalized.UseTab)}`,
+            `ColumnLimit: ${serialize(normalized.ColumnLimit)}`,
+            `BreakBeforeBraces: ${serialize(normalized.BreakBeforeBraces)}`,
+            `AllowShortIfStatementsOnASingleLine: ${serialize(normalized.AllowShortIfStatementsOnASingleLine)}`,
+            `AllowShortFunctionsOnASingleLine: ${serialize(normalized.AllowShortFunctionsOnASingleLine)}`,
+            `IndentCaseLabels: ${serialize(normalized.IndentCaseLabels)}`,
+            `PointerAlignment: ${serialize(normalized.PointerAlignment)}`,
+            `SpaceBeforeParens: ${serialize(normalized.SpaceBeforeParens)}`,
+            `SortIncludes: ${serialize(normalized.SortIncludes)}`,
+            `AlignConsecutiveAssignments: ${serialize(normalized.AlignConsecutiveAssignments)}`,
+            `AlignConsecutiveDeclarations: ${serialize(normalized.AlignConsecutiveDeclarations)}`
+        ].join('\n');
+    }
+
+    applyClangFormatStyleToUI(style = null, options = {}) {
+        const normalized = this.normalizeClangFormatStyle(style || this.settings.clangFormatStyle || this.getDefaultClangFormatStyle());
+        const rawTextOverride = Object.prototype.hasOwnProperty.call(options || {}, 'rawText') ? options.rawText : undefined;
+        const mapValue = (id, value) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.value = String(value);
+            }
+        };
+        const mapChecked = (id, value) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.checked = !!value;
+            }
+        };
+
+        mapValue('clang-format-based-on-style', normalized.BasedOnStyle);
+        mapValue('clang-format-use-tab', normalized.UseTab);
+        mapValue('clang-format-indent-width', normalized.IndentWidth);
+        mapValue('clang-format-tab-width', normalized.TabWidth);
+        mapValue('clang-format-column-limit', normalized.ColumnLimit);
+        mapValue('clang-format-break-before-braces', normalized.BreakBeforeBraces);
+        mapValue('clang-format-pointer-alignment', normalized.PointerAlignment);
+        mapValue('clang-format-space-before-parens', normalized.SpaceBeforeParens);
+        mapChecked('clang-format-indent-case-labels', normalized.IndentCaseLabels);
+        mapChecked('clang-format-sort-includes', normalized.SortIncludes);
+        mapChecked('clang-format-align-assignments', normalized.AlignConsecutiveAssignments);
+        mapChecked('clang-format-align-declarations', normalized.AlignConsecutiveDeclarations);
+
+        const rawTextArea = document.getElementById('clang-format-raw-text');
+        if (rawTextArea && rawTextOverride !== undefined) {
+            rawTextArea.value = String(rawTextOverride || '');
+        }
+    }
+
+    collectClangFormatStyleFromUI() {
+        const rawTextArea = document.getElementById('clang-format-raw-text');
+        if (this._clangFormatControlsDirty && !this._clangFormatRawDirty) {
+            return this.normalizeClangFormatStyle({
+                BasedOnStyle: document.getElementById('clang-format-based-on-style')?.value || 'LLVM',
+                IndentWidth: parseInt(document.getElementById('clang-format-indent-width')?.value, 10) || 4,
+                TabWidth: parseInt(document.getElementById('clang-format-tab-width')?.value, 10) || 4,
+                UseTab: document.getElementById('clang-format-use-tab')?.value || 'Never',
+                ColumnLimit: parseInt(document.getElementById('clang-format-column-limit')?.value, 10) || 0,
+                BreakBeforeBraces: document.getElementById('clang-format-break-before-braces')?.value || 'Attach',
+                AllowShortIfStatementsOnASingleLine: 'Never',
+                AllowShortFunctionsOnASingleLine: 'Empty',
+                IndentCaseLabels: !!document.getElementById('clang-format-indent-case-labels')?.checked,
+                PointerAlignment: document.getElementById('clang-format-pointer-alignment')?.value || 'Left',
+                SpaceBeforeParens: document.getElementById('clang-format-space-before-parens')?.value || 'ControlStatements',
+                SortIncludes: !!document.getElementById('clang-format-sort-includes')?.checked,
+                AlignConsecutiveAssignments: !!document.getElementById('clang-format-align-assignments')?.checked,
+                AlignConsecutiveDeclarations: !!document.getElementById('clang-format-align-declarations')?.checked
+            });
+        }
+
+        if (rawTextArea && String(rawTextArea.value || '').trim()) {
+            const parsed = this.parseClangFormatText(rawTextArea.value);
+            return this.normalizeClangFormatStyle(parsed);
+        }
+
+        const readNumber = (id, fallback) => {
+            const element = document.getElementById(id);
+            if (!element) {
+                return fallback;
+            }
+            const parsed = parseInt(element.value, 10);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+        };
+        const readCheckbox = (id, fallback) => {
+            const element = document.getElementById(id);
+            return element ? !!element.checked : fallback;
+        };
+        const readValue = (id, fallback) => {
+            const element = document.getElementById(id);
+            return element && element.value ? element.value : fallback;
+        };
+
+        return this.normalizeClangFormatStyle({
+            BasedOnStyle: readValue('clang-format-based-on-style', 'LLVM'),
+            IndentWidth: readNumber('clang-format-indent-width', 4),
+            TabWidth: readNumber('clang-format-tab-width', 4),
+            UseTab: readValue('clang-format-use-tab', 'Never'),
+            ColumnLimit: readNumber('clang-format-column-limit', 0),
+            BreakBeforeBraces: readValue('clang-format-break-before-braces', 'Attach'),
+            AllowShortIfStatementsOnASingleLine: 'Never',
+            AllowShortFunctionsOnASingleLine: 'Empty',
+            IndentCaseLabels: readCheckbox('clang-format-indent-case-labels', false),
+            PointerAlignment: readValue('clang-format-pointer-alignment', 'Left'),
+            SpaceBeforeParens: readValue('clang-format-space-before-parens', 'ControlStatements'),
+            SortIncludes: readCheckbox('clang-format-sort-includes', true),
+            AlignConsecutiveAssignments: readCheckbox('clang-format-align-assignments', false),
+            AlignConsecutiveDeclarations: readCheckbox('clang-format-align-declarations', false)
+        });
+    }
+
+    async importClangFormatFromFile() {
+        try {
+            if (!window.electronAPI?.showOpenDialog || !window.electronAPI?.readFileContent) {
+                this.showMessage('当前环境不支持文件导入', 'error');
+                return;
+            }
+            const result = await window.electronAPI.showOpenDialog({
+                title: '导入 .clang-format',
+                properties: ['openFile'],
+                filters: [
+                    { name: '.clang-format', extensions: ['clang-format', 'yml', 'yaml', 'txt'] },
+                    { name: 'All Files', extensions: ['*'] }
+                ]
+            });
+            if (!result || result.canceled || !result.filePaths || result.filePaths.length === 0) {
+                return;
+            }
+            const filePath = result.filePaths[0];
+            const content = await window.electronAPI.readFileContent(filePath);
+            this.loadClangFormatFromText(String(content || ''));
+            this.showMessage('已导入 .clang-format', 'success');
+        } catch (error) {
+            logError('导入 .clang-format 失败:', error);
+            this.showMessage('导入 .clang-format 失败：' + error.message, 'error');
+        }
+    }
+
+    loadClangFormatFromText(text) {
+        const parsed = this.parseClangFormatText(text);
+        const normalized = this.normalizeClangFormatStyle(parsed);
+        this.settings.clangFormatStyle = normalized;
+        this.settings.clangFormatRaw = String(text || '').trim() ? String(text) : this.generateClangFormatText(normalized);
+        this._clangFormatRawDirty = false;
+        this._clangFormatControlsDirty = false;
+        this.applyClangFormatStyleToUI(normalized, { rawText: this.settings.clangFormatRaw });
+        this.notifyMainWindowPreview();
+    }
+
+    async saveClangFormatToFile() {
+        try {
+            if (!window.electronAPI?.showSaveDialog || !window.electronAPI?.writeFile) {
+                this.showMessage('当前环境不支持文件保存', 'error');
+                return;
+            }
+            const rawTextArea = document.getElementById('clang-format-raw-text');
+            const style = this.collectClangFormatStyleFromUI();
+            const content = (this._clangFormatRawDirty && !this._clangFormatControlsDirty && rawTextArea && String(rawTextArea.value || '').trim())
+                ? String(rawTextArea.value)
+                : this.generateClangFormatText(style);
+            const result = await window.electronAPI.showSaveDialog({
+                title: '写入 .clang-format',
+                defaultPath: '.clang-format',
+                filters: [
+                    { name: '.clang-format', extensions: ['clang-format', 'yml', 'yaml', 'txt'] },
+                    { name: 'All Files', extensions: ['*'] }
+                ]
+            });
+            if (!result || result.canceled || !result.filePath) {
+                return;
+            }
+            await window.electronAPI.writeFile(result.filePath, content);
+            this.showMessage('已写入 .clang-format', 'success');
+        } catch (error) {
+            logError('写入 .clang-format 失败:', error);
+            this.showMessage('写入 .clang-format 失败：' + error.message, 'error');
+        }
+    }
+
+    bindClangFormatControls() {
+        const updateFromControls = () => {
+            const style = this.collectClangFormatStyleFromUI();
+            this.settings.clangFormatStyle = style;
+            this.settings.clangFormatRaw = this.generateClangFormatText(style);
+            this._clangFormatControlsDirty = true;
+            this._clangFormatRawDirty = false;
+            const rawTextArea = document.getElementById('clang-format-raw-text');
+            if (rawTextArea) {
+                rawTextArea.value = this.settings.clangFormatRaw;
+            }
+            this.notifyMainWindowPreview();
+        };
+
+        const bindingIds = [
+            'clang-format-based-on-style',
+            'clang-format-use-tab',
+            'clang-format-indent-width',
+            'clang-format-tab-width',
+            'clang-format-column-limit',
+            'clang-format-break-before-braces',
+            'clang-format-pointer-alignment',
+            'clang-format-space-before-parens',
+            'clang-format-indent-case-labels',
+            'clang-format-sort-includes',
+            'clang-format-align-assignments',
+            'clang-format-align-declarations'
+        ];
+
+        bindingIds.forEach((id) => {
+            const element = document.getElementById(id);
+            if (!element) {
+                return;
+            }
+            const eventName = element.tagName === 'INPUT' && element.type === 'number' ? 'input' : 'change';
+            element.addEventListener(eventName, updateFromControls);
+        });
+
+        const rawTextArea = document.getElementById('clang-format-raw-text');
+        if (rawTextArea) {
+            rawTextArea.addEventListener('input', () => {
+                this._clangFormatRawDirty = true;
+                this._clangFormatControlsDirty = false;
+                this.notifyMainWindowPreview();
+            });
+        }
+
+        const importBtn = document.getElementById('import-clang-format');
+        if (importBtn) {
+            importBtn.addEventListener('click', () => this.importClangFormatFromFile());
+        }
+
+        const applyBtn = document.getElementById('apply-clang-format-text');
+        if (applyBtn) {
+            applyBtn.addEventListener('click', () => {
+                const rawText = String(rawTextArea?.value || '');
+                this.loadClangFormatFromText(rawText);
+            });
+        }
+
+        const saveBtn = document.getElementById('save-clang-format-file');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => this.saveClangFormatToFile());
+        }
+
+        const resetBtn = document.getElementById('reset-clang-format');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                const defaults = this.getDefaultClangFormatStyle();
+                this.settings.clangFormatStyle = defaults;
+                this.settings.clangFormatRaw = this.generateClangFormatText(defaults);
+                this._clangFormatRawDirty = false;
+                this._clangFormatControlsDirty = false;
+                this.applyClangFormatStyleToUI(defaults, { rawText: this.settings.clangFormatRaw });
+                this.notifyMainWindowPreview();
+            });
+        }
     }
 
     normalizeThemeKey(theme) {
@@ -678,6 +1053,7 @@ class EditorSettings {
 
         this.setupRealTimePreview();
         this.bindSyntaxColorControls();
+        this.bindClangFormatControls();
 
         const autoSaveCheckbox = document.getElementById('editor-auto-save-enabled');
         const autoSaveIntervalInput = document.getElementById('editor-auto-save-interval');
@@ -992,6 +1368,15 @@ class EditorSettings {
             if (allSettings) {
                 const rawMode = typeof allSettings.markdownMode === 'string' ? allSettings.markdownMode.trim().toLowerCase() : '';
                 const markdownMode = ['code', 'split'].includes(rawMode) ? rawMode : 'split';
+                const clangFormatStyle = this.normalizeClangFormatStyle(allSettings.clangFormatStyle || allSettings.clangFormat || (() => {
+                    if (typeof allSettings.clangFormatRaw === 'string' && allSettings.clangFormatRaw.trim()) {
+                        return this.parseClangFormatText(allSettings.clangFormatRaw);
+                    }
+                    return allSettings.formatterIndentStyle ? { formatterIndentStyle: allSettings.formatterIndentStyle } : null;
+                })());
+                const clangFormatRaw = typeof allSettings.clangFormatRaw === 'string' && allSettings.clangFormatRaw.trim()
+                    ? allSettings.clangFormatRaw
+                    : this.generateClangFormatText(clangFormatStyle);
                 this.settings = {
                     font: allSettings.font || 'Consolas',
                     fontSize: allSettings.fontSize || 14,
@@ -1014,6 +1399,12 @@ class EditorSettings {
                         return this.normalizeSyntaxFontStyles(allSettings.syntaxFontStyles);
                     })(),
                     tabSize: allSettings.tabSize || 4,
+                    formatterIndentStyle: (() => {
+                        const rawStyle = typeof allSettings.formatterIndentStyle === 'string' ? allSettings.formatterIndentStyle.trim().toLowerCase() : 'editor';
+                        return ['editor', 'spaces', 'tabs'].includes(rawStyle) ? rawStyle : 'editor';
+                    })(),
+                    clangFormatStyle,
+                    clangFormatRaw,
                     fontLigaturesEnabled: allSettings.fontLigaturesEnabled !== false,
                     foldingEnabled: allSettings.foldingEnabled !== false,
                     stickyScrollEnabled: allSettings.stickyScrollEnabled !== false,
@@ -1041,6 +1432,9 @@ class EditorSettings {
                     syntaxColorsByTheme: {},
                     syntaxFontStyles: {},
                     tabSize: 4,
+                    formatterIndentStyle: 'editor',
+                    clangFormatStyle: this.getDefaultClangFormatStyle(),
+                    clangFormatRaw: this.generateClangFormatText(),
                     stickyScrollEnabled: true,
                     foldingEnabled: true,
                     enableAutoCompletion: true,
@@ -1067,6 +1461,9 @@ class EditorSettings {
                 syntaxColorsByTheme: {},
                 syntaxFontStyles: {},
                 tabSize: 4,
+                formatterIndentStyle: 'editor',
+                clangFormatStyle: this.getDefaultClangFormatStyle(),
+                clangFormatRaw: this.generateClangFormatText(),
                 stickyScrollEnabled: true,
                 foldingEnabled: true,
                 enableAutoCompletion: true,
@@ -1193,6 +1590,14 @@ class EditorSettings {
                 newSettings.tabSize = parsedTabSize;
             }
         }
+
+        const clangFormatStyle = this.collectClangFormatStyleFromUI();
+        const clangFormatRawTextArea = document.getElementById('clang-format-raw-text');
+        const clangFormatRawText = clangFormatRawTextArea && String(clangFormatRawTextArea.value || '').trim()
+            ? String(clangFormatRawTextArea.value)
+            : this.generateClangFormatText(clangFormatStyle);
+        newSettings.clangFormatStyle = clangFormatStyle;
+        newSettings.clangFormatRaw = clangFormatRawText;
 
         const syntaxCheckCheckbox = document.getElementById('editor-syntax-check-enabled');
         if (syntaxCheckCheckbox) {
@@ -1383,6 +1788,19 @@ class EditorSettings {
         const stickyScrollCheckbox = document.getElementById('editor-sticky-scroll');
         const ligaturesCheckbox = document.getElementById('editor-font-ligatures');
         const tabSizeInput = document.getElementById('editor-tab-size');
+        const clangFormatBasedOnStyleSelect = document.getElementById('clang-format-based-on-style');
+        const clangFormatUseTabSelect = document.getElementById('clang-format-use-tab');
+        const clangFormatIndentWidthInput = document.getElementById('clang-format-indent-width');
+        const clangFormatTabWidthInput = document.getElementById('clang-format-tab-width');
+        const clangFormatColumnLimitInput = document.getElementById('clang-format-column-limit');
+        const clangFormatBreakBeforeBracesSelect = document.getElementById('clang-format-break-before-braces');
+        const clangFormatPointerAlignmentSelect = document.getElementById('clang-format-pointer-alignment');
+        const clangFormatSpaceBeforeParensSelect = document.getElementById('clang-format-space-before-parens');
+        const clangFormatIndentCaseLabelsCheckbox = document.getElementById('clang-format-indent-case-labels');
+        const clangFormatSortIncludesCheckbox = document.getElementById('clang-format-sort-includes');
+        const clangFormatAlignAssignmentsCheckbox = document.getElementById('clang-format-align-assignments');
+        const clangFormatAlignDeclarationsCheckbox = document.getElementById('clang-format-align-declarations');
+        const clangFormatRawTextArea = document.getElementById('clang-format-raw-text');
         const autoCompletionCheckbox = document.getElementById('editor-auto-completion');
         const syntaxCheckCheckbox = document.getElementById('editor-syntax-check-enabled');
         const autoSaveCheckbox = document.getElementById('editor-auto-save-enabled');
@@ -1449,6 +1867,23 @@ class EditorSettings {
             const tabSize = Number.isFinite(this.settings.tabSize) ? this.settings.tabSize : 4;
             tabSizeInput.value = tabSize;
         }
+
+        const clangFormatStyle = this.normalizeClangFormatStyle(this.settings.clangFormatStyle);
+        if (clangFormatBasedOnStyleSelect) clangFormatBasedOnStyleSelect.value = clangFormatStyle.BasedOnStyle;
+        if (clangFormatUseTabSelect) clangFormatUseTabSelect.value = clangFormatStyle.UseTab;
+        if (clangFormatIndentWidthInput) clangFormatIndentWidthInput.value = clangFormatStyle.IndentWidth;
+        if (clangFormatTabWidthInput) clangFormatTabWidthInput.value = clangFormatStyle.TabWidth;
+        if (clangFormatColumnLimitInput) clangFormatColumnLimitInput.value = clangFormatStyle.ColumnLimit;
+        if (clangFormatBreakBeforeBracesSelect) clangFormatBreakBeforeBracesSelect.value = clangFormatStyle.BreakBeforeBraces;
+        if (clangFormatPointerAlignmentSelect) clangFormatPointerAlignmentSelect.value = clangFormatStyle.PointerAlignment;
+        if (clangFormatSpaceBeforeParensSelect) clangFormatSpaceBeforeParensSelect.value = clangFormatStyle.SpaceBeforeParens;
+        if (clangFormatIndentCaseLabelsCheckbox) clangFormatIndentCaseLabelsCheckbox.checked = !!clangFormatStyle.IndentCaseLabels;
+        if (clangFormatSortIncludesCheckbox) clangFormatSortIncludesCheckbox.checked = !!clangFormatStyle.SortIncludes;
+        if (clangFormatAlignAssignmentsCheckbox) clangFormatAlignAssignmentsCheckbox.checked = !!clangFormatStyle.AlignConsecutiveAssignments;
+        if (clangFormatAlignDeclarationsCheckbox) clangFormatAlignDeclarationsCheckbox.checked = !!clangFormatStyle.AlignConsecutiveDeclarations;
+        if (clangFormatRawTextArea) clangFormatRawTextArea.value = this.settings.clangFormatRaw || this.generateClangFormatText(clangFormatStyle);
+        this._clangFormatRawDirty = false;
+        this._clangFormatControlsDirty = false;
 
         if (autoCompletionCheckbox) {
             autoCompletionCheckbox.checked = this.settings.enableAutoCompletion !== false;

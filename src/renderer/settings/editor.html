@@ -13,6 +13,7 @@
                 <div class="sidebar-item active" data-target="general">常规设置</div>
                 <div class="sidebar-item" data-target="appearance">外观样式</div>
                 <div class="sidebar-item" data-target="behavior">编辑器行为</div>
+                <div class="sidebar-item" data-target="formatting">格式化风格</div>
                 <div class="sidebar-item" data-target="keybindings">快捷键</div>
             </div>
             
@@ -303,6 +304,141 @@
                             接收 beta 更新
                         </label>
                         <div class="hint">仅开启后，更新检查才会把 beta 版本视为可用更新。</div>
+                    </div>
+                </div>
+
+                <div id="formatting" class="settings-section">
+                    <div class="section-title">Clang-Format 详细配置</div>
+
+                    <div class="setting-group">
+                        <label for="clang-format-based-on-style">基准风格</label>
+                        <div class="input-group">
+                            <select id="clang-format-based-on-style" class="form-select">
+                                <option value="LLVM">LLVM</option>
+                                <option value="Google">Google</option>
+                                <option value="Mozilla">Mozilla</option>
+                                <option value="Chromium">Chromium</option>
+                                <option value="Microsoft">Microsoft</option>
+                                <option value="WebKit">WebKit</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="clang-format-use-tab">Tab 使用方式</label>
+                        <div class="input-group">
+                            <select id="clang-format-use-tab" class="form-select">
+                                <option value="Never">永不使用 Tab</option>
+                                <option value="ForIndentation">仅用于缩进</option>
+                                <option value="ForContinuationAndIndentation">用于缩进与续行</option>
+                                <option value="Always">始终使用 Tab</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="clang-format-indent-width">缩进宽度</label>
+                        <div class="input-group">
+                            <input type="number" id="clang-format-indent-width" min="1" max="16" value="4">
+                            <span class="unit">spaces</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="clang-format-tab-width">Tab 宽度</label>
+                        <div class="input-group">
+                            <input type="number" id="clang-format-tab-width" min="1" max="16" value="4">
+                            <span class="unit">spaces</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="clang-format-column-limit">列宽限制</label>
+                        <div class="input-group">
+                            <input type="number" id="clang-format-column-limit" min="0" max="512" value="0">
+                            <span class="unit">0 表示不限制</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="clang-format-break-before-braces">大括号风格</label>
+                        <div class="input-group">
+                            <select id="clang-format-break-before-braces" class="form-select">
+                                <option value="Attach">Attach</option>
+                                <option value="Allman">Allman</option>
+                                <option value="LLVM">LLVM</option>
+                                <option value="GNU">GNU</option>
+                                <option value="Stroustrup">Stroustrup</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="clang-format-pointer-alignment">指针对齐</label>
+                        <div class="input-group">
+                            <select id="clang-format-pointer-alignment" class="form-select">
+                                <option value="Left">Left</option>
+                                <option value="Right">Right</option>
+                                <option value="Middle">Middle</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="clang-format-space-before-parens">括号前空格</label>
+                        <div class="input-group">
+                            <select id="clang-format-space-before-parens" class="form-select">
+                                <option value="ControlStatements">仅控制语句</option>
+                                <option value="Never">从不</option>
+                                <option value="Always">始终</option>
+                                <option value="Custom">自定义</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="clang-format-indent-case-labels">
+                            <span class="checkmark"></span>
+                            缩进 case / default 标签
+                        </label>
+                    </div>
+
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="clang-format-sort-includes" checked>
+                            <span class="checkmark"></span>
+                            自动排序 includes
+                        </label>
+                    </div>
+
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="clang-format-align-assignments">
+                            <span class="checkmark"></span>
+                            对齐连续赋值
+                        </label>
+                    </div>
+
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="clang-format-align-declarations">
+                            <span class="checkmark"></span>
+                            对齐连续声明
+                        </label>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="clang-format-raw-text">.clang-format 原文</label>
+                        <textarea id="clang-format-raw-text" class="form-control" rows="16" spellcheck="false" placeholder="可粘贴现有 .clang-format 内容，也可由上方选项生成"></textarea>
+                        <div class="hint">编辑这里的文本后，点击“应用文本到配置”即可同步到详细选项；点击“写入 .clang-format”可保存为文件。</div>
+                    </div>
+
+                    <div class="input-group" style="flex-wrap: wrap; gap: 8px;">
+                        <button id="import-clang-format" class="btn btn-secondary" type="button">导入 .clang-format</button>
+                        <button id="apply-clang-format-text" class="btn btn-secondary" type="button">应用文本到配置</button>
+                        <button id="save-clang-format-file" class="btn btn-secondary" type="button">写入 .clang-format</button>
+                        <button id="reset-clang-format" class="btn btn-warning" type="button">恢复默认</button>
                     </div>
                 </div>
 

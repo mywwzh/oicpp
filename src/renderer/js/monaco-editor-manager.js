@@ -44,6 +44,8 @@ class MonacoEditorManager {
         this.lineHeightSetting = 0;
         this.syntaxColorsByTheme = {};
         this.syntaxStyles = {};
+        this.formatterIndentStyle = 'editor';
+        this.clangFormatStyle = this.getDefaultClangFormatStyle();
         this._lspSemanticProviders = [];
         this._lspDocuments = new Map();
         this._lspChangeTimers = new Map();
@@ -63,6 +65,8 @@ class MonacoEditorManager {
         document.addEventListener('settings-applied', (evt) => {
             try {
                 this.loadKeybindingsFromSettings(evt?.detail || {});
+                this.updateFormatterSettings(evt?.detail || {});
+                this.updateClangFormatSettings(evt?.detail || {});
             } catch (e) {
                 logWarn('应用快捷键设置失败:', e);
             }
@@ -2454,6 +2458,7 @@ class MonacoEditorManager {
                             tabSize = parsedTabSize;
                         }
                         this.loadKeybindingsFromSettings(allSettings);
+                        this.updateFormatterSettings(allSettings);
                     }
                 }
             } catch (error) {
@@ -3836,6 +3841,8 @@ class MonacoEditorManager {
         if (settings && Object.prototype.hasOwnProperty.call(settings, 'syntaxFontStyles')) {
             this.syntaxStyles = this.normalizeSyntaxStyles(settings.syntaxFontStyles);
         }
+        this.updateFormatterSettings(settings);
+        this.updateClangFormatSettings(settings);
 
         if (this.currentEditor && settings) {
             const updateOptions = {};
@@ -3930,6 +3937,114 @@ class MonacoEditorManager {
                     }, 50);
                 }
             }, 100);
+        }
+    }
+
+    updateFormatterSettings(settings = {}) {
+        if (!settings || typeof settings !== 'object') {
+            return;
+        }
+        if (Object.prototype.hasOwnProperty.call(settings, 'formatterIndentStyle')) {
+            const style = String(settings.formatterIndentStyle || 'editor').trim().toLowerCase();
+            this.formatterIndentStyle = ['editor', 'spaces', 'tabs'].includes(style) ? style : 'editor';
+        }
+    }
+
+    getDefaultClangFormatStyle() {
+        return {
+            BasedOnStyle: 'LLVM',
+            IndentWidth: 4,
+            TabWidth: 4,
+            UseTab: 'Never',
+            ColumnLimit: 0,
+            BreakBeforeBraces: 'Attach',
+            AllowShortIfStatementsOnASingleLine: 'Never',
+            AllowShortFunctionsOnASingleLine: 'Empty',
+            IndentCaseLabels: false,
+            PointerAlignment: 'Left',
+            SpaceBeforeParens: 'ControlStatements',
+            SortIncludes: true,
+            AlignConsecutiveAssignments: false,
+            AlignConsecutiveDeclarations: false
+        };
+    }
+
+    normalizeClangFormatStyle(raw = null) {
+        const defaults = this.getDefaultClangFormatStyle();
+        const normalized = { ...defaults };
+        if (!raw || typeof raw !== 'object') {
+            return normalized;
+        }
+
+        const toInt = (value, fallback) => {
+            const parsed = parseInt(value, 10);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+        };
+        const toBool = (value, fallback) => {
+            if (typeof value === 'boolean') return value;
+            if (typeof value === 'string') {
+                const lowered = value.trim().toLowerCase();
+                if (['true', 'yes', 'on'].includes(lowered)) return true;
+                if (['false', 'no', 'off'].includes(lowered)) return false;
+            }
+            return fallback;
+        };
+        const toEnum = (value, allowed, fallback) => {
+            const rawValue = String(value || '').trim();
+            if (!rawValue) return fallback;
+            const matched = allowed.find((item) => item.toLowerCase() === rawValue.toLowerCase());
+            return matched || fallback;
+        };
+
+        normalized.BasedOnStyle = toEnum(raw.BasedOnStyle, ['LLVM', 'Google', 'Mozilla', 'Chromium', 'Microsoft', 'WebKit'], defaults.BasedOnStyle);
+        normalized.IndentWidth = toInt(raw.IndentWidth, defaults.IndentWidth);
+        normalized.TabWidth = toInt(raw.TabWidth, normalized.IndentWidth);
+        normalized.UseTab = toEnum(raw.UseTab, ['Never', 'ForIndentation', 'ForContinuationAndIndentation', 'Always'], defaults.UseTab);
+        normalized.ColumnLimit = toInt(raw.ColumnLimit, defaults.ColumnLimit);
+        normalized.BreakBeforeBraces = toEnum(raw.BreakBeforeBraces, ['Attach', 'LLVM', 'Stroustrup', 'Allman', 'GNU', 'Mozilla', 'WebKit', 'Custom'], defaults.BreakBeforeBraces);
+        normalized.AllowShortIfStatementsOnASingleLine = toEnum(raw.AllowShortIfStatementsOnASingleLine, ['Never', 'WithoutElse', 'OnlyFirstIf', 'AllIfsAndElse', 'Always'], defaults.AllowShortIfStatementsOnASingleLine);
+        normalized.AllowShortFunctionsOnASingleLine = toEnum(raw.AllowShortFunctionsOnASingleLine, ['None', 'Empty', 'Inline', 'All'], defaults.AllowShortFunctionsOnASingleLine);
+        normalized.IndentCaseLabels = toBool(raw.IndentCaseLabels, defaults.IndentCaseLabels);
+        normalized.PointerAlignment = toEnum(raw.PointerAlignment, ['Left', 'Right', 'Middle'], defaults.PointerAlignment);
+        normalized.SpaceBeforeParens = toEnum(raw.SpaceBeforeParens, ['Never', 'ControlStatements', 'Always', 'Custom'], defaults.SpaceBeforeParens);
+        normalized.SortIncludes = toBool(raw.SortIncludes, defaults.SortIncludes);
+        normalized.AlignConsecutiveAssignments = toBool(raw.AlignConsecutiveAssignments, defaults.AlignConsecutiveAssignments);
+        normalized.AlignConsecutiveDeclarations = toBool(raw.AlignConsecutiveDeclarations, defaults.AlignConsecutiveDeclarations);
+
+        if (Object.prototype.hasOwnProperty.call(raw, 'formatterIndentStyle') && !Object.prototype.hasOwnProperty.call(raw, 'UseTab')) {
+            const legacyStyle = String(raw.formatterIndentStyle || '').trim().toLowerCase();
+            if (legacyStyle === 'tabs') {
+                normalized.UseTab = 'Always';
+            } else if (legacyStyle === 'spaces') {
+                normalized.UseTab = 'Never';
+            }
+        }
+
+        return normalized;
+    }
+
+    updateClangFormatSettings(settings = {}) {
+        if (!settings || typeof settings !== 'object') {
+            return;
+        }
+
+        const source = settings.clangFormatStyle || settings.clangFormat || settings.clangFormatSettings || null;
+        if (source && typeof source === 'object') {
+            this.clangFormatStyle = this.normalizeClangFormatStyle(source);
+            return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(settings, 'formatterIndentStyle')) {
+            const legacyStyle = String(settings.formatterIndentStyle || '').trim().toLowerCase();
+            this.clangFormatStyle = this.normalizeClangFormatStyle({
+                ...this.getDefaultClangFormatStyle(),
+                UseTab: legacyStyle === 'tabs' ? 'Always' : 'Never'
+            });
+            return;
+        }
+
+        if (!this.clangFormatStyle) {
+            this.clangFormatStyle = this.getDefaultClangFormatStyle();
         }
     }
     
@@ -4087,6 +4202,7 @@ class MonacoEditorManager {
     updateAllEditorsSettings(settings) {
                
         this.updateSettings(settings);
+        this.updateFormatterSettings(settings);
         
     this.editors.forEach((editor, fileName) => {
             if (editor && editor !== this.currentEditor) {
@@ -4419,12 +4535,18 @@ class MonacoEditorManager {
             const content = model.getValue();
 
             const opts = this.currentEditor.getOptions();
-            const tabSize = opts.get(monaco.editor.EditorOption.tabSize) || 4;
-            const insertSpaces = opts.get(monaco.editor.EditorOption.insertSpaces);
+            const editorTabSize = opts.get(monaco.editor.EditorOption.tabSize) || 4;
+            const style = this.normalizeClangFormatStyle(this.clangFormatStyle);
+            const tabSize = style.IndentWidth || editorTabSize;
+            const insertSpaces = style.UseTab === 'Never';
 
             let formattedContent = content;
             if (window.cppFormatter && typeof window.cppFormatter.format === 'function') {
-                formattedContent = window.cppFormatter.format(content, { tabSize, insertSpaces: !!insertSpaces });
+                formattedContent = window.cppFormatter.format(content, {
+                    tabSize,
+                    insertSpaces: !!insertSpaces,
+                    clangFormatStyle: style
+                });
             } else {
                 formattedContent = content;
             }

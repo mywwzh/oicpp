@@ -1,6 +1,87 @@
 (function () {
-    function formatCpp(code, { tabSize = 4, insertSpaces = false } = {}) {
+    function getDefaultClangFormatStyle() {
+        return {
+            BasedOnStyle: 'LLVM',
+            IndentWidth: 4,
+            TabWidth: 4,
+            UseTab: 'Never',
+            ColumnLimit: 0,
+            BreakBeforeBraces: 'Attach',
+            AllowShortIfStatementsOnASingleLine: 'Never',
+            AllowShortFunctionsOnASingleLine: 'Empty',
+            IndentCaseLabels: false,
+            PointerAlignment: 'Left',
+            SpaceBeforeParens: 'ControlStatements',
+            SortIncludes: true,
+            AlignConsecutiveAssignments: false,
+            AlignConsecutiveDeclarations: false
+        };
+    }
+
+    function normalizeClangFormatStyle(raw) {
+        const defaults = getDefaultClangFormatStyle();
+        const normalized = { ...defaults };
+        if (!raw || typeof raw !== 'object') {
+            return normalized;
+        }
+
+        const toInt = (value, fallback) => {
+            const parsed = parseInt(value, 10);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+        };
+        const toBool = (value, fallback) => {
+            if (typeof value === 'boolean') return value;
+            if (typeof value === 'string') {
+                const lowered = value.trim().toLowerCase();
+                if (['true', 'yes', 'on'].includes(lowered)) return true;
+                if (['false', 'no', 'off'].includes(lowered)) return false;
+            }
+            return fallback;
+        };
+        const toEnum = (value, allowed, fallback) => {
+            const rawValue = String(value || '').trim();
+            if (!rawValue) return fallback;
+            const matched = allowed.find((item) => item.toLowerCase() === rawValue.toLowerCase());
+            return matched || fallback;
+        };
+
+        normalized.BasedOnStyle = toEnum(raw.BasedOnStyle, ['LLVM', 'Google', 'Mozilla', 'Chromium', 'Microsoft', 'WebKit'], defaults.BasedOnStyle);
+        normalized.IndentWidth = toInt(raw.IndentWidth, defaults.IndentWidth);
+        normalized.TabWidth = toInt(raw.TabWidth, normalized.IndentWidth);
+        normalized.UseTab = toEnum(raw.UseTab, ['Never', 'ForIndentation', 'ForContinuationAndIndentation', 'Always'], defaults.UseTab);
+        normalized.ColumnLimit = toInt(raw.ColumnLimit, defaults.ColumnLimit);
+        normalized.BreakBeforeBraces = toEnum(raw.BreakBeforeBraces, ['Attach', 'LLVM', 'Stroustrup', 'Allman', 'GNU', 'Mozilla', 'WebKit', 'Custom'], defaults.BreakBeforeBraces);
+        normalized.AllowShortIfStatementsOnASingleLine = toEnum(raw.AllowShortIfStatementsOnASingleLine, ['Never', 'WithoutElse', 'OnlyFirstIf', 'AllIfsAndElse', 'Always'], defaults.AllowShortIfStatementsOnASingleLine);
+        normalized.AllowShortFunctionsOnASingleLine = toEnum(raw.AllowShortFunctionsOnASingleLine, ['None', 'Empty', 'Inline', 'All'], defaults.AllowShortFunctionsOnASingleLine);
+        normalized.IndentCaseLabels = toBool(raw.IndentCaseLabels, defaults.IndentCaseLabels);
+        normalized.PointerAlignment = toEnum(raw.PointerAlignment, ['Left', 'Right', 'Middle'], defaults.PointerAlignment);
+        normalized.SpaceBeforeParens = toEnum(raw.SpaceBeforeParens, ['Never', 'ControlStatements', 'Always', 'Custom'], defaults.SpaceBeforeParens);
+        normalized.SortIncludes = toBool(raw.SortIncludes, defaults.SortIncludes);
+        normalized.AlignConsecutiveAssignments = toBool(raw.AlignConsecutiveAssignments, defaults.AlignConsecutiveAssignments);
+        normalized.AlignConsecutiveDeclarations = toBool(raw.AlignConsecutiveDeclarations, defaults.AlignConsecutiveDeclarations);
+
+        if (Object.prototype.hasOwnProperty.call(raw, 'formatterIndentStyle') && !Object.prototype.hasOwnProperty.call(raw, 'UseTab')) {
+            const legacyStyle = String(raw.formatterIndentStyle || '').trim().toLowerCase();
+            if (legacyStyle === 'tabs') {
+                normalized.UseTab = 'Always';
+            } else if (legacyStyle === 'spaces') {
+                normalized.UseTab = 'Never';
+            }
+        }
+
+        return normalized;
+    }
+
+    function formatCpp(code, options = {}) {
         if (!code || typeof code !== 'string') return code || '';
+
+        const clangFormatStyle = normalizeClangFormatStyle(options.clangFormatStyle || options.clangFormat || {});
+        const indentWidth = Number.isFinite(clangFormatStyle.IndentWidth) && clangFormatStyle.IndentWidth > 0
+            ? clangFormatStyle.IndentWidth
+            : (Number.isFinite(options.tabSize) && options.tabSize > 0 ? options.tabSize : 4);
+        const insertSpaces = clangFormatStyle.UseTab === 'Never';
+        const breakBeforeBraces = String(clangFormatStyle.BreakBeforeBraces || 'Attach');
+        const indentCaseLabels = clangFormatStyle.IndentCaseLabels !== false;
 
         const EOL = '\n';
         const src = code.replace(/\r\n?|\u2028|\u2029/g, '\n');
@@ -11,7 +92,7 @@
         let indentLevel = 0;
         let blankCount = 0;
 
-        const mkIndent = (level) => insertSpaces ? ' '.repeat(level * tabSize) : '\t'.repeat(level);
+        const mkIndent = (level) => insertSpaces ? ' '.repeat(level * indentWidth) : '\t'.repeat(level);
 
         const out = [];
 
@@ -255,6 +336,7 @@
                     const blockKeywordRegex = /\b(if|for|while|switch|else|do|try|catch|class|struct|namespace|union|enum|case|default)\b[^{}]*$/;
                     const endsWithControl = /[\)\]]$/.test(trimmedOut);
                     const isInitializerBrace = parenDepth > 0 || (!endsWithControl && !blockKeywordRegex.test(trimmedOut));
+                    const shouldBreakBeforeBrace = breakBeforeBraces === 'Allman' || breakBeforeBraces === 'GNU';
                     let shouldAddSpace = prevNonSpace && !/[\s{[(]/.test(prevNonSpace);
                     if (isInitializerBrace) {
                         const lastWordMatch = trimmedOut.match(/([A-Za-z_][A-Za-z0-9_]*)$/);
@@ -268,6 +350,10 @@
                         out += ' ';
                     } else {
                         out = out.replace(/[ ]+$/g, '');
+                    }
+                    if (shouldBreakBeforeBrace && !isInitializerBrace && out.trim()) {
+                        segments.push(out.replace(/[ ]+$/g, ''));
+                        out = '';
                     }
                     out += ch;
                     if (isInitializerBrace) {
@@ -418,7 +504,7 @@
                     const isCaseLine = /^case\s+[^:]+:\s*$/.test(text) || /^default:\s*$/.test(text);
                     let segLevel = Math.max(0, tempLevel - (startsClose ? 1 : 0));
                     if (isCaseLine) {
-                        if (segLevel > 0) segLevel -= 1;
+                        if (!indentCaseLabels && segLevel > 0) segLevel -= 1;
                         text = text.trimEnd();
                     }
                     out.push(mkIndent(segLevel) + text);
