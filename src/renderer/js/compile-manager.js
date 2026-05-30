@@ -547,9 +547,9 @@ class CompilerManager {
 
     buildCompileCommand(inputFile, outputFile, customArgs = null) {
         const args = [
+            `"${inputFile}"`,
             customArgs || this.settings.compilerArgs,
-            `-o "${outputFile}"`,
-            `"${inputFile}"`
+            `-o "${outputFile}"`
         ].filter(arg => arg.trim()).join(' ');
         
         return `"${this.settings.compilerPath}" ${args}`;

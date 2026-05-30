@@ -7070,14 +7070,14 @@ async function compileFile(options) {
         }
 
         const args = [
+            actualInputFile,
             ...parsedUserArgs,
-            '-o', outputFile,
-            actualInputFile
+            '-o', outputFile
         ];
 
         if (tempInputFile) {
             const originalDir = path.dirname(inputFile);
-            args.unshift('-iquote', originalDir);
+            args.splice(1, 0, '-iquote', originalDir);
         }
 
         logInfo('编译命令:', compilerPath, args.join(' '));
