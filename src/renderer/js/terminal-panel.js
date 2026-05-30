@@ -303,6 +303,18 @@ class IntegratedTerminalPanel {
             return;
         }
 
+        const unicode11AddonCtor = window.Unicode11Addon?.Unicode11Addon;
+        if (typeof unicode11AddonCtor !== 'function') {
+            this.status = {
+                available: false,
+                reason: 'xterm Unicode11 插件未加载',
+                detail: '请确认已安装 @xterm/addon-unicode11'
+            };
+            this.renderStatus();
+            this.renderEmptyState();
+            return;
+        }
+
         this.counter += 1;
         const tabId = `terminal-local-${Date.now()}-${this.counter}`;
 
@@ -332,11 +344,17 @@ class IntegratedTerminalPanel {
             convertEol: true,
             scrollback: 8000,
             allowTransparency: true,
+            allowProposedApi: true,
             theme: this.resolveTerminalTheme()
         });
         const fitAddon = new fitAddonCtor();
+        const unicode11Addon = new unicode11AddonCtor();
         terminal.loadAddon(fitAddon);
+        terminal.loadAddon(unicode11Addon);
         terminal.open(mount);
+        try {
+            terminal.unicode.activeVersion = '11';
+        } catch (_) { }
         fitAddon.fit();
 
         const provisionalSession = {
