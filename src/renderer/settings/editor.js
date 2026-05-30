@@ -1734,12 +1734,7 @@ class EditorSettings {
                 this.showMessage('编辑器设置保存成功！', 'success');
 
 
-                const fontChanged = newSettings.font || newSettings.fontSize;
-                const delay = fontChanged ? 1500 : 1000;
-
-                setTimeout(() => {
-                    this.closeWindow();
-                }, delay);
+                // 不再自动关闭窗口
             } else {
                 const errorMsg = result ? (result.error || '未知错误') : '设置 API 不可用';
                 this.showMessage('保存设置失败：' + errorMsg, 'error');
