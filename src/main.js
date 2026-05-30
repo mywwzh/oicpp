@@ -1446,6 +1446,9 @@ function getDefaultSettings() {
             comment: '#6a9955'
         },
         tabSize: 4,
+        formatterIndentStyle: 'editor',
+        clangFormatStyle: null,
+        clangFormatRaw: '',
         fontLigaturesEnabled: true, // 是否启用编程字体连字（Fira Code 等）
         foldingEnabled: true,
         stickyScrollEnabled: true,
@@ -1491,6 +1494,109 @@ function getDefaultSettings() {
             openTerminal: 'Ctrl+`'
         }
     };
+}
+
+function getDefaultClangFormatStyle() {
+    return {
+        BasedOnStyle: 'LLVM',
+        IndentWidth: 4,
+        TabWidth: 4,
+        UseTab: 'Never',
+        ColumnLimit: 0,
+        BreakBeforeBraces: 'Attach',
+        AllowShortIfStatementsOnASingleLine: 'Never',
+        AllowShortFunctionsOnASingleLine: 'Empty',
+        IndentCaseLabels: false,
+        PointerAlignment: 'Left',
+        SpaceBeforeParens: 'ControlStatements',
+        SortIncludes: true,
+        AlignConsecutiveAssignments: false,
+        AlignConsecutiveDeclarations: false
+    };
+}
+
+function normalizeClangFormatStyle(raw = null) {
+    const defaults = getDefaultClangFormatStyle();
+    const normalized = { ...defaults };
+    if (!raw || typeof raw !== 'object') {
+        return normalized;
+    }
+
+    const toInt = (value, fallback) => {
+        const parsed = parseInt(value, 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    };
+    const toBool = (value, fallback) => {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'string') {
+            const lowered = value.trim().toLowerCase();
+            if (['true', 'yes', 'on'].includes(lowered)) return true;
+            if (['false', 'no', 'off'].includes(lowered)) return false;
+        }
+        return fallback;
+    };
+    const toEnum = (value, allowed, fallback) => {
+        const rawValue = String(value || '').trim();
+        if (!rawValue) return fallback;
+        const matched = allowed.find((item) => item.toLowerCase() === rawValue.toLowerCase());
+        return matched || fallback;
+    };
+
+    normalized.BasedOnStyle = toEnum(raw.BasedOnStyle, ['LLVM', 'Google', 'Mozilla', 'Chromium', 'Microsoft', 'WebKit'], defaults.BasedOnStyle);
+    normalized.IndentWidth = toInt(raw.IndentWidth, defaults.IndentWidth);
+    normalized.TabWidth = toInt(raw.TabWidth, normalized.IndentWidth);
+    normalized.UseTab = toEnum(raw.UseTab, ['Never', 'ForIndentation', 'ForContinuationAndIndentation', 'Always'], defaults.UseTab);
+    normalized.ColumnLimit = toInt(raw.ColumnLimit, defaults.ColumnLimit);
+    normalized.BreakBeforeBraces = toEnum(raw.BreakBeforeBraces, ['Attach', 'LLVM', 'Stroustrup', 'Allman', 'GNU', 'Mozilla', 'WebKit', 'Custom'], defaults.BreakBeforeBraces);
+    normalized.AllowShortIfStatementsOnASingleLine = toEnum(raw.AllowShortIfStatementsOnASingleLine, ['Never', 'WithoutElse', 'OnlyFirstIf', 'AllIfsAndElse', 'Always'], defaults.AllowShortIfStatementsOnASingleLine);
+    normalized.AllowShortFunctionsOnASingleLine = toEnum(raw.AllowShortFunctionsOnASingleLine, ['None', 'Empty', 'Inline', 'All'], defaults.AllowShortFunctionsOnASingleLine);
+    normalized.IndentCaseLabels = toBool(raw.IndentCaseLabels, defaults.IndentCaseLabels);
+    normalized.PointerAlignment = toEnum(raw.PointerAlignment, ['Left', 'Right', 'Middle'], defaults.PointerAlignment);
+    normalized.SpaceBeforeParens = toEnum(raw.SpaceBeforeParens, ['Never', 'ControlStatements', 'Always', 'Custom'], defaults.SpaceBeforeParens);
+    normalized.SortIncludes = toBool(raw.SortIncludes, defaults.SortIncludes);
+    normalized.AlignConsecutiveAssignments = toBool(raw.AlignConsecutiveAssignments, defaults.AlignConsecutiveAssignments);
+    normalized.AlignConsecutiveDeclarations = toBool(raw.AlignConsecutiveDeclarations, defaults.AlignConsecutiveDeclarations);
+
+    if (Object.prototype.hasOwnProperty.call(raw, 'formatterIndentStyle') && !Object.prototype.hasOwnProperty.call(raw, 'UseTab')) {
+        const legacyStyle = String(raw.formatterIndentStyle || '').trim().toLowerCase();
+        if (legacyStyle === 'tabs') {
+            normalized.UseTab = 'Always';
+        } else if (legacyStyle === 'spaces') {
+            normalized.UseTab = 'Never';
+        }
+    }
+
+    return normalized;
+}
+
+function normalizeSettingsRuntimeShape(nextSettings) {
+    if (!nextSettings || typeof nextSettings !== 'object') {
+        return nextSettings;
+    }
+    const style = normalizeClangFormatStyle(nextSettings.clangFormatStyle || nextSettings.clangFormat || null);
+    nextSettings.clangFormatStyle = style;
+    if (typeof nextSettings.clangFormatRaw !== 'string' || !nextSettings.clangFormatRaw.trim()) {
+        nextSettings.clangFormatRaw = [
+            `BasedOnStyle: ${style.BasedOnStyle}`,
+            `IndentWidth: ${style.IndentWidth}`,
+            `TabWidth: ${style.TabWidth}`,
+            `UseTab: ${style.UseTab}`,
+            `ColumnLimit: ${style.ColumnLimit}`,
+            `BreakBeforeBraces: ${style.BreakBeforeBraces}`,
+            `AllowShortIfStatementsOnASingleLine: ${style.AllowShortIfStatementsOnASingleLine}`,
+            `AllowShortFunctionsOnASingleLine: ${style.AllowShortFunctionsOnASingleLine}`,
+            `IndentCaseLabels: ${style.IndentCaseLabels ? 'true' : 'false'}`,
+            `PointerAlignment: ${style.PointerAlignment}`,
+            `SpaceBeforeParens: ${style.SpaceBeforeParens}`,
+            `SortIncludes: ${style.SortIncludes ? 'true' : 'false'}`,
+            `AlignConsecutiveAssignments: ${style.AlignConsecutiveAssignments ? 'true' : 'false'}`,
+            `AlignConsecutiveDeclarations: ${style.AlignConsecutiveDeclarations ? 'true' : 'false'}`
+        ].join('\n');
+    }
+    if (!nextSettings.formatterIndentStyle) {
+        nextSettings.formatterIndentStyle = style.UseTab === 'Always' ? 'tabs' : 'editor';
+    }
+    return nextSettings;
 }
 
 let settings = getDefaultSettings();
@@ -6487,7 +6593,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
             let needsSaveAfterMigration = false;
 
             for (const key of validKeys) {
@@ -6495,6 +6601,7 @@ function loadSettings() {
                     settings[key] = savedSettings[key];
                 }
             }
+            normalizeSettingsRuntimeShape(settings);
 
             if (
                 (!settings.syntaxColorsByTheme || Object.keys(settings.syntaxColorsByTheme).length === 0) &&
@@ -6577,16 +6684,19 @@ function loadSettings() {
             }
         }
 
+        normalizeSettingsRuntimeShape(settings);
+
     } catch (error) {
         logError('加载设置失败:', error);
         settings = getDefaultSettings();
+        normalizeSettingsRuntimeShape(settings);
         saveSettings();
     }
 }
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -6613,7 +6723,7 @@ function updateSettings(settingsType, newSettings) {
 
         const validKeys = [
             'compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'syntaxCheckEnabled', 'lineHeight', 'theme',
-            'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'autoSave', 'autoSaveInterval',
+            'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'autoSave', 'autoSaveInterval',
             'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'markdownMode', 'keybindings', 'autoOpenLastWorkspace', 'autoBackupSettings', 'receiveBetaUpdates'
         ];
 
@@ -6631,6 +6741,8 @@ function updateSettings(settingsType, newSettings) {
                 logInfo(`忽略无效键: ${key}`);
             }
         }
+
+        normalizeSettingsRuntimeShape(settings);
 
         saveSettings();
         scheduleAutoSettingsBackup('update-top-level-settings');
@@ -6687,6 +6799,8 @@ function resetSettings(settingsType = null) {
             }
         }
 
+        normalizeSettingsRuntimeShape(settings);
+
         saveSettings();
 
         if (mainWindow) {
@@ -6731,7 +6845,7 @@ function importSettings(filePath) {
             throw new Error('无效的设置文件格式');
         }
 
-        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings'];
+        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings'];
         const defaultSettings = getDefaultSettings();
 
         for (const key of validKeys) {
@@ -6741,6 +6855,8 @@ function importSettings(filePath) {
                 settings[key] = defaultSettings[key];
             }
         }
+
+        normalizeSettingsRuntimeShape(settings);
 
         saveSettings();
 
