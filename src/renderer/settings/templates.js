@@ -298,10 +298,6 @@ class TemplatesSettings {
             if (result && result.success) {
                 this.showMessage('模板设置保存成功！', 'success');
                 logInfo('设置保存成功');
-                
-                setTimeout(() => {
-                    this.closeWindow();
-                }, 1500);
             } else {
                 const errorMsg = result ? result.error : '未知错误';
                 this.showMessage('保存设置失败：' + errorMsg, 'error');

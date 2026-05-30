@@ -544,10 +544,6 @@ class CompilerSettings {
                 logInfo('保存设置结果:', result);
                 if (result.success) {
                     this.showMessage('编译器设置保存成功！', 'success');
-                    
-                    setTimeout(() => {
-                        this.closeWindow();
-                    }, 1000);
                 } else {
                     this.showMessage('保存设置失败：' + (result.error || '未知错误'), 'error');
                 }
