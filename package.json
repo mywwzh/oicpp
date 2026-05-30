@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@iktakahiro/markdown-it-katex": "^4.0.1",
+    "@xterm/addon-unicode11": "^0.9.0",
     "7zip-bin": "^5.2.0",
     "axios": "latest",
     "extract-zip": "latest",
@@ -43,11 +44,11 @@
     "node-pty": "^1.0.0",
     "node-stream-zip": "^1.15.0",
     "pdfjs-dist": "5.0.375",
-    "xterm": "^5.3.0",
-    "xterm-addon-fit": "^0.8.0",
+    "sharp": "^0.33.5",
     "turndown": "^7.2.2",
     "winreg": "latest",
-    "sharp": "^0.33.5"
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0"
   },
   "build": {
     "appId": "com.oicpp.ide",
