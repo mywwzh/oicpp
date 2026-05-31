@@ -34,7 +34,9 @@
             autoChecking: false,
             downloading: false,
             version: '',
-            progress: 0
+            progress: 0,
+            pendingInstall: false,
+            pendingVersion: ''
         };
         this.autoSaveController = {
         timerId: null,
@@ -167,6 +169,10 @@
                     e.preventDefault();
                     const blockedAction = menuItem.dataset.action;
                     if (blockedAction === 'check-update') {
+                        if (this.updateDownloadState.pendingInstall) {
+                            this.showMessage('已有更新等待安装，请先退出 OICPP 完成安装', 'info');
+                            return;
+                        }
                         if (this.updateDownloadState.autoChecking) {
                             this.showMessage('正在执行启动自动检查，请稍后再手动检查更新', 'info');
                         } else if (this.updateDownloadState.downloading) {
@@ -458,20 +464,25 @@
         const labelNode = menuItem.querySelector('span') || menuItem;
         const autoChecking = !!state?.autoChecking;
         const downloading = !!state?.downloading;
+        const pendingInstall = !!state?.pendingInstall;
         const progress = Number.isFinite(Number(state?.progress))
             ? Math.max(0, Math.min(100, Math.round(Number(state.progress))))
             : 0;
 
-        if (autoChecking) {
+        if (pendingInstall) {
+            labelNode.textContent = '等待安装更新';
+        } else if (autoChecking) {
             labelNode.textContent = '自动检查更新中...';
         } else {
             labelNode.textContent = downloading ? `下载更新中 ${progress}%` : '检查更新';
         }
 
-        if (autoChecking || downloading) {
+        if (autoChecking || downloading || pendingInstall) {
             menuItem.classList.add('disabled');
             menuItem.setAttribute('aria-disabled', 'true');
-            if (autoChecking) {
+            if (pendingInstall) {
+                menuItem.setAttribute('title', '已有更新等待安装，请先退出 OICPP 完成安装');
+            } else if (autoChecking) {
                 menuItem.setAttribute('title', '启动自动检查更新中');
             } else {
                 menuItem.setAttribute('title', `后台下载更新中 ${progress}%`);
@@ -493,7 +504,9 @@
             autoChecking: !!payload.autoChecking,
             downloading: !!payload.downloading,
             version: payload.version || '',
-            progress
+            progress,
+            pendingInstall: !!payload.pendingInstall,
+            pendingVersion: payload.pendingVersion || ''
         };
 
         this.updateCheckUpdateMenuItem(this.updateDownloadState);
@@ -3649,7 +3662,7 @@ ${data.message || '程序已加载，等待开始执行'}
 
 
     async showAbout() {
-        const fallbackBuildInfo = { version: '1.4.7-beta1 (v41)', buildTime: '未知', author: 'mywwzh' };
+        const fallbackBuildInfo = { version: '1.4.7 (v42)', buildTime: '未知', author: 'mywwzh' };
         let buildInfo = { ...fallbackBuildInfo };
         try {
             const buildInfoData = window.electronAPI ? await window.electronAPI.getBuildInfo() : null;

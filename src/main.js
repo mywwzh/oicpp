@@ -22,7 +22,7 @@ const IntegratedTerminalManager = require('./terminal-manager');
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
-const APP_VERSION = '1.4.7-beta1';
+const APP_VERSION = '1.4.7';
 const SAVE_ALL_TIMEOUT = 4000;
 const EXTERNAL_OPEN_DEDUP_WINDOW_MS = 800;
 const recentExternalOpens = new Map();
@@ -1607,6 +1607,16 @@ let currentUpdateDownloadProgress = 0; // 更新下载进度(0-100)
 let isAutoUpdateCheckInProgress = false; // 启动自动检查更新是否进行中
 let pendingInstallerLaunch = null; // 退出后待启动的安装程序
 let pendingInstallerLaunchArmed = false;
+let pendingUpdateQuitPromptInProgress = false;
+let allowQuitForPendingUpdateInstall = false;
+
+function hasPendingUpdateToInstall() {
+    const pending = settings?.pendingUpdate;
+    if (!pending || !pending.installerPath) {
+        return false;
+    }
+    return fs.existsSync(pending.installerPath);
+}
 
 function buildWindowsSilentInstallArgs() {
     const args = ['/S', '/UPDATE_SILENT=1'];
@@ -1663,6 +1673,43 @@ function showPostInstallNoticeIfNeeded() {
         delete settings.pendingUpdate;
     }
     saveSettings();
+    broadcastUpdateDownloadState();
+}
+
+function promptForPendingUpdateInstallQuit() {
+    if (process.platform !== 'win32') {
+        return;
+    }
+    if (!hasPendingUpdateToInstall() || pendingUpdateQuitPromptInProgress) {
+        return;
+    }
+
+    pendingUpdateQuitPromptInProgress = true;
+    dialog.showMessageBox({
+        type: 'info',
+        title: '即将安装更新',
+        message: 'OICPP 将在退出后自动安装更新',
+        detail: '请不要关闭电脑，安装过程将自动完成，预计需要 1-2 分钟。',
+        buttons: ['继续退出并安装', '取消'],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true
+    }).then((result) => {
+        pendingUpdateQuitPromptInProgress = false;
+        if (result.response !== 0) {
+            return;
+        }
+
+        allowQuitForPendingUpdateInstall = true;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            armAllowMainWindowClose(SAVE_ALL_TIMEOUT + 10000);
+            requestSaveAllAndClose('更新安装');
+        } else {
+            app.quit();
+        }
+    }).catch(() => {
+        pendingUpdateQuitPromptInProgress = false;
+    });
 }
 
 function notifyUser(title, body, level = 'info') {
@@ -1683,11 +1730,16 @@ function getUpdateDownloadState() {
         autoChecking: !!isAutoUpdateCheckInProgress,
         downloading: !!isUpdateDownloading,
         version: currentDownloadingVersion || '',
-        progress: Number.isFinite(currentUpdateDownloadProgress) ? Math.max(0, Math.min(100, Math.round(currentUpdateDownloadProgress))) : 0
+        progress: Number.isFinite(currentUpdateDownloadProgress) ? Math.max(0, Math.min(100, Math.round(currentUpdateDownloadProgress))) : 0,
+        pendingInstall: hasPendingUpdateToInstall(),
+        pendingVersion: settings?.pendingUpdate?.version || ''
     };
 }
 
 function buildUpdateMenuLabel(state = getUpdateDownloadState()) {
+    if (state.pendingInstall) {
+        return '等待安装更新';
+    }
     if (state.autoChecking) {
         return '自动检查更新中...';
     }
@@ -1711,7 +1763,7 @@ function refreshNativeUpdateMenuState() {
 
         const state = getUpdateDownloadState();
         item.label = buildUpdateMenuLabel(state);
-        item.enabled = !state.downloading && !state.autoChecking;
+        item.enabled = !state.downloading && !state.autoChecking && !state.pendingInstall;
     } catch (error) {
         try { logWarn('[更新] 刷新原生菜单状态失败:', error?.message || error); } catch (_) { }
     }
@@ -2102,7 +2154,7 @@ ipcMain.handle('get-build-info', () => {
     } catch (error) {
         logger.logwarn('读取构建信息失败:', error);
     }
-    return { version: '1.4.7-beta1 (v41)', buildTime: '未知', author: 'mywwzh' };
+    return { version: '1.4.7 (v42)', buildTime: '未知', author: 'mywwzh' };
 });
 
 function requestSaveAllAndClose(context = '关闭窗口') {
@@ -2733,7 +2785,23 @@ function validateSampleTesterPayload(data) {
     return { valid: true };
 }
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+    const shouldPromptForInstallQuit = process.platform === 'win32'
+        && hasPendingUpdateToInstall()
+        && settings?.pendingUpdate?.autoInstallOnQuit === true;
+
+    if (shouldPromptForInstallQuit && !allowQuitForPendingUpdateInstall) {
+        try { event?.preventDefault(); } catch (_) { }
+        if (!pendingUpdateQuitPromptInProgress) {
+            try { app.hide && app.hide(); } catch (_) { }
+            promptForPendingUpdateInstallQuit();
+        }
+        return;
+    }
+
+    allowQuitForPendingUpdateInstall = false;
+    pendingUpdateQuitPromptInProgress = false;
+
     try { if (sampleTesterServer) { sampleTesterServer.close(); sampleTesterServer = null; } } catch (_) { }
     try { if (competitiveCompanionServer) { competitiveCompanionServer.close(); competitiveCompanionServer = null; } } catch (_) { }
     try { terminalManager.disposeAll(); } catch (_) { }
@@ -6022,6 +6090,18 @@ function openBackupSettings() {
 
 async function checkForUpdates(isManual = false) {
     try {
+        if (hasPendingUpdateToInstall()) {
+            if (isManual) {
+                dialog.showMessageBox(mainWindow, {
+                    type: 'info',
+                    title: '检查更新',
+                    message: '已有更新等待安装',
+                    detail: '请先退出 OICPP 完成当前更新安装，安装完成后再检查更新。'
+                });
+            }
+            return;
+        }
+
         if (isManual && isAutoUpdateCheckInProgress) {
             dialog.showMessageBox(mainWindow, {
                 type: 'info',
@@ -6331,6 +6411,7 @@ async function downloadAndInstallUpdate(updateInfo = null, options = {}) {
             downloadTime: new Date().toISOString()
         };
         saveSettings();
+        broadcastUpdateDownloadState();
 
         if (process.platform === 'win32') {
             armPendingUpdateSilentInstallOnQuit(isManual ? '手动检查更新' : '启动自动检查更新');
@@ -6401,16 +6482,17 @@ function runInstaller(installerPath) {
         }
 
         try {
-            dialog.showMessageBoxSync(mainWindow, {
+            dialog.showMessageBoxSync({
                 type: 'info',
-                title: '即将启动更新',
-                message: '应用将自动退出后启动更新安装程序',
-                detail: '为避免文件占用，OICPP IDE 会先退出，然后运行安装程序。',
+                title: '即将安装更新',
+                message: 'OICPP 将在退出后自动安装更新',
+                detail: '请不要关闭电脑，安装过程将自动完成，预计需要 1-2 分钟。',
                 buttons: ['确定'],
                 defaultId: 0
             });
         } catch (_) { }
 
+        allowQuitForPendingUpdateInstall = true;
         armInstallerLaunchOnQuit(installerPath);
 
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -6499,6 +6581,7 @@ function checkPendingUpdate() {
 
             delete settings.pendingUpdate;
             saveSettings();
+            broadcastUpdateDownloadState();
         }
     }
 }
@@ -6528,6 +6611,11 @@ function scheduleNextUpdateCheck(delayMs = UPDATE_CHECK_INTERVAL_MS) {
 }
 
 async function checkDailyUpdate() {
+    if (hasPendingUpdateToInstall()) {
+        logInfo('已有待安装更新，停止自动检查更新直到安装完成');
+        return;
+    }
+
     const lastCheckTimestamp = getLastUpdateCheckTimestamp();
     const now = Date.now();
     const elapsed = lastCheckTimestamp > 0 ? now - lastCheckTimestamp : Number.POSITIVE_INFINITY;
@@ -6819,7 +6907,7 @@ function resetSettings(settingsType = null) {
 function exportSettings(filePath) {
     try {
         const exportData = {
-            version: '1.4.7-beta1 (v41)',
+            version: '1.4.7 (v42)',
             timestamp: new Date().toISOString(),
             settings: settings
         };
@@ -7651,6 +7739,14 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+    const shouldPromptForInstallQuit = process.platform === 'win32'
+        && hasPendingUpdateToInstall()
+        && settings?.pendingUpdate?.autoInstallOnQuit === true;
+
+    if (shouldPromptForInstallQuit && !allowQuitForPendingUpdateInstall) {
+        return;
+    }
+
     stopHeartbeatService();
     disposeAllFileWatchers();
     try { terminalManager.disposeAll(); } catch (_) { }
