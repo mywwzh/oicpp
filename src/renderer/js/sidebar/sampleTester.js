@@ -572,35 +572,45 @@ class SampleTester {
         }
     }
 
-    async saveSamples() {
-        if (!this.samplesFilePath) return;
+    serializeSamplesForSave(samples) {
+        return (Array.isArray(samples) ? samples : []).map(sample => {
+            const s = { ...sample };
+            if (s.result) {
+                const fullOutput = s.result.rawOutput ?? s.result.output ?? '';
+                const { rawOutput, ...restResult } = s.result;
+                s.result = {
+                    ...restResult,
+                    output: fullOutput,
+                    outputExpanded: !!s.result.outputExpanded,
+                    outputSizeBytes: Number.isFinite(s.result.outputSizeBytes) && s.result.outputSizeBytes > 0
+                        ? s.result.outputSizeBytes
+                        : this.getOutputSizeBytes(fullOutput)
+                };
+            }
+            return s;
+        });
+    }
+
+    isCurrentSamplesContext(samplesFilePath, currentFile) {
+        return this.samplesFilePath === samplesFilePath && this.currentFile === currentFile;
+    }
+
+    async saveSamplesToPath(samplesFilePath, samples = this.samples, globalSettings = this.globalSettings) {
+        if (!samplesFilePath) return;
 
         try {
-            const samplesToSave = this.samples.map(sample => {
-                const s = { ...sample };
-                if (s.result) {
-                    const fullOutput = s.result.rawOutput ?? s.result.output ?? '';
-                    const { rawOutput, ...restResult } = s.result;
-                    s.result = {
-                        ...restResult,
-                        output: fullOutput,
-                        outputExpanded: !!s.result.outputExpanded,
-                        outputSizeBytes: Number.isFinite(s.result.outputSizeBytes) && s.result.outputSizeBytes > 0
-                            ? s.result.outputSizeBytes
-                            : this.getOutputSizeBytes(fullOutput)
-                    };
-                }
-                return s;
-            });
-
             const data = {
-                samples: samplesToSave,
-                globalSettings: this.globalSettings
+                samples: this.serializeSamplesForSave(samples),
+                globalSettings
             };
-            await window.electronAPI.saveFile(this.samplesFilePath, JSON.stringify(data, null, 2));
+            await window.electronAPI.saveFile(samplesFilePath, JSON.stringify(data, null, 2));
         } catch (error) {
             logError('保存样例失败:', error);
         }
+    }
+
+    async saveSamples() {
+        await this.saveSamplesToPath(this.samplesFilePath, this.samples, this.globalSettings);
     }
 
     updateUI() {
@@ -1698,6 +1708,9 @@ class SampleTester {
 
 
     async runSample(id) {
+        const runSamples = this.samples;
+        const runSamplesFilePath = this.samplesFilePath;
+        const runCurrentFile = this.currentFile;
         const sample = this.samples.find(s => s.id === id);
         if (!sample) return;
 
@@ -1723,8 +1736,11 @@ class SampleTester {
                 }
             });
             sample.result = result;
-            this.saveSamples();
-            this.updateSampleResult(id, result, sample);
+            const samplesToPersist = this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile) ? this.samples : runSamples;
+            await this.saveSamplesToPath(runSamplesFilePath, samplesToPersist, this.globalSettings);
+            if (this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile)) {
+                this.updateSampleResult(id, result, sample);
+            }
         } catch (error) {
             logError('运行样例失败:', error);
             sample.result = {
@@ -1732,7 +1748,11 @@ class SampleTester {
                 output: error.message,
                 time: 0
             };
-            this.updateSampleResult(id, sample.result);
+            const samplesToPersist = this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile) ? this.samples : runSamples;
+            await this.saveSamplesToPath(runSamplesFilePath, samplesToPersist, this.globalSettings);
+            if (this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile)) {
+                this.updateSampleResult(id, sample.result);
+            }
         } finally {
             button.disabled = false;
             button.textContent = '运行';
@@ -1741,7 +1761,11 @@ class SampleTester {
     }
 
     async runAllSamples() {
-        if (this.samples.length === 0) return;
+        const runSamples = this.samples;
+        const runSamplesFilePath = this.samplesFilePath;
+        const runCurrentFile = this.currentFile;
+
+        if (runSamples.length === 0) return;
 
         await this.autoSaveCurrentFile();
 
@@ -1751,7 +1775,7 @@ class SampleTester {
             runAllBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" style="animation: spin 1s linear infinite;"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="31.416" stroke-dashoffset="31.416" stroke-linecap="round"/></svg>';
         }
 
-        this.samples.forEach(sample => {
+        runSamples.forEach(sample => {
             const button = document.getElementById(`run-btn-${sample.id}`);
             if (button) {
                 button.disabled = true;
@@ -1766,7 +1790,7 @@ class SampleTester {
             const useTestlib = this.globalSettings.useTestlib;
             const spjPath = this.globalSettings.spjPath;
 
-            this.samples.forEach(sample => {
+            runSamples.forEach(sample => {
                 const button = document.getElementById(`run-btn-${sample.id}`);
                 if (button) {
                     button.textContent = '编译中';
@@ -1775,21 +1799,24 @@ class SampleTester {
 
             const compileResult = await this.compileCurrentFile(useTestlib);
             if (!compileResult.success) {
-                for (const sample of this.samples) {
+                for (const sample of runSamples) {
                     sample.result = {
                         status: 'CE',
                         output: compileResult.stderr || compileResult.stdout || '编译失败',
                         time: 0
                     };
-                    this.updateSampleResult(sample.id, sample.result, sample);
+                    if (this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile)) {
+                        this.updateSampleResult(sample.id, sample.result, sample);
+                    }
                 }
-                this.saveSamples();
+                const samplesToPersist = this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile) ? this.samples : runSamples;
+                await this.saveSamplesToPath(runSamplesFilePath, samplesToPersist, this.globalSettings);
                 return;
             }
 
             if (compileResult.cached) {
                 this.notifyCompileCacheHit('样例程序');
-                this.samples.forEach(sample => {
+                runSamples.forEach(sample => {
                     const button = document.getElementById(`run-btn-${sample.id}`);
                     if (button) {
                         button.textContent = '复用编译';
@@ -1802,21 +1829,24 @@ class SampleTester {
             if (useTestlib && spjPath) {
                 const spjCompileResult = await this.compileSpjFile(spjPath);
                 if (!spjCompileResult.success) {
-                    for (const sample of this.samples) {
+                    for (const sample of runSamples) {
                         sample.result = {
                             status: 'CE',
                             output: `SPJ编译失败: ${spjCompileResult.stderr || spjCompileResult.stdout || '编译失败'}`,
                             time: 0
                         };
-                        this.updateSampleResult(sample.id, sample.result, sample);
+                        if (this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile)) {
+                            this.updateSampleResult(sample.id, sample.result, sample);
+                        }
                     }
-                    this.saveSamples();
+                    const samplesToPersist = this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile) ? this.samples : runSamples;
+                    await this.saveSamplesToPath(runSamplesFilePath, samplesToPersist, this.globalSettings);
                     return;
                 }
 
                 if (spjCompileResult.cached) {
                     this.notifyCompileCacheHit('SPJ程序');
-                    this.samples.forEach(sample => {
+                    runSamples.forEach(sample => {
                         const button = document.getElementById(`run-btn-${sample.id}`);
                         if (button) {
                             button.textContent = '复用SPJ';
@@ -1826,7 +1856,7 @@ class SampleTester {
                 spjExecutablePath = spjCompileResult.executablePath;
             }
 
-            this.samples.forEach(sample => {
+            runSamples.forEach(sample => {
                 const button = document.getElementById(`run-btn-${sample.id}`);
                 if (button) {
                     button.textContent = '运行中';
@@ -1835,21 +1865,23 @@ class SampleTester {
 
             const logicalCores = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 2;
             const maxParallel = Math.max(1, Math.floor(logicalCores / 2));
-            const workerCount = Math.min(maxParallel, this.samples.length);
+            const workerCount = Math.min(maxParallel, runSamples.length);
 
-            logInfo('[样例测试器] 并行运行样例', { logicalCores, workerCount, sampleCount: this.samples.length });
+            logInfo('[样例测试器] 并行运行样例', { logicalCores, workerCount, sampleCount: runSamples.length });
 
             let currentIndex = 0;
             const worker = async () => {
                 while (true) {
                     const index = currentIndex++;
-                    if (index >= this.samples.length) return;
+                    if (index >= runSamples.length) return;
 
-                    const sample = this.samples[index];
+                    const sample = runSamples[index];
                     try {
                         const result = await this.executeSampleWithCompiledProgram(sample, executablePath, spjExecutablePath);
                         sample.result = result;
-                        this.updateSampleResult(sample.id, result, sample);
+                        if (this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile)) {
+                            this.updateSampleResult(sample.id, result, sample);
+                        }
                     } catch (error) {
                         logError(`运行样例 ${sample.id} 失败:`, error);
                         sample.result = {
@@ -1857,7 +1889,9 @@ class SampleTester {
                             output: error.message,
                             time: 0
                         };
-                        this.updateSampleResult(sample.id, sample.result, sample);
+                        if (this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile)) {
+                            this.updateSampleResult(sample.id, sample.result, sample);
+                        }
                     }
                 }
             };
@@ -1865,7 +1899,8 @@ class SampleTester {
             const workers = Array.from({ length: workerCount }, worker);
             await Promise.all(workers);
 
-            this.saveSamples();
+            const samplesToPersist = this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile) ? this.samples : runSamples;
+            await this.saveSamplesToPath(runSamplesFilePath, samplesToPersist, this.globalSettings);
 
         } finally {
             // 主程序编译结果会被缓存复用，这里不删除可执行文件。
@@ -1876,7 +1911,7 @@ class SampleTester {
                 runAllBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M4 2l8 5-8 5V2z" fill="currentColor"/></svg>';
             }
 
-            this.samples.forEach(sample => {
+            runSamples.forEach(sample => {
                 const button = document.getElementById(`run-btn-${sample.id}`);
                 if (button) {
                     button.disabled = false;
