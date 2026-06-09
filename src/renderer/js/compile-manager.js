@@ -505,20 +505,7 @@ class CompilerManager {
             const executablePath = this.getExecutablePath(filePath);
             logInfo(`检查可执行文件路径: ${executablePath}`);
             
-            let exists = false;
-            let retryCount = 0;
-            const maxRetries = 3;
-            
-            while (!exists && retryCount < maxRetries) {
-                exists = await this.checkFileExists(executablePath);
-                logInfo(`可执行文件存在性检查结果 (第${retryCount + 1}次): ${exists}`);
-                
-                if (!exists && retryCount < maxRetries - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                }
-                retryCount++;
-            }
-            
+            const exists = await this.checkFileExists(executablePath);
             if (!exists) {
                 this.showMessage(`请先编译程序 (未找到: ${executablePath})`, 'error');
                 return;
@@ -1185,9 +1172,7 @@ class CompilerManager {
 
             if (this.shouldRunAfterCompile) {
                 this.shouldRunAfterCompile = false;
-                setTimeout(() => {
-                    this.runCurrentFile();
-                }, 500);
+                this.runCurrentFile();
             }
             } else {
             this.setStatus('编译失败');
