@@ -6,6 +6,7 @@ class SidebarManager {
             samples: new SampleTester(),
             compare: new CodeComparer(),
             debug: new DebugPanel(),
+            datagen: new DataGenerator(),
             cloud: new CloudSyncPanel()
         };
 

@@ -210,6 +210,11 @@
                     </svg>
                 </div>
                 <div class="sidebar-icons-spacer"></div>
+                <div class="sidebar-icon" data-panel="datagen" title="数据生成器">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                    </svg>
+                </div>
                 <div class="sidebar-icon cloud-sync-icon" data-panel="cloud" title="云空间" style="display: none;">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M19 18H6a4 4 0 0 1-.88-7.9A6 6 0 0 1 17.5 9c.16 0 .32 0 .48.02A4.5 4.5 0 0 1 19 18zm-7-4v-3H9l3-3 3 3h-3v3h-2zm-2 2h4v2h-4v-2z"/>
@@ -502,6 +507,14 @@
                     </div>
                 </div>
 
+                <div class="panel-content" id="datagen-panel">
+                    <div class="panel-header">
+                        <span class="panel-title">数据生成器</span>
+                    </div>
+                    <div class="datagen-content">
+                    </div>
+                </div>
+                
                 <div class="panel-content" id="cloud-panel" style="display: none;">
                     <div class="panel-header">
                         <span class="panel-title">云空间</span>
@@ -683,6 +696,7 @@
     <script src="js/sidebar/debugPanel.js"></script>
     <script src="js/sidebar/codeComparer.js"></script>
     <script src="js/sidebar/cloudSync.js"></script>
+    <script src="js/sidebar/dataGenerator.js"></script>
     <script src="js/sidebar.js"></script>
     <script src="js/tabs.js"></script>
     <script src="js/terminal-panel.js"></script>
