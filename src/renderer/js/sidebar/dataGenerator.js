@@ -17,7 +17,6 @@ class DataGenerator {
         this.loadDefaultGenerators();
     }
 
-    // 初始化静态 DOM，不带任何行内内联样式，字数精简防止溢出
     setupStructure() {
         const content = this.panel.querySelector('.datagen-content');
         if (!content) return;
@@ -51,7 +50,6 @@ class DataGenerator {
         this.panel.querySelector('#datagen-export-btn')?.addEventListener('click', () => this.exportFile());
         this.panel.querySelector('#datagen-clear-btn')?.addEventListener('click', () => this.clearAll());
 
-        // 页签切换逻辑
         const tabPreviewBtn = this.panel.querySelector('#datagen-tab-btn-preview');
         const tabCodeBtn = this.panel.querySelector('#datagen-tab-btn-code');
         const viewPreview = this.panel.querySelector('#datagen-preview-content');
@@ -71,7 +69,6 @@ class DataGenerator {
             viewPreview?.classList.remove('active');
         });
 
-        // 委托监听配置域变动
         const itemsDiv = this.panel.querySelector('.datagen-items');
         itemsDiv?.addEventListener('change', (e) => {
             const itemEl = e.target.closest('.datagen-item');
@@ -192,9 +189,6 @@ class DataGenerator {
         });
     }
 
-    // ────────────────────────────────────────────────────────
-    // 💡 核心解析引擎：支持混合变量域计算 (数字 or 已有变量名)
-    // ────────────────────────────────────────────────────────
     parseValue(valStr, scope) {
         const trimmed = valStr.trim();
         if (scope && scope.hasOwnProperty(trimmed)) {
@@ -204,12 +198,9 @@ class DataGenerator {
         return isNaN(num) ? 0 : num;
     }
 
-    // ────────────────────────────────────────────────────────
-    // 🎲 带有动态 Scope 作用域的模拟数据预览
-    // ────────────────────────────────────────────────────────
     previewData() {
         let preview = '';
-        const scope = {}; // 存放运行时生成的快照值，供后面的变量引用
+        const scope = {};
 
         this.generators.forEach((gen) => {
             const min = this.parseValue(gen.min, scope);
@@ -219,7 +210,7 @@ class DataGenerator {
                 case 'integer':
                 case 'longlong': {
                     const val = Math.floor(Math.random() * (max - min + 1)) + min;
-                    scope[gen.name] = val; // 注册入作用域
+                    scope[gen.name] = val;
                     preview += `${val}\n`;
                     break;
                 }
@@ -233,7 +224,7 @@ class DataGenerator {
                     break;
                 }
                 case 'array2d': {
-                    const rows = this.parseValue(gen.arraySize, scope); // 复用字段作为行数
+                    const rows = this.parseValue(gen.arraySize, scope);
                     const cols = this.parseValue(gen.cols, scope);
                     for (let i = 0; i < rows; i++) {
                         let row = [];
@@ -252,15 +243,11 @@ class DataGenerator {
         this.panel.querySelector('#datagen-tab-btn-preview')?.click();
     }
 
-    // ────────────────────────────────────────────────────────
-    // 💻 现代化 C++ 智能关联代码生成
-    // ────────────────────────────────────────────────────────
     generateCode() {
         let code = `#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // 建立随机数快照引擎\n    mt19937 rng(chrono::steady_clock::now().time_since_epoch().count());\n\n`;
         const definedVars = new Set();
 
         this.generators.forEach((gen) => {
-            // 判断输入的是数字还是已有变量
             const isMinVar = definedVars.has(gen.min.trim());
             const isMaxVar = definedVars.has(gen.max.trim());
             const isSizeVar = definedVars.has(gen.arraySize.trim());

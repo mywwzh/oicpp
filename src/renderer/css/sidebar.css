@@ -503,10 +503,6 @@
     line-height: 1.4;
 }
 
-/* ==========================================================================
-   数据生成器面板 (Data Generator Panel) 极致暗黑高对比度规范
-   ========================================================================== */
-
 .datagen-content {
     flex: 1;
     display: flex;
@@ -516,88 +512,74 @@
     box-sizing: border-box;
 }
 
-/* ==========================================================================
-   💥 工具栏按钮高内聚暗黑配色（极致防挤、高对比度白字）
-   ========================================================================== */
-
 .datagen-toolbar {
     margin-bottom: 12px; 
     display: flex; 
-    gap: 5px; /* 紧凑间距，留出富余空间 */
+    gap: 5px;
     width: 100%;
 }
 
-/* 强力接管面板内所有带有 .btn 类的按钮 */
 .datagen-content .btn {
     flex: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 4px 4px !important; /* 收紧内边距 */
-    border: 1px solid var(--border-color, #434346) !important;
-    border-radius: 4px !important;
-    font-size: 11px !important; /* 11px 极其适合 300px 侧边栏 */
-    font-family: inherit !important;
-    font-weight: 500 !important;
-    cursor: pointer !important;
-    box-sizing: border-box !important;
-    outline: none !important;
-    height: 28px !important; 
-    line-height: 1 !important;
-    white-space: nowrap !important; /* 拒绝换行 */
+    padding: 4px 4px ;
+    border: 1px solid var(--border-color, #434346) ;
+    border-radius: 4px ;
+    font-size: 11px ;
+    font-family: inherit ;
+    font-weight: 500 ;
+    cursor: pointer ;
+    box-sizing: border-box ;
+    outline: none ;
+    height: 28px ; 
+    line-height: 1 ;
+    white-space: nowrap ;
     
-    /* 默认按钮：高对比度黑底白字，确保看得一清二楚 */
-    background-color: #333333 !important; 
-    color: #ffffff !important; 
+    background-color: #333333 ; 
+    color: #ffffff ; 
     transition: background-color 0.1s ease, border-color 0.1s ease;
 }
 
-/* 悬浮边框转为激活蓝 */
 .datagen-content .btn:hover {
-    background-color: #444444 !important;
-    border-color: var(--accent-color, #007acc) !important;
+    background-color: #444444 ;
+    border-color: var(--accent-color, #007acc) ;
 }
 
-/* 生成代码按钮 (.btn-primary) -> VSCode 经典沉稳蓝 + 纯白字 */
 .datagen-content .btn.btn-primary {
-    background-color: #0e639c !important; 
-    color: #ffffff !important;
-    border: 1px solid #1177bb !important;
+    background-color: #0e639c ; 
+    color: #ffffff ;
+    border: 1px solid #1177bb ;
 }
 .datagen-content .btn.btn-primary:hover {
-    background-color: #1177bb !important;
-    border-color: #1488d8 !important;
+    background-color: #1177bb ;
+    border-color: #1488d8 ;
 }
 
-/* 清空按钮 (.btn-danger) -> 沉稳暗红 + 纯白字 */
 .datagen-content .btn.btn-danger {
-    background-color: #902727 !important; 
-    color: #ffffff !important;
-    border: 1px solid #a83030 !important;
+    background-color: #902727 ; 
+    color: #ffffff ;
+    border: 1px solid #a83030 ;
 }
 .datagen-content .btn.btn-danger:hover {
-    background-color: #a83030 !important;
-    border-color: #c43b3b !important;
+    background-color: #a83030 ;
+    border-color: #c43b3b ;
 }
 
-/* 导出按钮 (.btn-success) -> 沉稳绿色 + 纯白字 */
 .datagen-content .btn.btn-success {
-    background-color: #2d7d46 !important; 
-    color: #ffffff !important;
-    border: 1px solid #319653 !important;
+    background-color: #2d7d46 ; 
+    color: #ffffff ;
+    border: 1px solid #319653 ;
 }
 .datagen-content .btn.btn-success:hover {
-    background-color: #319653 !important;
-    border-color: #38a85c !important;
+    background-color: #319653 ;
+    border-color: #38a85c ;
 }
 
 .datagen-content .btn:active {
-    filter: brightness(1.2) !important;
+    filter: brightness(1.2) ;
 }
-
-/* ==========================================================================
-   动态变量卡片（左对齐、删除按钮绝对靠右）
-   ========================================================================== */
 
 .datagen-items {
     flex: 1;
@@ -651,11 +633,11 @@
 }
 
 .datagen-delete-btn {
-    background-color: transparent !important;
-    border: none !important;
-    color: var(--text-secondary, #858585) !important;
+    background-color: transparent ;
+    border: none ;
+    color: var(--text-secondary, #858585) ;
     cursor: pointer;
-    padding: 4px !important;
+    padding: 4px ;
     border-radius: 4px;
     flex-shrink: 0;
     display: flex;
@@ -663,11 +645,10 @@
     justify-content: center;
 }
 .datagen-delete-btn:hover {
-    background-color: rgba(244, 67, 54, 0.2) !important;
-    color: #f44336 !important;
+    background-color: rgba(244, 67, 54, 0.2) ;
+    color: #f44336 ;
 }
 
-/* 表单内容左对齐 */
 .datagen-item-content {
     display: flex;
     flex-direction: column;
@@ -686,7 +667,7 @@
 .datagen-row label {
     font-size: 11px;
     color: var(--text-secondary, #858585);
-    width: 65px; /* 收紧宽度适配小屏幕 */
+    width: 65px;
     text-align: left;
     flex-shrink: 0;
 }
@@ -714,7 +695,6 @@
     width: 150px;
 }
 
-/* 页签及结果窗 */
 .datagen-tabs {
     display: flex;
     gap: 4px;
