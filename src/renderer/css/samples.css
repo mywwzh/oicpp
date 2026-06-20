@@ -363,7 +363,15 @@
 }
 
 .program-output-group {
-    grid-column: span 2;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.stderr-output-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .program-output {
@@ -381,6 +389,27 @@
     resize: vertical;
     transition: border-color 0.2s, height 0.2s;
     overflow-y: auto;
+}
+
+.stderr-output {
+    width: 100%;
+    min-height: 60px;
+    max-height: 200px;
+    padding: 8px;
+    border: 1px solid var(--border-color, #464647);
+    border-radius: 4px;
+    background-color: var(--input-bg, #1e1e1e);
+    color: var(--error-bg, #dc3545);
+    font-family: 'Consolas';
+    font-size: 12px;
+    line-height: 1.4;
+    resize: vertical;
+    transition: border-color 0.2s, height 0.2s;
+    overflow-y: auto;
+}
+
+.stderr-output-container {
+    position: relative;
 }
 
 .sample-settings {

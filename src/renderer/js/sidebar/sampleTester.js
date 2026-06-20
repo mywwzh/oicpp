@@ -776,6 +776,7 @@ class SampleTester {
         const processedProgramOutput = sample.result
             ? this.processOutputForDisplay(sample.result.output || '', sample.result, sample.id)
             : '';
+        const processedStderr = sample.result?.stderr || '';
 
         div.innerHTML = `
             <div class="sample-header" onclick="sampleTester.toggleSample(${sample.id})">
@@ -838,6 +839,14 @@ class SampleTester {
                         </div>
             <div class="program-output-container" id="output-container-${sample.id}">
                             <textarea class="program-output" readonly spellcheck="false" placeholder="运行程序后显示输出..." id="output-${sample.id}">${processedProgramOutput}</textarea>
+                        </div>
+                    </div>
+                    <div class="stderr-output-group">
+                        <div class="sample-io-header">
+                            <span class="sample-io-label">标准错误流</span>
+                        </div>
+                        <div class="stderr-output-container">
+                            <textarea class="stderr-output" readonly spellcheck="false" placeholder="运行程序后显示标准错误流..." id="stderr-${sample.id}">${processedStderr}</textarea>
                         </div>
                     </div>
                 </div>
@@ -2015,7 +2024,8 @@ class SampleTester {
                 outputSizeBytes: this.getOutputSizeBytes(actualOutput),
                 outputExpanded: false,
                 time: runResult.time,
-                usedSpj: spjUsed
+                usedSpj: spjUsed,
+                stderr: runResult.stderr || ''
             };
         } catch (error) {
             throw error;
@@ -2169,7 +2179,8 @@ class SampleTester {
                 outputSizeBytes: this.getOutputSizeBytes(actualOutput),
                 outputExpanded: false,
                 time: runResult.time,
-                usedSpj: spjUsed
+                usedSpj: spjUsed,
+                stderr: runResult.stderr || ''
             };
         } finally {
             // 主程序编译结果会被缓存复用，这里不删除可执行文件。
@@ -2615,6 +2626,11 @@ class SampleTester {
         if (outputControls) {
             const hasOutput = !!(result.rawOutput || result.output);
             outputControls.style.display = hasOutput ? 'flex' : 'none';
+        }
+
+        const stderrTextarea = element.querySelector('.stderr-output');
+        if (stderrTextarea) {
+            stderrTextarea.value = result.stderr || '';
         }
 
         element.classList.remove('success', 'error');
