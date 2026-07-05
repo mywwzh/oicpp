@@ -90,6 +90,10 @@
                 await this.terminalPanel.init();
             }
             await this.restoreStartupWorkspaceIfNeeded();
+            // 自动恢复上次打开的标签页
+            await this.restoreLastOpenTabs();
+            // 监听标签变化，保存打开的标签页列表
+            this.setupTabStateSaver();
             this.configureAutoSave();
             this.loadDefaultFiles();
             this.updateStatusBar();
@@ -291,6 +295,9 @@
                 break;
             case 'open-source-licenses':
                 this.showOpenSourceLicenses();
+                break;
+            case 'open-file-history':
+                this.openFileHistory();
                 break;
             case 'ide-login':
                 await this.startIdeLogin();
@@ -547,6 +554,12 @@
             if (typeof window.electronAPI.onMenuOpenTerminal === 'function') {
                 window.electronAPI.onMenuOpenTerminal(() => {
                     this.openIntegratedTerminal();
+                });
+            }
+
+            if (typeof window.electronAPI.onMenuOpenFileHistory === 'function') {
+                window.electronAPI.onMenuOpenFileHistory(() => {
+                    this.openFileHistory();
                 });
             }
 
@@ -4170,6 +4183,294 @@ ${data.message || '程序已加载，等待开始执行'}
         }
         if (this.compilerManager) {
             this.compilerManager.compileAndRun();
+        }
+    }
+
+    // ========== 文件历史记录 ==========
+
+    setupTabStateSaver() {
+        // 监听标签页变化（打开/关闭/切换）以保存状态
+        const debouncedSave = this.debounce(() => {
+            this.saveCurrentOpenTabs();
+        }, 2000);
+
+        // 通过 MutationObserver 监听标签栏变化
+        try {
+            const editorGroups = document.getElementById('editor-groups');
+            if (editorGroups) {
+                const observer = new MutationObserver(() => {
+                    debouncedSave();
+                });
+                observer.observe(editorGroups, {
+                    childList: true,
+                    subtree: true,
+                    attributes: false,
+                    characterData: false
+                });
+            }
+        } catch (err) {
+            logWarn('标签状态监听器设置失败:', err);
+        }
+
+        // Hook TabManager.openFile 以记录文件历史并保存标签状态
+        if (window.tabManager && typeof window.tabManager.openFile === 'function') {
+            const originalOpenFile = window.tabManager.openFile.bind(window.tabManager);
+            const self = this;
+            window.tabManager.openFile = async function (fileName, content, isNew, filePath) {
+                await originalOpenFile(fileName, content, isNew, filePath);
+
+                // 记录文件历史
+                let actualPath = null;
+                if (filePath && typeof filePath === 'object' && !Array.isArray(filePath)) {
+                    actualPath = filePath.filePath || null;
+                } else if (typeof filePath === 'string') {
+                    actualPath = filePath;
+                }
+                if (actualPath && !isNew && window.electronAPI && typeof window.electronAPI.addToFileHistory === 'function') {
+                    try {
+                        await window.electronAPI.addToFileHistory(actualPath);
+                    } catch (_) {}
+                }
+                debouncedSave();
+            };
+        }
+    }
+
+    debounce(fn, delay) {
+        let timer = null;
+        const debounced = function (...args) {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => {
+                fn(...args);
+                timer = null;
+            }, delay);
+        };
+        debounced.cancel = function () {
+            if (timer) clearTimeout(timer);
+            timer = null;
+        };
+        return debounced;
+    }
+
+    async openFileHistory() {
+        if (!window.electronAPI || typeof window.electronAPI.getFileHistory !== 'function') {
+            this.showMessage('文件历史功能不可用', 'error');
+            return;
+        }
+        try {
+            const history = await window.electronAPI.getFileHistory();
+            this.showFileHistoryDialog(Array.isArray(history) ? history : []);
+        } catch (error) {
+            logError('获取文件历史失败:', error);
+            this.showMessage('获取文件历史失败', 'error');
+        }
+    }
+
+    showFileHistoryDialog(history) {
+        // 移除已存在的对话框
+        const existing = document.getElementById('file-history-overlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'file-history-overlay';
+        overlay.className = 'dialog-overlay';
+
+        const dialog = document.createElement('div');
+        dialog.className = 'file-history-dialog';
+
+        // 标题栏
+        const titleBar = document.createElement('div');
+        titleBar.className = 'file-history-titlebar';
+        titleBar.innerHTML = '<span class="file-history-title">文件历史</span>';
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'file-history-close-btn';
+        closeBtn.innerHTML = '&times;';
+        closeBtn.setAttribute('aria-label', '关闭');
+        closeBtn.addEventListener('click', () => overlay.remove());
+        titleBar.appendChild(closeBtn);
+        dialog.appendChild(titleBar);
+
+        // 统计信息
+        if (history.length > 0) {
+            const stats = document.createElement('div');
+            stats.className = 'file-history-stats';
+            stats.textContent = `共 ${history.length} 个文件`;
+            dialog.appendChild(stats);
+        }
+
+        // 列表容器
+        const listContainer = document.createElement('div');
+        listContainer.className = 'file-history-list';
+
+        if (history.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'file-history-empty';
+            empty.textContent = '暂无文件历史记录';
+            listContainer.appendChild(empty);
+        } else {
+            for (const item of history) {
+                const row = document.createElement('div');
+                row.className = 'file-history-item';
+                row.setAttribute('data-path', item.path);
+
+                const icon = document.createElement('span');
+                icon.className = 'file-history-icon';
+                icon.textContent = '📄';
+
+                const info = document.createElement('div');
+                info.className = 'file-history-info';
+
+                const name = document.createElement('div');
+                name.className = 'file-history-name';
+                name.textContent = item.name || '未知文件';
+                name.title = item.name || '';
+
+                const pathEl = document.createElement('div');
+                pathEl.className = 'file-history-path';
+                pathEl.textContent = item.path || '';
+                pathEl.title = item.path || '';
+
+                info.appendChild(name);
+                info.appendChild(pathEl);
+
+                const time = document.createElement('div');
+                time.className = 'file-history-time';
+                try {
+                    const date = new Date(item.lastOpened);
+                    time.textContent = this.formatHistoryTime(date);
+                } catch (_) {
+                    time.textContent = '';
+                }
+
+                row.appendChild(icon);
+                row.appendChild(info);
+                row.appendChild(time);
+
+                row.addEventListener('click', async () => {
+                    overlay.remove();
+                    await window.electronAPI.openFileFromHistory(item.path);
+                });
+
+                listContainer.appendChild(row);
+            }
+        }
+
+        dialog.appendChild(listContainer);
+
+        // 底部操作栏
+        if (history.length > 0) {
+            const footer = document.createElement('div');
+            footer.className = 'file-history-footer';
+
+            const clearBtn = document.createElement('button');
+            clearBtn.className = 'file-history-clear-btn';
+            clearBtn.textContent = '清除历史记录';
+            clearBtn.addEventListener('click', async () => {
+                if (!window.dialogManager || typeof window.dialogManager.showConfirm !== 'function') {
+                    if (!confirm('确定要清除所有文件历史记录吗？')) return;
+                } else {
+                    const confirmed = await window.dialogManager.showConfirm('确定要清除所有文件历史记录吗？');
+                    if (!confirmed) return;
+                }
+                await window.electronAPI.clearFileHistory();
+                overlay.remove();
+                this.showMessage('文件历史已清除', 'success');
+            });
+
+            footer.appendChild(clearBtn);
+            dialog.appendChild(footer);
+        }
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        // 点击外部关闭
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.remove();
+        });
+    }
+
+    formatHistoryTime(date) {
+        try {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMin = Math.floor(diffMs / 60000);
+            const diffHour = Math.floor(diffMs / 3600000);
+            const diffDay = Math.floor(diffMs / 86400000);
+
+            if (diffMin < 1) return '刚刚';
+            if (diffMin < 60) return `${diffMin} 分钟前`;
+            if (diffHour < 24) return `${diffHour} 小时前`;
+            if (diffDay < 7) return `${diffDay} 天前`;
+
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hour = String(date.getHours()).padStart(2, '0');
+            const min = String(date.getMinutes()).padStart(2, '0');
+
+            if (year === now.getFullYear()) {
+                return `${month}-${day} ${hour}:${min}`;
+            }
+            return `${year}-${month}-${day} ${hour}:${min}`;
+        } catch (_) {
+            return '';
+        }
+    }
+
+    // ========== 自动恢复标签页 ==========
+
+    async saveCurrentOpenTabs() {
+        if (!window.electronAPI || typeof window.electronAPI.saveLastOpenTabs !== 'function') return;
+        try {
+            if (!window.tabManager) return;
+            const tabs = [];
+            for (const [key, tabData] of window.tabManager.tabs) {
+                if (tabData && tabData.filePath && !tabData.isTempFile) {
+                    tabs.push({
+                        filePath: tabData.filePath,
+                        fileName: tabData.fileName || '',
+                        groupId: tabData.groupId || '',
+                        viewType: tabData.viewType || 'code'
+                    });
+                }
+            }
+            if (tabs.length > 0) {
+                await window.electronAPI.saveLastOpenTabs(tabs);
+            }
+        } catch (err) {
+            logWarn('保存打开标签页失败:', err);
+        }
+    }
+
+    async restoreLastOpenTabs() {
+        if (!window.electronAPI || typeof window.electronAPI.getLastOpenTabs !== 'function') return;
+        try {
+            const tabs = await window.electronAPI.getLastOpenTabs();
+            if (!Array.isArray(tabs) || tabs.length === 0) return;
+
+            logInfo(`[自动恢复] 正在恢复 ${tabs.length} 个标签页`);
+            for (const tab of tabs) {
+                if (!tab || !tab.filePath) continue;
+                try {
+                    const content = await window.electronAPI.readFileContent(tab.filePath);
+                    if (typeof content === 'string') {
+                        const fileName = tab.fileName || tab.filePath.split(/[\\/]/).pop() || 'untitled';
+                        if (window.tabManager && typeof window.tabManager.openFile === 'function') {
+                            await window.tabManager.openFile(fileName, content, false, {
+                                filePath: tab.filePath,
+                                viewType: tab.viewType || 'code',
+                                groupId: tab.groupId || undefined
+                            });
+                        }
+                    }
+                } catch (err) {
+                    logWarn(`[自动恢复] 无法恢复文件: ${tab.filePath}`, err);
+                }
+            }
+        } catch (err) {
+            logWarn('[自动恢复] 恢复标签页失败:', err);
         }
     }
 }

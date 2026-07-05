@@ -1464,6 +1464,8 @@ function getDefaultSettings() {
         lastOpen: '', // 最后打开的工作区路径
         autoOpenLastWorkspace: true,
         recentFiles: [], // 最近使用的文件列表
+        fileHistory: [], // 最近打开的文件历史（按打开时间排序）
+        lastOpenTabs: [], // 上次会话打开的标签页列表（用于自动恢复）
         codeSnippets: [],
         windowOpacity: 1.0,
         glassEffectEnabled: false,
@@ -2459,6 +2461,13 @@ function createMenuBar() {
                     accelerator: 'CmdOrCtrl+Shift+S',
                     click: () => {
                         saveAsFile();
+                    }
+                },
+                { type: 'separator' },
+                {
+                    label: '历史...',
+                    click: () => {
+                        mainWindow.webContents.send('menu-open-file-history');
                     }
                 },
                 { type: 'separator' },
@@ -6681,7 +6690,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'fileHistory', 'lastOpenTabs', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
             let needsSaveAfterMigration = false;
 
             for (const key of validKeys) {
@@ -6812,7 +6821,8 @@ function updateSettings(settingsType, newSettings) {
         const validKeys = [
             'compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'syntaxCheckEnabled', 'lineHeight', 'theme',
             'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'autoSave', 'autoSaveInterval',
-            'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'markdownMode', 'keybindings', 'autoOpenLastWorkspace', 'autoBackupSettings', 'receiveBetaUpdates'
+            'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'markdownMode', 'keybindings',
+            'fileHistory', 'lastOpenTabs', 'autoOpenLastWorkspace', 'autoBackupSettings', 'receiveBetaUpdates'
         ];
 
         for (const key in newSettings) {
@@ -9002,6 +9012,165 @@ ipcMain.handle('open-recent-file', async (event, filePath) => {
         return true;
     } catch (err) {
         logError('[打开最近] 失败:', err);
+        return false;
+    }
+});
+
+ipcMain.handle('add-to-file-history', async (event, filePath) => {
+    try {
+        if (!filePath || typeof filePath !== 'string') return false;
+        const resolved = path.resolve(filePath);
+        if (!fs.existsSync(resolved)) return false;
+
+        if (!Array.isArray(settings.fileHistory)) {
+            settings.fileHistory = [];
+        }
+
+        // 移除以存在的相同路径（去重）
+        const existingIndex = settings.fileHistory.findIndex(item => {
+            try { return path.resolve(item.path) === resolved; } catch (_) { return item.path === filePath; }
+        });
+        if (existingIndex !== -1) {
+            settings.fileHistory.splice(existingIndex, 1);
+        }
+
+        // 添加到最前面
+        settings.fileHistory.unshift({
+            path: resolved,
+            name: path.basename(resolved),
+            lastOpened: new Date().toISOString()
+        });
+
+        // 最多保留 50 条记录
+        if (settings.fileHistory.length > 50) {
+            settings.fileHistory = settings.fileHistory.slice(0, 50);
+        }
+
+        saveSettings();
+        return true;
+    } catch (err) {
+        logError('[文件历史] 添加失败:', err);
+        return false;
+    }
+});
+
+ipcMain.handle('get-file-history', () => {
+    try {
+        if (!Array.isArray(settings.fileHistory)) {
+            settings.fileHistory = [];
+        }
+
+        // 清理不存在的文件
+        let changed = false;
+        const seen = new Set();
+        const valid = [];
+        for (const item of settings.fileHistory) {
+            if (!item || !item.path) continue;
+            let p = item.path;
+            let exists = false;
+            try {
+                exists = fs.existsSync(p);
+            } catch (_) { }
+            if (!exists) {
+                changed = true;
+                continue;
+            }
+            const normalized = path.resolve(p);
+            if (seen.has(normalized)) {
+                changed = true;
+                continue;
+            }
+            seen.add(normalized);
+            valid.push({
+                ...item,
+                path: normalized,
+                name: path.basename(normalized)
+            });
+        }
+        if (changed || valid.length !== settings.fileHistory.length) {
+            settings.fileHistory = valid;
+            saveSettings();
+        }
+        return settings.fileHistory;
+    } catch (err) {
+        logError('[文件历史] 获取失败:', err);
+        return [];
+    }
+});
+
+ipcMain.handle('open-file-from-history', async (event, filePath) => {
+    try {
+        if (!filePath || typeof filePath !== 'string') return false;
+        const resolved = path.resolve(filePath);
+        if (!fs.existsSync(resolved)) return false;
+
+        // 发送到渲染进程打开文件
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            const content = fs.readFileSync(resolved, 'utf8');
+            const fileName = path.basename(resolved);
+            mainWindow.webContents.send('file-opened', {
+                filePath: resolved,
+                fileName: fileName,
+                content: content
+            });
+
+            // 更新历史记录时间
+            const existingIndex = settings.fileHistory.findIndex(item => {
+                try { return path.resolve(item.path) === resolved; } catch (_) { return item.path === filePath; }
+            });
+            if (existingIndex !== -1) {
+                settings.fileHistory[existingIndex].lastOpened = new Date().toISOString();
+                saveSettings();
+            }
+        }
+        return true;
+    } catch (err) {
+        logError('[文件历史] 打开失败:', err);
+        return false;
+    }
+});
+
+ipcMain.handle('save-last-open-tabs', async (event, tabs) => {
+    try {
+        if (!Array.isArray(tabs)) return false;
+        settings.lastOpenTabs = tabs.filter(t => t && t.filePath && typeof t.filePath === 'string');
+        if (settings.lastOpenTabs.length > 20) {
+            settings.lastOpenTabs = settings.lastOpenTabs.slice(0, 20);
+        }
+        saveSettings();
+        return true;
+    } catch (err) {
+        logError('[标签页保存] 失败:', err);
+        return false;
+    }
+});
+
+ipcMain.handle('get-last-open-tabs', () => {
+    try {
+        if (!Array.isArray(settings.lastOpenTabs)) return [];
+
+        // 过滤掉已经不存在的文件
+        const valid = settings.lastOpenTabs.filter(t => {
+            try { return t && t.filePath && fs.existsSync(t.filePath); } catch (_) { return false; }
+        });
+        if (valid.length !== settings.lastOpenTabs.length) {
+            settings.lastOpenTabs = valid;
+            saveSettings();
+        }
+        return settings.lastOpenTabs;
+    } catch (err) {
+        logError('[标签页获取] 失败:', err);
+        return [];
+    }
+});
+
+ipcMain.handle('clear-file-history', async () => {
+    try {
+        settings.fileHistory = [];
+        saveSettings();
+        return true;
+    } catch (err) {
+        logError('[文件历史] 清除失败:', err);
         return false;
     }
 });
