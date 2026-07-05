@@ -585,6 +585,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
     openRecentFile: (filePath) => ipcRenderer.invoke('open-recent-file', filePath),
 
+    getFileHistory: () => ipcRenderer.invoke('get-file-history'),
+    addToFileHistory: (filePath) => ipcRenderer.invoke('add-to-file-history', filePath),
+    openFileFromHistory: (filePath) => ipcRenderer.invoke('open-file-from-history', filePath),
+    clearFileHistory: () => ipcRenderer.invoke('clear-file-history'),
+    saveLastOpenTabs: (tabs) => ipcRenderer.invoke('save-last-open-tabs', tabs),
+    getLastOpenTabs: () => ipcRenderer.invoke('get-last-open-tabs'),
+    onMenuOpenFileHistory: (callback) => ipcRenderer.on('menu-open-file-history', callback),
+
     versions: process.versions,
 
     relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
