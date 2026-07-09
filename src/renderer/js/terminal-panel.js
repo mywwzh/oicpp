@@ -568,20 +568,35 @@ class IntegratedTerminalPanel {
             return;
         }
 
-        if (platform !== 'windows') {
-            return;
+        if (platform === 'windows') {
+            const shell = String(session?.shell || '').toLowerCase();
+            let initCmd = 'chcp 65001 > nul\r';
+            if (shell.includes('powershell') || shell.includes('pwsh')) {
+                initCmd = '[Console]::InputEncoding=[System.Text.UTF8Encoding]::new($false);[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);chcp 65001 > $null\r';
+            }
+            try {
+                await window.electronAPI.writeTerminal(terminalId, initCmd);
+            } catch (_) {
+            }
         }
 
-        const shell = String(session?.shell || '').toLowerCase();
-        let initCmd = 'chcp 65001 > nul\r';
-        if (shell.includes('powershell') || shell.includes('pwsh')) {
-            initCmd = '[Console]::InputEncoding=[System.Text.UTF8Encoding]::new($false);[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);chcp 65001 > $null\r';
+        // 执行用户自定义的终端启动命令（非强制，可由设置项配置）
+        const startupCommand = this.resolveTerminalStartupCommand();
+        if (startupCommand) {
+            try {
+                await window.electronAPI.writeTerminal(terminalId, startupCommand + '\r');
+            } catch (_) {
+            }
         }
+    }
 
-        try {
-            await window.electronAPI.writeTerminal(terminalId, initCmd);
-        } catch (_) {
-        }
+    resolveTerminalStartupCommand() {
+        const app = this.getApp ? this.getApp() : null;
+        const settings = app?.settings || {};
+        const cmd = typeof settings.terminalStartupCommand === 'string'
+            ? settings.terminalStartupCommand.trim()
+            : '';
+        return cmd || '';
     }
 
     setupTerminalLinkProvider(terminal) {

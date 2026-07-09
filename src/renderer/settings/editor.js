@@ -1381,6 +1381,7 @@ class EditorSettings {
                     font: allSettings.font || 'Consolas',
                     fontSize: allSettings.fontSize || 14,
                     terminalFontSize: allSettings.terminalFontSize || 14,
+                    terminalStartupCommand: allSettings.terminalStartupCommand || '',
                     syntaxCheckEnabled: allSettings.syntaxCheckEnabled !== false,
                     lineHeight: typeof allSettings.lineHeight === 'number' && allSettings.lineHeight > 0 ? allSettings.lineHeight : 0,
                     theme: allSettings.theme || 'dark',
@@ -1426,6 +1427,7 @@ class EditorSettings {
                     font: 'Consolas',
                     fontSize: 14,
                     terminalFontSize: 14,
+                    terminalStartupCommand: '',
                     syntaxCheckEnabled: true,
                     lineHeight: 0,
                     theme: 'dark',
@@ -1455,6 +1457,7 @@ class EditorSettings {
                 font: 'Consolas',
                 fontSize: 14,
                     terminalFontSize: 14,
+                    terminalStartupCommand: '',
                     syntaxCheckEnabled: true,
                 lineHeight: 0,
                 theme: 'dark',
@@ -1573,6 +1576,8 @@ class EditorSettings {
         if (themeSelect) newSettings.theme = themeSelect.value;
         if (fontSizeInput) newSettings.fontSize = parseInt(fontSizeInput.value);
         if (terminalFontSizeInput) newSettings.terminalFontSize = parseInt(terminalFontSizeInput.value);
+        const terminalStartupCommandInput = document.getElementById('editor-terminal-startup-command');
+        if (terminalStartupCommandInput) newSettings.terminalStartupCommand = terminalStartupCommandInput.value.trim();
         if (lineHeightInput) {
             const parsedLineHeight = parseInt(lineHeightInput.value, 10);
             newSettings.lineHeight = !Number.isNaN(parsedLineHeight) && parsedLineHeight > 0 ? parsedLineHeight : 0;
@@ -1833,6 +1838,12 @@ class EditorSettings {
         if (terminalFontSizeInput && this.settings.terminalFontSize) {
             terminalFontSizeInput.value = this.settings.terminalFontSize;
             logInfo('终端字号已更新:', terminalFontSizeInput.value);
+        }
+
+        const terminalStartupCommandInput = document.getElementById('editor-terminal-startup-command');
+        if (terminalStartupCommandInput) {
+            terminalStartupCommandInput.value = this.settings.terminalStartupCommand || '';
+            logInfo('终端启动命令已更新:', terminalStartupCommandInput.value);
         }
 
         if (lineHeightInput) {
