@@ -831,7 +831,8 @@
             debugStepInto: 'F8',
             debugStepOut: 'Shift+F8',
             cloudCompile: 'F12',
-            openTerminal: 'Ctrl+`'
+            openTerminal: 'Ctrl+`',
+            runAllSamples: this.isMacPlatform() ? 'Ctrl+Shift+F11' : 'Ctrl+F11'
         };
     }
 
@@ -1308,6 +1309,7 @@
             if (matches('compileAndRun') && !this.isDebugging) return handle(() => this.compileAndRun());
             if (matches('runCode') && !this.isDebugging) return handle(() => this.runCode());
             if (matches('compileCode')) return handle(() => this.compileCode());
+            if (matches('runAllSamples')) return handle(() => this.runAllSamples());
             if (matches('cloudCompile') && this.compilerManager && typeof this.compilerManager.cloudCompileCurrentFile === 'function') {
                 return handle(() => this.compilerManager.cloudCompileCurrentFile());
             }
@@ -1373,6 +1375,7 @@
             if (matches('compileAndRun') && !this.isDebugging) return handle(() => this.compileAndRun());
             if (matches('runCode') && !this.isDebugging) return handle(() => this.runCode());
             if (matches('compileCode')) return handle(() => this.compileCode());
+            if (matches('runAllSamples')) return handle(() => this.runAllSamples());
             if (matches('cloudCompile') && this.compilerManager && typeof this.compilerManager.cloudCompileCurrentFile === 'function') {
                 return handle(() => this.compilerManager.cloudCompileCurrentFile());
             }
@@ -4183,6 +4186,16 @@ ${data.message || '程序已加载，等待开始执行'}
         }
         if (this.compilerManager) {
             this.compilerManager.compileAndRun();
+        }
+    }
+
+    runAllSamples() {
+        // 切换到样例测试器面板并触发运行所有样例
+        if (window.sidebarManager) {
+            window.sidebarManager.showPanel('samples');
+        }
+        if (window.sampleTester && typeof window.sampleTester.runAllSamples === 'function') {
+            window.sampleTester.runAllSamples();
         }
     }
 

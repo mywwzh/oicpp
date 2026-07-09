@@ -1494,7 +1494,8 @@ function getDefaultSettings() {
             debugStepInto: 'F8',
             debugStepOut: 'Shift+F8',
             cloudCompile: 'F12',
-            openTerminal: 'Ctrl+`'
+            openTerminal: 'Ctrl+`',
+            runAllSamples: process.platform === 'darwin' ? 'Ctrl+Shift+F11' : 'Ctrl+F11'
         }
     };
 }
@@ -2412,11 +2413,33 @@ function createMenuBar() {
             .replace(/^Control\+/i, 'CmdOrCtrl+');
     };
 
+    // 检测是否有另一个快捷键使用 Ctrl/Cmd/Alt+裸 Fn 键（如 runAllSamples 用 Ctrl+F11
+    // 而 compileAndRun 用 F11），避免 Electron 同时触发两个动作。
+    // 仅检查 Ctrl/Cmd/Meta/Alt 修饰符，排除 Shift（Shift+F8 不会误触 F8）。
+    const hasConflictingModifiedKey = (bareAccelerator) => {
+        if (!bareAccelerator) return false;
+        const bareMatch = /^(F\d{1,2})$/i.exec(bareAccelerator.trim());
+        if (!bareMatch) return false;
+        const bareKey = bareMatch[1].toUpperCase();
+        for (const bindingKey of Object.keys(defaultKeybindings)) {
+            const combo = resolveRunMenuAccelerator(bindingKey, '');
+            if (!combo) continue;
+            if (new RegExp(`^(Ctrl|Cmd|CmdOrCtrl|Control|Meta|Alt)\\+${bareKey}$`, 'i').test(combo)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     const debugAccelerator = resolveRunMenuAccelerator('toggleDebug', 'F5');
     const compileAccelerator = resolveRunMenuAccelerator('compileCode', 'F9');
     const runAccelerator = resolveRunMenuAccelerator('runCode', 'F10');
     const compileRunAccelerator = resolveRunMenuAccelerator('compileAndRun', defaultKeybindings.compileAndRun || 'F11');
     const openTerminalAccelerator = normalizeAcceleratorForMenu(resolveRunMenuAccelerator('openTerminal', 'Ctrl+`'), 'CmdOrCtrl+`');
+
+    // 移除与带修饰符快捷键冲突的裸 Fn 菜单加速器，
+    // 避免 Electron 同时触发两个动作（如 Ctrl+F11 触发 F11）
+    const compileRunAcceleratorFinal = hasConflictingModifiedKey(compileRunAccelerator) ? undefined : compileRunAccelerator;
     const menuTemplate = [
         {
             label: '文件',
@@ -2529,7 +2552,7 @@ function createMenuBar() {
                 },
                 {
                     label: '编译运行',
-                    accelerator: compileRunAccelerator,
+                    accelerator: compileRunAcceleratorFinal,
                     click: () => {
                         mainWindow.webContents.send('menu-compile-run');
                     }
@@ -6691,7 +6714,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'fileHistory', 'lastOpenTabs', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'fileHistory', 'lastOpenTabs', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account', 'runAllSamples'];
             let needsSaveAfterMigration = false;
 
             for (const key of validKeys) {
@@ -6794,7 +6817,7 @@ function loadSettings() {
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account'];
+    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account', 'runAllSamples'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -6823,7 +6846,8 @@ function updateSettings(settingsType, newSettings) {
             'compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme',
             'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'autoSave', 'autoSaveInterval',
             'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'markdownMode', 'keybindings',
-            'fileHistory', 'lastOpenTabs', 'autoOpenLastWorkspace', 'autoBackupSettings', 'receiveBetaUpdates'
+            'fileHistory', 'lastOpenTabs', 'autoOpenLastWorkspace', 'autoBackupSettings', 'receiveBetaUpdates',
+            'runAllSamples'
         ];
 
         for (const key in newSettings) {
@@ -6944,7 +6968,7 @@ function importSettings(filePath) {
             throw new Error('无效的设置文件格式');
         }
 
-        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings'];
+        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'runAllSamples'];
         const defaultSettings = getDefaultSettings();
 
         for (const key of validKeys) {
