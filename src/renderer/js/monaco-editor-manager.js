@@ -1817,7 +1817,8 @@ class MonacoEditorManager {
             debugStepInto: 'F8',
             debugStepOut: 'Shift+F8',
             cloudCompile: 'F12',
-            openTerminal: 'Ctrl+`'
+            openTerminal: 'Ctrl+`',
+            runAllSamples: isMacPlatform ? 'Ctrl+Shift+F11' : 'Ctrl+F11'
         };
     }
 
@@ -1840,7 +1841,8 @@ class MonacoEditorManager {
             'debugStepInto',
             'debugStepOut',
             'cloudCompile',
-            'openTerminal'
+            'openTerminal',
+            'runAllSamples'
         ];
     }
 
