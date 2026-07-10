@@ -97,25 +97,25 @@ class EditorSettings {
 
     getKeybindingSchema() {
         return [
-            { key: 'formatCode', label: '格式化代码' },
-            { key: 'showFunctionPicker', label: '跳转符号选择器' },
-            { key: 'markdownPreview', label: 'Markdown 预览' },
-            { key: 'renameSymbol', label: '重命名符号' },
-            { key: 'deleteLine', label: '删除行' },
-            { key: 'duplicateLine', label: '复制行' },
-            { key: 'moveLineUp', label: '上移行' },
-            { key: 'moveLineDown', label: '下移行' },
-            { key: 'compileCode', label: '编译当前文件' },
-            { key: 'runCode', label: '运行当前文件' },
-            { key: 'compileAndRun', label: '编译并运行' },
-            { key: 'toggleDebug', label: '启动/继续调试' },
-            { key: 'debugContinue', label: '调试继续 (继续/暂停)' },
-            { key: 'debugStepOver', label: '单步跳过' },
-            { key: 'debugStepInto', label: '单步进入' },
-            { key: 'debugStepOut', label: '单步跳出' },
-            { key: 'cloudCompile', label: '云端编译' },
-            { key: 'openTerminal', label: '打开内置终端' },
-            { key: 'runAllSamples', label: '运行所有样例' }
+            { key: 'formatCode', labelKey: 'keybinding.formatCode', label: '格式化代码' },
+            { key: 'showFunctionPicker', labelKey: 'keybinding.showFunctionPicker', label: '跳转符号选择器' },
+            { key: 'markdownPreview', labelKey: 'keybinding.markdownPreview', label: 'Markdown 预览' },
+            { key: 'renameSymbol', labelKey: 'keybinding.renameSymbol', label: '重命名符号' },
+            { key: 'deleteLine', labelKey: 'keybinding.deleteLine', label: '删除行' },
+            { key: 'duplicateLine', labelKey: 'keybinding.duplicateLine', label: '复制行' },
+            { key: 'moveLineUp', labelKey: 'keybinding.moveLineUp', label: '上移行' },
+            { key: 'moveLineDown', labelKey: 'keybinding.moveLineDown', label: '下移行' },
+            { key: 'compileCode', labelKey: 'keybinding.compileCode', label: '编译当前文件' },
+            { key: 'runCode', labelKey: 'keybinding.runCode', label: '运行当前文件' },
+            { key: 'compileAndRun', labelKey: 'keybinding.compileAndRun', label: '编译并运行' },
+            { key: 'toggleDebug', labelKey: 'keybinding.toggleDebug', label: '启动/继续调试' },
+            { key: 'debugContinue', labelKey: 'keybinding.debugContinue', label: '调试继续 (继续/暂停)' },
+            { key: 'debugStepOver', labelKey: 'keybinding.debugStepOver', label: '单步跳过' },
+            { key: 'debugStepInto', labelKey: 'keybinding.debugStepInto', label: '单步进入' },
+            { key: 'debugStepOut', labelKey: 'keybinding.debugStepOut', label: '单步跳出' },
+            { key: 'cloudCompile', labelKey: 'keybinding.cloudCompile', label: '云端编译' },
+            { key: 'openTerminal', labelKey: 'keybinding.openTerminal', label: '打开内置终端' },
+            { key: 'runAllSamples', labelKey: 'keybinding.runAllSamples', label: '运行所有样例' }
         ];
     }
 
@@ -347,11 +347,11 @@ class EditorSettings {
     async importClangFormatFromFile() {
         try {
             if (!window.electronAPI?.showOpenDialog || !window.electronAPI?.readFileContent) {
-                this.showMessage('当前环境不支持文件导入', 'error');
+                this.showMessage((window.i18n ? window.i18n.t('settings.importNotSupported') : '当前环境不支持文件导入'), 'error');
                 return;
             }
             const result = await window.electronAPI.showOpenDialog({
-                title: '导入 .clang-format',
+                title: window.i18n ? window.i18n.t('settings.importClangFormat') : '导入 .clang-format',
                 properties: ['openFile'],
                 filters: [
                     { name: '.clang-format', extensions: ['clang-format', 'yml', 'yaml', 'txt'] },
@@ -364,10 +364,10 @@ class EditorSettings {
             const filePath = result.filePaths[0];
             const content = await window.electronAPI.readFileContent(filePath);
             this.loadClangFormatFromText(String(content || ''));
-            this.showMessage('已导入 .clang-format', 'success');
+            this.showMessage((window.i18n ? window.i18n.t('message.importSuccess') : '已导入 .clang-format'), 'success');
         } catch (error) {
             logError('导入 .clang-format 失败:', error);
-            this.showMessage('导入 .clang-format 失败：' + error.message, 'error');
+            this.showMessage((window.i18n ? window.i18n.t('message.importFailed', {msg: error.message}) : '导入 .clang-format 失败：' + error.message), 'error');
         }
     }
 
@@ -385,7 +385,7 @@ class EditorSettings {
     async saveClangFormatToFile() {
         try {
             if (!window.electronAPI?.showSaveDialog || !window.electronAPI?.writeFile) {
-                this.showMessage('当前环境不支持文件保存', 'error');
+                this.showMessage((window.i18n ? window.i18n.t('settings.saveNotSupported') : '当前环境不支持文件保存'), 'error');
                 return;
             }
             const rawTextArea = document.getElementById('clang-format-raw-text');
@@ -394,7 +394,7 @@ class EditorSettings {
                 ? String(rawTextArea.value)
                 : this.generateClangFormatText(style);
             const result = await window.electronAPI.showSaveDialog({
-                title: '写入 .clang-format',
+                title: window.i18n ? window.i18n.t('settings.saveClangFormat') : '写入 .clang-format',
                 defaultPath: '.clang-format',
                 filters: [
                     { name: '.clang-format', extensions: ['clang-format', 'yml', 'yaml', 'txt'] },
@@ -405,10 +405,10 @@ class EditorSettings {
                 return;
             }
             await window.electronAPI.writeFile(result.filePath, content);
-            this.showMessage('已写入 .clang-format', 'success');
+            this.showMessage((window.i18n ? window.i18n.t('message.exportSuccess') : '已写入 .clang-format'), 'success');
         } catch (error) {
             logError('写入 .clang-format 失败:', error);
-            this.showMessage('写入 .clang-format 失败：' + error.message, 'error');
+            this.showMessage((window.i18n ? window.i18n.t('message.exportFailed', {msg: error.message}) : '写入 .clang-format 失败：' + error.message), 'error');
         }
     }
 
@@ -988,6 +988,8 @@ class EditorSettings {
 
         this.setupThemeListener();
 
+        this.setupLanguageListener();
+
         this.applyTheme(this.settings.theme);
 
         this.updateUI();
@@ -1167,6 +1169,31 @@ class EditorSettings {
         }
     }
 
+    setupLanguageListener() {
+        // Listen for language-changed events from main process
+        if (window.electronAPI && typeof window.electronAPI.onLanguageChanged === 'function') {
+            window.electronAPI.onLanguageChanged((langCode) => {
+                logInfo('编辑器设置页面收到语言变更:', langCode);
+                this.settings.language = langCode;
+                // Re-translate the page
+                if (window.i18n) {
+                    window.i18n._applyToDOM();
+                    this.renderKeybindingsUI();
+                }
+            });
+        }
+        // Also listen via electronIPC
+        if (window.electronIPC && window.electronIPC.on) {
+            window.electronIPC.on('language-changed', (event, langCode) => {
+                logInfo('编辑器设置页面收到语言变更(IPC):', langCode);
+                if (window.i18n) {
+                    window.i18n._applyToDOM();
+                    this.renderKeybindingsUI();
+                }
+            });
+        }
+    }
+
     applyTheme(theme) {
         logInfo('应用主题到编辑器设置页面:', theme);
 
@@ -1254,7 +1281,12 @@ class EditorSettings {
 
             const label = document.createElement('div');
             label.className = 'keybinding-label';
-            label.textContent = item.label;
+            // Use i18n translation if available
+            if (window.i18n && item.labelKey) {
+                label.textContent = window.i18n.t(item.labelKey) || item.label;
+            } else {
+                label.textContent = item.label;
+            }
 
             const input = document.createElement('input');
             input.type = 'text';
@@ -1265,7 +1297,7 @@ class EditorSettings {
 
             const reset = document.createElement('button');
             reset.className = 'btn btn-secondary keybinding-reset';
-            reset.textContent = '恢复默认';
+            reset.textContent = window.i18n ? window.i18n.t('settings.resetClangFormat') : '恢复默认';
             reset.addEventListener('click', () => {
                 input.value = defaults[item.key];
             });
@@ -1381,6 +1413,7 @@ class EditorSettings {
                     ? allSettings.clangFormatRaw
                     : this.generateClangFormatText(clangFormatStyle);
                 this.settings = {
+                    language: allSettings.language || 'zh-cn',
                     font: allSettings.font || 'Consolas',
                     fontSize: allSettings.fontSize || 14,
                     terminalFontSize: allSettings.terminalFontSize || 14,
@@ -1574,6 +1607,12 @@ class EditorSettings {
         const lineHeightInput = document.getElementById('editor-line-height');
 
         const newSettings = {};
+
+        const languageSelect = document.getElementById('editor-language');
+        if (languageSelect) {
+            const langValue = languageSelect.value;
+            if (langValue) newSettings.language = langValue;
+        }
 
         if (fontSelect) newSettings.font = fontSelect.value;
         if (themeSelect) newSettings.theme = themeSelect.value;
@@ -1815,6 +1854,9 @@ class EditorSettings {
         const glassEffectCheckbox = document.getElementById('editor-glass-effect-enabled');
         const bgImageInput = document.getElementById('editor-bg-image');
 
+        // Populate language selector
+        this.populateLanguageSelector();
+
         logInfo('更新UI，当前设置:', this.settings);
         logInfo('字体大小输入框:', fontSizeInput, '值:', this.settings.fontSize);
 
@@ -1943,6 +1985,46 @@ class EditorSettings {
             if (!key) return;
             input.value = normalizedKeybindings[key] || defaultKeybindings[key] || '';
         });
+    }
+
+    async populateLanguageSelector() {
+        const langSelect = document.getElementById('editor-language');
+        if (!langSelect) return;
+
+        try {
+            const languages = await window.i18n.getAvailableLanguages();
+            const currentLang = this.settings.language || 'zh-cn';
+
+            // Clear existing options
+            langSelect.innerHTML = '';
+
+            for (const lang of languages) {
+                const option = document.createElement('option');
+                option.value = lang.code;
+                // Show native name first, with English name as suffix
+                const displayName = lang.name !== lang.nameEn ? `${lang.name} (${lang.nameEn})` : lang.name;
+                option.textContent = displayName;
+                if (lang.code === currentLang) {
+                    option.selected = true;
+                }
+                langSelect.appendChild(option);
+            }
+
+            // Listen for language changes
+            langSelect.addEventListener('change', async (e) => {
+                const newLang = e.target.value;
+                if (newLang && window.i18n) {
+                    await window.i18n.setLanguage(newLang);
+                    // Immediately apply to current page
+                    if (window.i18n && typeof window.i18n._applyToDOM === 'function') {
+                        window.i18n._applyToDOM();
+                    }
+                    this.settings.language = newLang;
+                }
+            });
+        } catch (error) {
+            logError('加载语言列表失败:', error);
+        }
     }
 
     showMessage(message, type = 'info') {

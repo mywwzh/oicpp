@@ -3,35 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>编辑器设置</title>
+    <title data-i18n="settings.title">编辑器设置</title>
     <link rel="stylesheet" href="../css/settings.css">
 </head>
 <body>
     <div class="settings-container">
         <div class="settings-layout">
             <div class="settings-sidebar">
-                <div class="sidebar-item active" data-target="general">常规设置</div>
-                <div class="sidebar-item" data-target="appearance">外观样式</div>
-                <div class="sidebar-item" data-target="behavior">编辑器行为</div>
-                <div class="sidebar-item" data-target="formatting">格式化风格</div>
-                <div class="sidebar-item" data-target="keybindings">快捷键</div>
+                <div class="sidebar-item active" data-target="general" data-i18n="settings.general">常规设置</div>
+                <div class="sidebar-item" data-target="appearance" data-i18n="settings.appearance">外观样式</div>
+                <div class="sidebar-item" data-target="behavior" data-i18n="settings.behavior">编辑器行为</div>
+                <div class="sidebar-item" data-target="formatting" data-i18n="settings.formatting">格式化风格</div>
+                <div class="sidebar-item" data-target="keybindings" data-i18n="settings.keybindings">快捷键</div>
             </div>
             
             <div class="settings-main">
                 <div id="general" class="settings-section active">
-                    <div class="section-title">常规设置</div>
+                    <div class="section-title" data-i18n="settings.general">常规设置</div>
                     
                     <div class="setting-group">
-                        <label for="editor-font">字体家族</label>
+                        <label data-i18n="settings.languageLabel">界面语言</label>
+                        <div class="input-group">
+                            <select id="editor-language" class="form-select">
+                            </select>
+                        </div>
+                        <div class="hint" data-i18n="settings.languageDesc">选择界面显示语言，更改后需要重新打开设置面板生效</div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="editor-font" data-i18n="settings.fontFamily">字体家族</label>
                         <div class="input-group">
                             <select id="editor-font" class="form-select">
                             </select>
                         </div>
-                        <div class="hint">选择编辑器使用的主要字体</div>
+                        <div class="hint" data-i18n="settings.fontFamilyDesc">选择编辑器使用的主要字体</div>
                     </div>
 
                     <div class="setting-group">
-                        <label for="editor-font-size">字体大小</label>
+                        <label for="editor-font-size" data-i18n="settings.fontSize">字体大小</label>
                         <div class="input-group">
                             <input type="number" id="editor-font-size" min="8" max="72" value="14">
                             <span class="unit">px</span>
@@ -39,33 +48,33 @@
                     </div>
 
                     <div class="setting-group">
-                        <label for="editor-terminal-font-size">终端字号</label>
+                        <label for="editor-terminal-font-size" data-i18n="settings.terminalFontSize">终端字号</label>
                         <div class="input-group">
                             <input type="number" id="editor-terminal-font-size" min="8" max="72" value="14">
                             <span class="unit">px</span>
                         </div>
-                        <div class="hint">仅影响内置终端，不影响编辑器字体。</div>
+                        <div class="hint" data-i18n="settings.terminalFontSizeDesc">仅影响内置终端，不影响编辑器字体。</div>
                     </div>
 
                     <div class="setting-group">
-                        <label for="editor-terminal-startup-command">终端启动命令</label>
+                        <label for="editor-terminal-startup-command" data-i18n="settings.terminalStartupCommand">终端启动命令</label>
                         <div class="input-group">
-                            <input type="text" id="editor-terminal-startup-command" placeholder="例如: conda activate base" style="width:100%;">
+                            <input type="text" id="editor-terminal-startup-command" data-i18n-placeholder="settings.terminalStartupCommandPlaceholder" placeholder="例如: conda activate base" style="width:100%;">
                         </div>
-                        <div class="hint">终端启动后自动执行的命令。留空则不执行额外命令。</div>
+                        <div class="hint" data-i18n="settings.terminalStartupCommandDesc">终端启动后自动执行的命令。留空则不执行额外命令。</div>
                     </div>
 
                     <div class="setting-group">
-                        <label for="editor-line-height">行高</label>
+                        <label for="editor-line-height" data-i18n="settings.lineHeight">行高</label>
                         <div class="input-group">
-                            <input type="number" id="editor-line-height" min="10" max="200" placeholder="自动">
+                            <input type="number" id="editor-line-height" min="10" max="200" data-i18n-placeholder="settings.lineHeightDesc" placeholder="自动">
                             <span class="unit">px</span>
                         </div>
-                        <div class="hint">留空表示自动</div>
+                        <div class="hint" data-i18n="settings.lineHeightDesc">留空表示自动</div>
                     </div>
 
                     <div class="setting-group">
-                        <label for="editor-tab-size">缩进宽度 (Tab Size)</label>
+                        <label for="editor-tab-size" data-i18n="settings.tabSize">缩进宽度 (Tab Size)</label>
                         <div class="input-group">
                             <input type="number" id="editor-tab-size" min="1" max="16" value="4">
                             <span class="unit">spaces</span>
@@ -73,14 +82,14 @@
                     </div>
                 </div>
                 <div id="appearance" class="settings-section">
-                    <div class="section-title">外观样式</div>
+                    <div class="section-title" data-i18n="settings.appearance">外观样式</div>
 
                     <div class="setting-group">
-                        <label for="editor-theme">颜色主题</label>
+                        <label for="editor-theme" data-i18n="settings.theme">颜色主题</label>
                         <div class="input-group">
                             <select id="editor-theme" class="form-select">
-                                <option value="dark">默认深色 (Dark)</option>
-                                <option value="light">默认浅色 (Light)</option>
+                                <option value="dark" data-i18n="settings.themeDark">默认深色 (Dark)</option>
+                                <option value="light" data-i18n="settings.themeLight">默认浅色 (Light)</option>
                                 <option value="monokai">Monokai</option>
                                 <option value="github-light">GitHub Light</option>
                                 <option value="github-dark">GitHub Dark</option>
@@ -90,12 +99,12 @@
                             </select>
                         </div>
                         <div class="settings-note" style="margin-top: 8px;">
-                            <span class="settings-note-label">注意：</span>
-                            <span class="settings-note-text">更改主题后将自动应用</span>
+                            <span class="settings-note-label" data-i18n="dialog.note">注意：</span>
+                            <span class="settings-note-text" data-i18n="settings.themeNote">更改主题后将自动应用</span>
                         </div>
                     </div>
                     <div class="setting-group">
-                        <label for="editor-opacity">窗口透明度</label>
+                        <label for="editor-opacity" data-i18n="settings.windowOpacity">窗口透明度</label>
                         <div class="input-group" style="display: flex; align-items: center;">
                             <input type="range" id="editor-opacity" min="0.2" max="1.0" step="0.01" value="1.0" style="flex: 1; margin-right: 10px;">
                             <span id="editor-opacity-value" style="min-width: 40px;">100%</span>
@@ -106,123 +115,123 @@
                         <label class="checkbox-label">
                             <input type="checkbox" id="editor-glass-effect-enabled">
                             <span class="checkmark"></span>
-                            启用玻璃效果
+                            <span data-i18n="settings.glassEffect">启用玻璃效果</span>
                         </label>
-                        <div class="hint">开启后应用磨砂玻璃与背景氛围层。</div>
+                        <div class="hint" data-i18n="settings.glassEffectDesc">开启后应用磨砂玻璃与背景氛围层。</div>
                     </div>
 
                     <div class="setting-group">
-                        <label for="editor-bg-image">背景图片</label>
+                        <label for="editor-bg-image" data-i18n="settings.bgImage">背景图片</label>
                         <div class="input-group">
-                            <input type="text" id="editor-bg-image" class="form-control" placeholder="未设置背景图片" readonly>
-                            <button id="browse-bg-image" class="btn btn-secondary">浏览</button>
-                            <button id="clear-bg-image" class="btn btn-secondary">清除</button>
+                            <input type="text" id="editor-bg-image" class="form-control" data-i18n-placeholder="settings.bgImagePlaceholder" placeholder="未设置背景图片" readonly>
+                            <button id="browse-bg-image" class="btn btn-secondary" data-i18n="settings.browse">浏览</button>
+                            <button id="clear-bg-image" class="btn btn-secondary" data-i18n="settings.clear">清除</button>
                         </div>
-                        <div class="hint">设置自定义背景图片 (支持 PNG, JPG, GIF)</div>
+                        <div class="hint" data-i18n="settings.bgImageDesc">设置自定义背景图片 (支持 PNG, JPG, GIF)</div>
                     </div>
 
                     <div class="setting-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="editor-font-ligatures" checked>
                             <span class="checkmark"></span>
-                            启用字体连字 (Font Ligatures)
+                            <span data-i18n="settings.fontLigatures">启用字体连字 (Font Ligatures)</span>
                         </label>
-                        <div class="hint" style="margin-left: 28px;">需要字体支持 (如 Fira Code, JetBrains Mono)</div>
+                        <div class="hint" style="margin-left: 28px;" data-i18n="settings.fontLigaturesDesc">需要字体支持 (如 Fira Code, JetBrains Mono)</div>
                     </div>
                     
                       <div class="setting-group">
-                        <label>语法配色器</label>
+                        <label data-i18n="settings.syntaxColors">语法配色器</label>
                         <div class="syntax-color-grid">
                             <div class="syntax-color-row">
-                                <span class="syntax-color-label">关键字</span>
+                                <span class="syntax-color-label" data-i18n="settings.syntaxColorKeyword">关键字</span>
                                 <input type="color" id="syntax-color-keyword" class="syntax-color-input" value="#c586c0" title="关键字颜色">
                                 <input type="text" id="syntax-color-keyword-text" class="syntax-color-text" value="#c586c0" maxlength="7" placeholder="#RRGGBB">
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-keyword-bold"><span>粗体</span></label>
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-keyword-italic"><span>斜体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-keyword-bold"><span data-i18n="settings.bold">粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-keyword-italic"><span data-i18n="settings.italic">斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
-                                <span class="syntax-color-label">字符串</span>
+                                <span class="syntax-color-label" data-i18n="settings.syntaxColorString">字符串</span>
                                 <input type="color" id="syntax-color-string" class="syntax-color-input" value="#ce9178" title="字符串颜色">
                                 <input type="text" id="syntax-color-string-text" class="syntax-color-text" value="#ce9178" maxlength="7" placeholder="#RRGGBB">
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-string-bold"><span>粗体</span></label>
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-string-italic"><span>斜体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-string-bold"><span data-i18n="settings.bold">粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-string-italic"><span data-i18n="settings.italic">斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
-                                <span class="syntax-color-label">数字</span>
+                                <span class="syntax-color-label" data-i18n="settings.syntaxColorNumber">数字</span>
                                 <input type="color" id="syntax-color-number" class="syntax-color-input" value="#b5cea8" title="数字颜色">
                                 <input type="text" id="syntax-color-number-text" class="syntax-color-text" value="#b5cea8" maxlength="7" placeholder="#RRGGBB">
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-number-bold"><span>粗体</span></label>
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-number-italic"><span>斜体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-number-bold"><span data-i18n="settings.bold">粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-number-italic"><span data-i18n="settings.italic">斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
-                                <span class="syntax-color-label">类型</span>
+                                <span class="syntax-color-label" data-i18n="settings.syntaxColorType">类型</span>
                                 <input type="color" id="syntax-color-type" class="syntax-color-input" value="#4ec9b0" title="类型颜色">
                                 <input type="text" id="syntax-color-type-text" class="syntax-color-text" value="#4ec9b0" maxlength="7" placeholder="#RRGGBB">
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-type-bold"><span>粗体</span></label>
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-type-italic"><span>斜体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-type-bold"><span data-i18n="settings.bold">粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-type-italic"><span data-i18n="settings.italic">斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
-                                <span class="syntax-color-label">函数</span>
+                                <span class="syntax-color-label" data-i18n="settings.syntaxColorFunction">函数</span>
                                 <input type="color" id="syntax-color-function" class="syntax-color-input" value="#dcdcaa" title="函数颜色">
                                 <input type="text" id="syntax-color-function-text" class="syntax-color-text" value="#dcdcaa" maxlength="7" placeholder="#RRGGBB">
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-function-bold"><span>粗体</span></label>
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-function-italic"><span>斜体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-function-bold"><span data-i18n="settings.bold">粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-function-italic"><span data-i18n="settings.italic">斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
-                                <span class="syntax-color-label">类名</span>
+                                <span class="syntax-color-label" data-i18n="settings.syntaxColorClass">类名</span>
                                 <input type="color" id="syntax-color-class" class="syntax-color-input" value="#4ec9b0" title="类名颜色">
                                 <input type="text" id="syntax-color-class-text" class="syntax-color-text" value="#4ec9b0" maxlength="7" placeholder="#RRGGBB">
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-class-bold"><span>粗体</span></label>
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-class-italic"><span>斜体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-class-bold"><span data-i18n="settings.bold">粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-class-italic"><span data-i18n="settings.italic">斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
-                                <span class="syntax-color-label">注释</span>
+                                <span class="syntax-color-label" data-i18n="settings.syntaxColorComment">注释</span>
                                 <input type="color" id="syntax-color-comment" class="syntax-color-input" value="#6a9955" title="注释颜色">
                                 <input type="text" id="syntax-color-comment-text" class="syntax-color-text" value="#6a9955" maxlength="7" placeholder="#RRGGBB">
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-comment-bold"><span>粗体</span></label>
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-comment-italic" checked><span>斜体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-comment-bold"><span data-i18n="settings.bold">粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-comment-italic" checked><span data-i18n="settings.italic">斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
-                                <span class="syntax-color-label">命名空间</span>
+                                <span class="syntax-color-label" data-i18n="settings.syntaxColorNamespace">命名空间</span>
                                 <input type="color" id="syntax-color-namespace" class="syntax-color-input" value="#4fc1ff" title="命名空间颜色">
                                 <input type="text" id="syntax-color-namespace-text" class="syntax-color-text" value="#4fc1ff" maxlength="7" placeholder="#RRGGBB">
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-namespace-bold"><span>粗体</span></label>
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-namespace-italic"><span>斜体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-namespace-bold"><span data-i18n="settings.bold">粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-namespace-italic"><span data-i18n="settings.italic">斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
-                                <span class="syntax-color-label">预处理指令</span>
+                                <span class="syntax-color-label" data-i18n="settings.syntaxColorPreprocessor">预处理指令</span>
                                 <input type="color" id="syntax-color-preprocessor" class="syntax-color-input" value="#c586c0" title="预处理指令颜色">
                                 <input type="text" id="syntax-color-preprocessor-text" class="syntax-color-text" value="#c586c0" maxlength="7" placeholder="#RRGGBB">
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-preprocessor-bold"><span>粗体</span></label>
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-preprocessor-italic"><span>斜体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-preprocessor-bold"><span data-i18n="settings.bold">粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-preprocessor-italic"><span data-i18n="settings.italic">斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
-                                <span class="syntax-color-label">运算符</span>
+                                <span class="syntax-color-label" data-i18n="settings.syntaxColorOperator">运算符</span>
                                 <input type="color" id="syntax-color-operator" class="syntax-color-input" value="#d4d4d4" title="运算符颜色">
                                 <input type="text" id="syntax-color-operator-text" class="syntax-color-text" value="#d4d4d4" maxlength="7" placeholder="#RRGGBB">
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-operator-bold"><span>粗体</span></label>
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-operator-italic"><span>斜体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-operator-bold"><span data-i18n="settings.bold">粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-operator-italic"><span data-i18n="settings.italic">斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
-                                <span class="syntax-color-label">指针符号</span>
+                                <span class="syntax-color-label" data-i18n="settings.syntaxColorPointer">指针符号</span>
                                 <input type="color" id="syntax-color-pointer" class="syntax-color-input" value="#d4d4d4" title="指针符号颜色">
                                 <input type="text" id="syntax-color-pointer-text" class="syntax-color-text" value="#d4d4d4" maxlength="7" placeholder="#RRGGBB">
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-pointer-bold"><span>粗体</span></label>
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-pointer-italic"><span>斜体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-pointer-bold"><span data-i18n="settings.bold">粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-pointer-italic"><span data-i18n="settings.italic">斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
-                                <span class="syntax-color-label">变量</span>
+                                <span class="syntax-color-label" data-i18n="settings.syntaxColorVariable">变量</span>
                                 <input type="color" id="syntax-color-variable" class="syntax-color-input" value="#9cdcfe" title="变量颜色">
                                 <input type="text" id="syntax-color-variable-text" class="syntax-color-text" value="#9cdcfe" maxlength="7" placeholder="#RRGGBB">
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-variable-bold"><span>粗体</span></label>
-                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-variable-italic"><span>斜体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-variable-bold"><span data-i18n="settings.bold">粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-variable-italic"><span data-i18n="settings.italic">斜体</span></label>
                             </div>
                         </div>
                         <div class="input-group syntax-color-actions">
-                            <button id="reset-syntax-colors" class="btn btn-secondary" type="button">恢复默认配色</button>
+                            <button id="reset-syntax-colors" class="btn btn-secondary" type="button" data-i18n="settings.resetSyntaxColors">恢复默认配色</button>
                         </div>
                         <div class="syntax-preview" aria-label="语法配色实时预览">
-                            <div class="syntax-preview-title">实时预览</div>
+                            <div class="syntax-preview-title" data-i18n="settings.syntaxPreview">实时预览</div>
                             <pre id="syntax-color-preview" class="syntax-preview-code"><span class="tok-preprocessor">#include</span> <span class="tok-string">&lt;iostream&gt;</span>
 
 <span class="tok-keyword">using</span> <span class="tok-keyword">namespace</span> <span class="tok-namespace">std</span>;
@@ -239,19 +248,19 @@
     }
 };</pre>
                         </div>
-                        <div class="hint">支持按类别设置颜色与粗体/斜体，包含 namespace、预处理指令、变量、指针和运算符，实时预览会同步到主编辑器。</div>
+                        <div class="hint" data-i18n="settings.syntaxPreviewDesc">支持按类别设置颜色与粗体/斜体，包含 namespace、预处理指令、变量、指针和运算符，实时预览会同步到主编辑器。</div>
                     </div>
 
                 </div>
 
                 <div id="behavior" class="settings-section">
-                    <div class="section-title">编辑器行为</div>
+                    <div class="section-title" data-i18n="settings.behavior">编辑器行为</div>
 
                     <div class="setting-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="editor-folding" checked>
                             <span class="checkmark"></span>
-                            启用代码折叠
+                            <span data-i18n="settings.enableFolding">启用代码折叠</span>
                         </label>
                     </div>
 
@@ -259,7 +268,7 @@
                         <label class="checkbox-label">
                             <input type="checkbox" id="editor-sticky-scroll" checked>
                             <span class="checkmark"></span>
-                            启用 Sticky Scroll (顶部吸附显示当前作用域)
+                            <span data-i18n="settings.enableStickyScroll">启用 Sticky Scroll (顶部吸附显示当前作用域)</span>
                         </label>
                     </div>
 
@@ -267,7 +276,7 @@
                         <label class="checkbox-label">
                             <input type="checkbox" id="editor-auto-completion" checked>
                             <span class="checkmark"></span>
-                            启用代码补全
+                            <span data-i18n="settings.enableAutoCompletion">启用代码补全</span>
                         </label>
                         
                     </div>
@@ -276,7 +285,7 @@
                         <label class="checkbox-label">
                             <input type="checkbox" id="editor-syntax-check-enabled" checked>
                             <span class="checkmark"></span>
-                            启用实时语法检查
+                            <span data-i18n="settings.enableSyntaxCheck">启用实时语法检查</span>
                         </label>
                     </div>
 
@@ -284,15 +293,15 @@
                         <label class="checkbox-label">
                             <input type="checkbox" id="editor-auto-save-enabled" checked>
                             <span class="checkmark"></span>
-                            启用自动保存
+                            <span data-i18n="settings.enableAutoSave">启用自动保存</span>
                         </label>
                     </div>
 
                     <div class="setting-group">
-                        <label for="editor-auto-save-interval">自动保存间隔</label>
+                        <label for="editor-auto-save-interval" data-i18n="settings.autoSaveInterval">自动保存间隔</label>
                         <div class="input-group">
                             <input type="number" id="editor-auto-save-interval" min="10" max="3600" value="60">
-                            <span class="unit">秒</span>
+                            <span class="unit" data-i18n="settings.seconds">秒</span>
                         </div>
                     </div>
 
@@ -300,26 +309,26 @@
                         <label class="checkbox-label">
                             <input type="checkbox" id="editor-auto-open-last-workspace" checked>
                             <span class="checkmark"></span>
-                            启动时自动打开上次的文件夹
+                            <span data-i18n="settings.autoOpenLastWorkspace">启动时自动打开上次的文件夹</span>
                         </label>
-                        <div class="hint">关闭后，下次启动将不再自动恢复工作区。</div>
+                        <div class="hint" data-i18n="settings.autoOpenLastWorkspaceDesc">关闭后，下次启动将不再自动恢复工作区。</div>
                     </div>
 
                     <div class="setting-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="editor-receive-beta-updates">
                             <span class="checkmark"></span>
-                            接收 beta 更新
+                            <span data-i18n="settings.receiveBetaUpdates">接收 beta 更新</span>
                         </label>
-                        <div class="hint">仅开启后，更新检查才会把 beta 版本视为可用更新。</div>
+                        <div class="hint" data-i18n="settings.receiveBetaUpdatesDesc">仅开启后，更新检查才会把 beta 版本视为可用更新。</div>
                     </div>
                 </div>
 
                 <div id="formatting" class="settings-section">
-                    <div class="section-title">Clang-Format 详细配置</div>
+                    <div class="section-title" data-i18n="settings.clangFormatTitle">Clang-Format 详细配置</div>
 
                     <div class="setting-group">
-                        <label for="clang-format-based-on-style">基准风格</label>
+                        <label for="clang-format-based-on-style" data-i18n="settings.basedOnStyle">基准风格</label>
                         <div class="input-group">
                             <select id="clang-format-based-on-style" class="form-select">
                                 <option value="LLVM">LLVM</option>
@@ -333,19 +342,19 @@
                     </div>
 
                     <div class="setting-group">
-                        <label for="clang-format-use-tab">Tab 使用方式</label>
+                        <label for="clang-format-use-tab" data-i18n="settings.useTab">Tab 使用方式</label>
                         <div class="input-group">
                             <select id="clang-format-use-tab" class="form-select">
-                                <option value="Never">永不使用 Tab</option>
-                                <option value="ForIndentation">仅用于缩进</option>
-                                <option value="ForContinuationAndIndentation">用于缩进与续行</option>
-                                <option value="Always">始终使用 Tab</option>
+                                <option value="Never" data-i18n="settings.useTabNever">永不使用 Tab</option>
+                                <option value="ForIndentation" data-i18n="settings.useTabIndent">仅用于缩进</option>
+                                <option value="ForContinuationAndIndentation" data-i18n="settings.useTabContinuation">用于缩进与续行</option>
+                                <option value="Always" data-i18n="settings.useTabAlways">始终使用 Tab</option>
                             </select>
                         </div>
                     </div>
 
                     <div class="setting-group">
-                        <label for="clang-format-indent-width">缩进宽度</label>
+                        <label for="clang-format-indent-width" data-i18n="settings.indentWidth">缩进宽度</label>
                         <div class="input-group">
                             <input type="number" id="clang-format-indent-width" min="1" max="16" value="4">
                             <span class="unit">spaces</span>
@@ -353,7 +362,7 @@
                     </div>
 
                     <div class="setting-group">
-                        <label for="clang-format-tab-width">Tab 宽度</label>
+                        <label for="clang-format-tab-width" data-i18n="settings.tabWidth">Tab 宽度</label>
                         <div class="input-group">
                             <input type="number" id="clang-format-tab-width" min="1" max="16" value="4">
                             <span class="unit">spaces</span>
@@ -361,7 +370,7 @@
                     </div>
 
                     <div class="setting-group">
-                        <label for="clang-format-column-limit">列宽限制</label>
+                        <label for="clang-format-column-limit" data-i18n="settings.columnLimit">列宽限制</label>
                         <div class="input-group">
                             <input type="number" id="clang-format-column-limit" min="0" max="512" value="0">
                             <span class="unit">0 表示不限制</span>
@@ -369,7 +378,7 @@
                     </div>
 
                     <div class="setting-group">
-                        <label for="clang-format-break-before-braces">大括号风格</label>
+                        <label for="clang-format-break-before-braces" data-i18n="settings.breakBeforeBraces">大括号风格</label>
                         <div class="input-group">
                             <select id="clang-format-break-before-braces" class="form-select">
                                 <option value="Attach">Attach</option>
@@ -382,7 +391,7 @@
                     </div>
 
                     <div class="setting-group">
-                        <label for="clang-format-pointer-alignment">指针对齐</label>
+                        <label for="clang-format-pointer-alignment" data-i18n="settings.pointerAlignment">指针对齐</label>
                         <div class="input-group">
                             <select id="clang-format-pointer-alignment" class="form-select">
                                 <option value="Left">Left</option>
@@ -393,13 +402,13 @@
                     </div>
 
                     <div class="setting-group">
-                        <label for="clang-format-space-before-parens">括号前空格</label>
+                        <label for="clang-format-space-before-parens" data-i18n="settings.spaceBeforeParens">括号前空格</label>
                         <div class="input-group">
                             <select id="clang-format-space-before-parens" class="form-select">
-                                <option value="ControlStatements">仅控制语句</option>
-                                <option value="Never">从不</option>
-                                <option value="Always">始终</option>
-                                <option value="Custom">自定义</option>
+                                <option value="ControlStatements" data-i18n="settings.spaceBeforeParensControl">仅控制语句</option>
+                                <option value="Never" data-i18n="settings.spaceBeforeParensNever">从不</option>
+                                <option value="Always" data-i18n="settings.spaceBeforeParensAlways">始终</option>
+                                <option value="Custom" data-i18n="settings.spaceBeforeParensCustom">自定义</option>
                             </select>
                         </div>
                     </div>
@@ -438,25 +447,25 @@
 
                     <div class="setting-group">
                         <label for="clang-format-raw-text">.clang-format 原文</label>
-                        <textarea id="clang-format-raw-text" class="form-control" rows="16" spellcheck="false" placeholder="可粘贴现有 .clang-format 内容，也可由上方选项生成"></textarea>
-                        <div class="hint">编辑这里的文本后，点击“应用文本到配置”即可同步到详细选项；点击“写入 .clang-format”可保存为文件。</div>
+                        <textarea id="clang-format-raw-text" class="form-control" rows="16" spellcheck="false" data-i18n-placeholder="settings.rawTextPlaceholder" placeholder="可粘贴现有 .clang-format 内容，也可由上方选项生成"></textarea>
+                        <div class="hint" data-i18n="settings.rawTextDesc">编辑这里的文本后，点击“应用文本到配置”即可同步到详细选项；点击“写入 .clang-format”可保存为文件。</div>
                     </div>
 
                     <div class="input-group" style="flex-wrap: wrap; gap: 8px;">
-                        <button id="import-clang-format" class="btn btn-secondary" type="button">导入 .clang-format</button>
-                        <button id="apply-clang-format-text" class="btn btn-secondary" type="button">应用文本到配置</button>
-                        <button id="save-clang-format-file" class="btn btn-secondary" type="button">写入 .clang-format</button>
-                        <button id="reset-clang-format" class="btn btn-warning" type="button">恢复默认</button>
+                        <button id="import-clang-format" class="btn btn-secondary" type="button" data-i18n="settings.importClangFormat">导入 .clang-format</button>
+                        <button id="apply-clang-format-text" class="btn btn-secondary" type="button" data-i18n="settings.applyClangFormat">应用文本到配置</button>
+                        <button id="save-clang-format-file" class="btn btn-secondary" type="button" data-i18n="settings.saveClangFormat">写入 .clang-format</button>
+                        <button id="reset-clang-format" class="btn btn-warning" type="button" data-i18n="settings.resetClangFormat">恢复默认</button>
                     </div>
                 </div>
 
                 <div id="keybindings" class="settings-section">
-                    <div class="section-title">快捷键</div>
+                    <div class="section-title" data-i18n="settings.keybindings">快捷键</div>
                     <div class="setting-group">
-                        <div class="hint">仅支持配置编辑与编译调试相关快捷键。基础系统操作（如新建文件、复制/粘贴/剪切）使用固定快捷键。</div>
+                        <div class="hint" data-i18n="settings.keybindingsDesc">仅支持配置编辑与编译调试相关快捷键。基础系统操作（如新建文件、复制/粘贴/剪切）使用固定快捷键。</div>
                         <div id="keybindings-list" class="keybindings-grid"></div>
                         <div style="margin-top: 10px; display: flex; gap: 10px;">
-                            <button id="reset-keybindings" class="btn btn-secondary">恢复全部默认快捷键</button>
+                            <button id="reset-keybindings" class="btn btn-secondary" data-i18n="settings.resetKeybindings">恢复全部默认快捷键</button>
                         </div>
                     </div>
                 </div>
@@ -464,20 +473,20 @@
         </div>
 
         <div class="settings-footer">
-            <button id="save-settings" class="btn btn-primary">保存设置</button>
-            <button id="cancel-settings" class="btn btn-secondary">取消</button>
-            <button id="reset-settings" class="btn btn-warning">重置默认</button>
+            <button id="save-settings" class="btn btn-primary" data-i18n="settings.save">保存设置</button>
+            <button id="cancel-settings" class="btn btn-secondary" data-i18n="settings.cancel">取消</button>
+            <button id="reset-settings" class="btn btn-warning" data-i18n="settings.reset">重置默认</button>
         </div>
     </div>
 
     <div id="font-download-dialog" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>下载字体</h3>
+                <h3 data-i18n="settings.downloadFont">下载字体</h3>
                 <button id="close-font-dialog" class="close-btn">&times;</button>
             </div>
             <div class="modal-body">
-                <p>选择要下载的字体：</p>
+                <p data-i18n="settings.selectFontToDownload">选择要下载的字体：</p>
                 <div id="font-list" class="font-list">
                 </div>
             </div>
@@ -487,15 +496,15 @@
     <div id="message-container"></div>
 
     <script src="../js/electron-helper.js"></script>
+    <script src="../js/i18n.js"></script>
     <script src="../../utils/font-detector.js"></script>
     <script>
-
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+        if (window.i18n && typeof window.i18n.init === 'function') {
+            await window.i18n.init();
+        }
     });
-    
-    window.addEventListener('load', () => {
-    });
-</script>
-<script src="editor.js"></script>
+    </script>
+    <script src="editor.js"></script>
 </body>
 </html>

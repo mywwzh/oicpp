@@ -117,8 +117,8 @@ class CompilerSettings {
             this.getCurrentPlatform().then(p => {
                 if (p !== 'windows') {
                     installBtn.disabled = true;
-                    installBtn.title = '非 Windows 平台请使用系统自带/自行安装的编译器';
-                    installBtn.textContent = '下载已禁用 (请使用系统编译器)';
+                    installBtn.title = window.i18n ? window.i18n.t('compiler.nonWindowsHint') : '非 Windows 平台请使用系统自带/自行安装的编译器';
+                    installBtn.textContent = window.i18n ? window.i18n.t('compiler.downloadDisabled') : '下载已禁用 (请使用系统编译器)';
                 } else {
                     logInfo('[编译器设置] 安装编译器按钮事件已绑定');
                     installBtn.addEventListener('click', (e) => {
@@ -303,13 +303,13 @@ class CompilerSettings {
                 if (popupOption) popupOption.disabled = true;
                 runModeSelect.value = 'integrated-terminal';
                 if (runModeHint) {
-                    runModeHint.textContent = 'macOS/Linux 仅支持内置终端运行';
+                    runModeHint.textContent = window.i18n ? window.i18n.t('compiler.integratedOnlyHint') : 'macOS/Linux only supports integrated terminal mode';
                 }
             } else {
                 if (popupOption) popupOption.disabled = false;
                 runModeSelect.value = this.settings.runMode || 'popup';
                 if (runModeHint) {
-                    runModeHint.textContent = '内置终端运行会新建终端并自动输入程序路径后回车执行';
+                    runModeHint.textContent = window.i18n ? window.i18n.t('compiler.runModeDesc') : 'Integrated terminal mode creates a new terminal and runs the program automatically';
                 }
             }
         }
@@ -343,11 +343,11 @@ class CompilerSettings {
                 if (input) {
                     input.value = selectedPath;
                 }
-                this.showMessage('已选择 Python 解释器', 'success');
+                this.showMessage(window.i18n ? window.i18n.t('compiler.testlibPathSaved') : '已选择 Python 解释器', 'success');
             }
         } catch (error) {
             logError('浏览 Python 解释器失败:', error);
-            this.showMessage('浏览 Python 解释器失败：' + error.message, 'error');
+            this.showMessage((window.i18n ? window.i18n.t('compiler.browseFailed', {error: error.message}) : '浏览 Python 解释器失败：' + error.message), 'error');
         }
     }
 
@@ -407,11 +407,11 @@ class CompilerSettings {
                 this.showMessage(`已选择编译器: ${fileName}`, 'success');
                 
             } else if (platform !== 'windows' && !result.canceled) {
-                this.showMessage('未选择文件，请确认有权限访问 /usr/bin 或自定义安装路径', 'error');
+                this.showMessage((window.i18n ? window.i18n.t('compiler.noFileSelected') : '未选择文件，请确认有权限访问 /usr/bin 或自定义安装路径'), 'error');
             }
         } catch (error) {
             logError('浏览编译器失败:', error);
-            this.showMessage('浏览编译器失败：' + error.message, 'error');
+            this.showMessage((window.i18n ? window.i18n.t('compiler.browseFailed', {error: error.message}) : '浏览编译器失败：' + error.message), 'error');
         }
     }
 
@@ -437,13 +437,13 @@ class CompilerSettings {
         const compilerList = document.getElementById('compiler-list');
         if (!compilerList) return;
         
-        compilerList.innerHTML = '<div class="loading">正在获取编译器列表...</div>';
+        compilerList.innerHTML = '<div class="loading">' + (window.i18n ? window.i18n.t('compiler.fetchingList') : 'Fetching compiler list...') + '</div>';
         
         try {
             const response = await fetch('https://oicpp.mywwzh.top/api/getAvailableCompilerList');
             
             if (!response.ok) {
-                throw new Error(`网络错误: ${response.status} ${response.statusText}`);
+                throw new Error(`Network error: ${response.status} ${response.statusText}`);
             }
             
             const compilers = await response.json();
@@ -483,17 +483,17 @@ class CompilerSettings {
                 compilerDiv.innerHTML = `
                     <div class="compiler-info">
                         <h4>${compiler.name}</h4>
-                        <p>版本: ${compiler.version}</p>
-                        <span class="platform">平台: ${compiler.platform}</span>
+                        <p><span data-i18n="compiler.versionSelectedPrefix">Version:</span> ${compiler.version}</p>
+                        <span class="platform"><span data-i18n="compiler.platformPrefix">Platform:</span> ${compiler.platform}</span>
                     </div>
                     <div class="compiler-actions">
                         ${isSelected ? 
-                            '<span class="status selected-status">已选中</span>' :
+                            '<span class="status selected-status">' + (window.i18n ? window.i18n.t('compiler.selected') : 'Selected') + '</span>' :
                             isDownloaded ? 
-                                `<button class="select-btn" data-version="${compiler.version}">选择</button>` :
-                                `<button class="download-btn" data-url="${compiler.download_url}" data-version="${compiler.version}" data-name="${compiler.name}">下载</button>`
+                                '<button class="select-btn" data-version="' + compiler.version + '">' + (window.i18n ? window.i18n.t('compiler.select') : 'Select') + '</button>' :
+                                '<button class="download-btn" data-url="' + compiler.download_url + '" data-version="' + compiler.version + '" data-name="' + compiler.name + '">' + (window.i18n ? window.i18n.t('compiler.download') : 'Download') + '</button>'
                         }
-                        ${isDownloaded ? '<span class="status downloaded-status">已下载</span>' : ''}
+                        ${isDownloaded ? '<span class="status downloaded-status">' + (window.i18n ? window.i18n.t('compiler.downloaded') : 'Downloaded') + '</span>' : ''}
                     </div>
                 `;
                 
@@ -506,9 +506,9 @@ class CompilerSettings {
             logError('获取编译器列表失败:', error);
             compilerList.innerHTML = `
                 <div class="error-message">
-                    <p>网络错误：无法获取编译器列表</p>
+                    <p>${window.i18n ? window.i18n.t('compiler.networkError') : 'Network error: could not fetch compiler list'}</p>
                     <p class="error-detail">${error.message}</p>
-                    <button class="retry-btn" onclick="this.loadAvailableCompilers()">重试</button>
+                    <button class="retry-btn" onclick="this.loadAvailableCompilers()" data-i18n="compiler.retry">Retry</button>
                 </div>
             `;
         }
@@ -543,12 +543,12 @@ class CompilerSettings {
                 const result = await window.electronAPI.updateSettings(newSettings);
                 logInfo('保存设置结果:', result);
                 if (result.success) {
-                    this.showMessage('编译器设置保存成功！', 'success');
+                    this.showMessage((window.i18n ? window.i18n.t('compiler.saveSuccess') : '编译器设置保存成功！'), 'success');
                 } else {
-                    this.showMessage('保存设置失败：' + (result.error || '未知错误'), 'error');
+                    this.showMessage((window.i18n ? window.i18n.t('compiler.saveFail', {error: result.error || '未知错误'}) : '保存设置失败：' + (result.error || '未知错误')), 'error');
                 }
             } else {
-                this.showMessage('设置 API 不可用', 'error');
+                this.showMessage((window.i18n ? window.i18n.t('compiler.apiUnavailable') : '设置 API 不可用'), 'error');
             }
             
         } catch (error) {
@@ -564,7 +564,7 @@ class CompilerSettings {
                 if (result.success) {
                     await this.loadSettings();
                     this.updateUI();
-                    this.showMessage('编译器设置已重置为默认值', 'success');
+                    this.showMessage((window.i18n ? window.i18n.t('compiler.resetSuccess') : '编译器设置已重置为默认值'), 'success');
                 } else {
                     this.showMessage('重置设置失败：' + (result.error || '未知错误'), 'error');
                 }
@@ -1077,7 +1077,7 @@ class CompilerSettings {
                     
                     const fileName = testlibPath.split(/[\\\/]/).pop().toLowerCase();
                     if (fileName !== 'testlib.h') {
-                        this.showMessage('请选择testlib.h文件', 'error');
+                        this.showMessage((window.i18n ? window.i18n.t('compiler.selectTestlibFile') : '请选择testlib.h文件'), 'error');
                         return;
                     }
                     
@@ -1085,13 +1085,13 @@ class CompilerSettings {
                     
                     if (window.electronAPI && window.electronAPI.saveSetting) {
                         await window.electronAPI.saveSetting('testlibPath', testlibPath);
-                        this.showMessage('Testlib路径已保存', 'success');
+                        this.showMessage((window.i18n ? window.i18n.t('compiler.testlibPathSaved') : 'Testlib路径已保存'), 'success');
                     }
                 }
             }
         } catch (error) {
             logError('选择testlib.h文件失败:', error);
-            this.showMessage('选择testlib.h文件失败: ' + error.message, 'error');
+            this.showMessage((window.i18n ? window.i18n.t('compiler.selectTestlibFail', {error: error.message}) : '选择testlib.h文件失败: ' + error.message), 'error');
         }
     }
     
@@ -1162,7 +1162,7 @@ class CompilerSettings {
             const response = await fetch('https://oicpp.mywwzh.top/api/getAvailableTestlibList');
             
             if (!response.ok) {
-                throw new Error(`网络错误: ${response.status} ${response.statusText}`);
+                throw new Error(`Network error: ${response.status} ${response.statusText}`);
             }
             
             const testlibs = await response.json();
@@ -1187,21 +1187,23 @@ class CompilerSettings {
                     ? testlib.downloadUrl 
                     : `https://oicpp.mywwzh.top${testlib.downloadUrl}`;
                 
+                const versionLabel = window.i18n ? window.i18n.t('compiler.versionSelected').split(' ')[0] : 'Version:';
+                const sizeLabel = window.i18n ? window.i18n.t('compiler.testlibSize', { size: '' }) : 'Size:';
                 testlibDiv.innerHTML = `
                     <div class="compiler-info">
                         <h4>${testlib.name}</h4>
-                        <p>版本: ${testlib.version}</p>
+                        <p>${versionLabel} ${testlib.version}</p>
                         <p>${testlib.description}</p>
-                        <span class="platform">大小: ${testlib.file_size_mb}MB</span>
+                        <span class="platform">${sizeLabel} ${testlib.file_size_mb}MB</span>
                     </div>
                     <div class="compiler-actions">
                         ${isSelected ? 
-                            '<span class="status selected-status">已选中</span>' :
+                            '<span class="status selected-status">' + (window.i18n ? window.i18n.t('compiler.selected') : 'Selected') + '</span>' :
                             isDownloaded ? 
-                                `<button class="select-btn" data-version="${testlib.version}">选择</button>` :
-                                `<button class="download-btn" data-url="${downloadUrl}" data-version="${testlib.version}" data-name="${testlib.name}">下载</button>`
+                                '<button class="select-btn" data-version="' + testlib.version + '">' + (window.i18n ? window.i18n.t('compiler.select') : 'Select') + '</button>' :
+                                '<button class="download-btn" data-url="' + downloadUrl + '" data-version="' + testlib.version + '" data-name="' + testlib.name + '">' + (window.i18n ? window.i18n.t('compiler.download') : 'Download') + '</button>'
                         }
-                        ${isDownloaded ? '<span class="status downloaded-status">已下载</span>' : ''}
+                        ${isDownloaded ? '<span class="status downloaded-status">' + (window.i18n ? window.i18n.t('compiler.downloaded') : 'Downloaded') + '</span>' : ''}
                     </div>
                 `;
                 
@@ -1213,9 +1215,9 @@ class CompilerSettings {
             logError('获取Testlib列表失败:', error);
             testlibList.innerHTML = `
                 <div class="error-message">
-                    <p>网络错误：无法获取Testlib列表</p>
+                    <p>${window.i18n ? window.i18n.t('compiler.networkError') : 'Network error: could not fetch list'}</p>
                     <p class="error-detail">${error.message}</p>
-                    <button class="retry-btn" onclick="this.loadAvailableTestlibs()">重试</button>
+                    <button class="retry-btn" onclick="this.loadAvailableTestlibs()" data-i18n="compiler.retry">Retry</button>
                 </div>
             `;
         }

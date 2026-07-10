@@ -19,12 +19,12 @@ class FileExplorer {
      */
     validateFileName(name) {
         if (!name || typeof name !== 'string') {
-            return { valid: false, error: '名称不能为空' };
+            return { valid: false, error: window.i18n ? window.i18n.t('fileExplorer.nameRequired') : '名称不能为空' };
         }
 
         const trimmedName = name.trim();
         if (trimmedName.length === 0) {
-            return { valid: false, error: '名称不能为空' };
+            return { valid: false, error: window.i18n ? window.i18n.t('fileExplorer.nameRequired') : '名称不能为空' };
         }
 
         // Check for illegal characters
@@ -50,7 +50,7 @@ class FileExplorer {
         if (isWindows) {
             const reservedNames = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i;
             if (reservedNames.test(trimmedName)) {
-                return { valid: false, error: '该名称为系统保留名称，不能使用' };
+                return { valid: false, error: window.i18n ? window.i18n.t('fileExplorer.reservedName') : '该名称为系统保留名称，不能使用' };
             }
         }
 
@@ -58,7 +58,7 @@ class FileExplorer {
         // Note: We check the original 'name' not 'trimmedName' because Windows does not allow
         // trailing spaces or periods, even though String.trim() would remove them
         if (isWindows && /[\s.]$/.test(name)) {
-            return { valid: false, error: '文件名不能以空格或句点结尾' };
+            return { valid: false, error: window.i18n ? window.i18n.t('fileExplorer.nameEndDot') : '文件名不能以空格或句点结尾' };
         }
 
         return { valid: true, error: null };

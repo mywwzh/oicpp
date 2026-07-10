@@ -174,14 +174,14 @@
                     const blockedAction = menuItem.dataset.action;
                     if (blockedAction === 'check-update') {
                         if (this.updateDownloadState.pendingInstall) {
-                            this.showMessage('已有更新等待安装，请先退出 OICPP 完成安装', 'info');
+                            this.showMessage(window.i18n ? window.i18n.t('message.updatePendingInstall') : '已有更新等待安装，请先退出 OICPP 完成安装', 'info');
                             return;
                         }
                         if (this.updateDownloadState.autoChecking) {
-                            this.showMessage('正在执行启动自动检查，请稍后再手动检查更新', 'info');
+                            this.showMessage(window.i18n ? window.i18n.t('message.updateAutoChecking') : '正在执行启动自动检查，请稍后再手动检查更新', 'info');
                         } else if (this.updateDownloadState.downloading) {
                             const versionSuffix = this.updateDownloadState.version ? ` (${this.updateDownloadState.version})` : '';
-                            this.showMessage(`更新正在后台下载${versionSuffix}，当前进度 ${this.updateDownloadState.progress}%`, 'info');
+                            this.showMessage((window.i18n ? window.i18n.t('message.updateDownloading', {version: versionSuffix, progress: this.updateDownloadState.progress}) : `更新正在后台下载${versionSuffix}，当前进度 ${this.updateDownloadState.progress}%`), 'info');
                         }
                     }
                     return;
@@ -268,7 +268,7 @@
                 await this.openIntegratedTerminal();
                 break;
             case 'cloud-compile':
-                if (!this.ensureLocalFileForFeature('云端编译')) {
+                if (!this.ensureLocalFileForFeature(window.i18n ? window.i18n.t('message.cloudCompile') : '云端编译')) {
                     break;
                 }
                 if (this.compilerManager && typeof this.compilerManager.cloudCompileCurrentFile === 'function') {
@@ -335,7 +335,7 @@
 
         if (typeof window.electronAPI.onIdeLoginError === 'function') {
             window.electronAPI.onIdeLoginError((payload) => {
-                const msg = payload?.message || '登录失败';
+                const msg = payload?.message || (window.i18n ? window.i18n.t('message.loginFailed') : '登录失败');
                 this.showMessage(msg, 'error');
             });
         }
@@ -799,6 +799,13 @@
         }
 
         this.updateMenuShortcutHints();
+
+        // Apply language change to UI
+        if (newSettings && newSettings.language && window.i18n) {
+            if (typeof window.i18n._applyToDOM === 'function') {
+                window.i18n._applyToDOM();
+            }
+        }
 
         if (this.terminalPanel && typeof this.terminalPanel.applyTerminalFontSettings === 'function') {
             this.terminalPanel.applyTerminalFontSettings();
@@ -3714,20 +3721,20 @@ ${data.message || '程序已加载，等待开始执行'}
                     <div class="about-logo">
                         <img id="about-dialog-icon" src="" width="48" height="48" alt="OICPP IDE">
                     </div>
-                    <h2>关于 OICPP IDE</h2>
+                    <h2 data-i18n="app.about">About OICPP IDE</h2>
                 </div>
                 <div class="about-content">
                     <div class="about-info">
-                        <p><strong>版本:</strong> ${versionLabel}</p>
-                        <p><strong>构建时间:</strong> ${buildInfo.buildTime}</p>
-                        <p><strong>开发者:</strong> ${buildInfo.author}</p>
-                        <p><strong>描述:</strong> 专为 OI 选手优化的 C++ 开发环境</p>
-                        <p><strong>用户群:</strong> 931577836</p>
-                        <p><strong>官网:</strong> https://oicpp.mywwzh.top</p>
+                        <p><strong data-i18n="app.version">Version:</strong> ${versionLabel}</p>
+                        <p><strong>Build Time:</strong> ${buildInfo.buildTime}</p>
+                        <p><strong>Developer:</strong> ${buildInfo.author}</p>
+                        <p><strong>Description:</strong> C++ development environment optimized for OI competitors</p>
+                        <p><strong>QQ Group:</strong> 931577836</p>
+                        <p><strong>Website:</strong> https://oicpp.mywwzh.top</p>
                     </div>
                 </div>
                 <div  class="about-footer">
-                    <button id="about-close-btn">关闭</button>
+                    <button id="about-close-btn" data-i18n="dialog.close">Close</button>
                 </div>
             </div>
         `;

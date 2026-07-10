@@ -156,16 +156,16 @@ class BackupSettings {
 
             if (result && result.success) {
                 this.settings.autoBackupSettings = newSettings.autoBackupSettings;
-                this.showMessage('设置备份设置已保存', 'success');
+                this.showMessage((window.i18n ? window.i18n.t('backup.saveSuccess') : 'Backup settings saved'), 'success');
                 if (newSettings.autoBackupSettings) {
                     await this.backupNow(true);
                 }
             } else {
                 const errorMsg = result?.error || '未知错误';
-                this.showMessage('保存设置失败：' + errorMsg, 'error');
+                this.showMessage((window.i18n ? window.i18n.t('backup.saveFail', {error: errorMsg}) : 'Failed to save settings: ' + errorMsg), 'error');
             }
         } catch (error) {
-            this.showMessage('保存设置失败：' + error.message, 'error');
+            this.showMessage((window.i18n ? window.i18n.t('backup.saveFailSimple', {error: error.message}) : 'Failed to save settings: ' + error.message), 'error');
         } finally {
             this._saving = false;
         }
@@ -173,25 +173,25 @@ class BackupSettings {
 
     async backupNow(silent = false) {
         if (!window.electronAPI?.backupSettingsToCloud) {
-            if (!silent) this.showMessage('备份功能不可用', 'error');
+            if (!silent) this.showMessage((window.i18n ? window.i18n.t('backup.backupUnavailable') : 'Backup feature is unavailable'), 'error');
             return false;
         }
 
         const result = await window.electronAPI.backupSettingsToCloud();
         if (!result || !result.success) {
-            const error = result?.error || '备份失败';
+            const error = result?.error || 'Backup failed';
             if (error === 'NOT_LOGGED_IN') {
-                this.showMessage('请先登录', 'warning');
+                this.showMessage((window.i18n ? window.i18n.t('backup.loginFirst') : '请先登录'), 'warning');
             } else if (error === 'NO_SETTINGS') {
-                if (!silent) this.showMessage('没有可备份的设置', 'warning');
+                if (!silent) this.showMessage((window.i18n ? window.i18n.t('backup.nothingToBackup') : 'Nothing to backup'), 'warning');
             } else {
-                if (!silent) this.showMessage(`备份设置失败：${error}`, 'error');
+                if (!silent) this.showMessage((window.i18n ? window.i18n.t('backup.backupFailSimple', {error: error}) : `Backup failed: ${error}`), 'error');
             }
             return false;
         }
 
         if (!silent) {
-            this.showMessage('设置已备份到云空间', 'success');
+            this.showMessage((window.i18n ? window.i18n.t('backup.backupSuccess') : 'Settings backed up to cloud'), 'success');
         }
         this.refreshLatestBackupInfo();
         return true;
@@ -199,20 +199,20 @@ class BackupSettings {
 
     async syncFromCloud() {
         if (!window.electronAPI?.getSettingsBackupInfo || !window.electronAPI?.syncSettingsFromCloud) {
-            this.showMessage('同步功能不可用', 'error');
+            this.showMessage((window.i18n ? window.i18n.t('backup.syncUnavailable') : 'Sync feature is unavailable'), 'error');
             return false;
         }
 
         const infoResult = await window.electronAPI.getSettingsBackupInfo();
         if (!infoResult || !infoResult.success) {
             logInfo('获取云端备份信息失败:', infoResult);
-            const error = infoResult?.error || '同步失败';
+            const error = infoResult?.error || 'Sync failed';
             if (error === 'NOT_LOGGED_IN') {
-                this.showMessage('请先登录', 'warning');
+                this.showMessage((window.i18n ? window.i18n.t('backup.loginFirst') : '请先登录'), 'warning');
             } else if (error === 'NO_BACKUP') {
-                this.showMessage('云空间没有找到备份', 'warning');
+                this.showMessage((window.i18n ? window.i18n.t('backup.noBackupFound') : 'No backup found in cloud'), 'warning');
             } else {
-                this.showMessage('获取云端备份失败', 'error');
+                this.showMessage((window.i18n ? window.i18n.t('backup.fetchBackupFail') : 'Failed to fetch cloud backup'), 'error');
             }
             return false;
         }
@@ -220,23 +220,23 @@ class BackupSettings {
         const info = infoResult.info || {};
         const timeLabel = info.displayTime || info.timestampRaw || '未知时间';
         const deviceName = info.deviceName || '未知设备';
-        const confirmText = `是否使用${timeLabel}在${deviceName}上备份的设置文件覆盖当前设置？`;
-        const confirmed = await this.confirmDialog('同步设置', confirmText);
+        const confirmText = (window.i18n ? window.i18n.t('backup.syncConfirm', {time: timeLabel, device: deviceName}) : `Overwrite current settings with the backup from ${timeLabel} on ${deviceName}?`);
+        const confirmed = await this.confirmDialog((window.i18n ? window.i18n.t('backup.syncConfirmTitle') : 'Sync Settings'), confirmText);
         if (!confirmed) {
             return false;
         }
 
         const syncResult = await window.electronAPI.syncSettingsFromCloud();
         if (!syncResult || !syncResult.success) {
-            const error = syncResult?.error || '同步失败';
+            const error = syncResult?.error || 'Sync failed';
             if (error === 'NOT_LOGGED_IN') {
-                this.showMessage('请先登录', 'warning');
+                this.showMessage(window.i18n ? window.i18n.t('backup.loginFirst') : 'Please log in first', 'warning');
             } else if (error === 'NO_BACKUP') {
-                this.showMessage('云空间没有找到备份', 'warning');
+                this.showMessage((window.i18n ? window.i18n.t('backup.noBackupFound') : 'No backup found in cloud'), 'warning');
             } else if (error === 'EMPTY_BACKUP') {
-                this.showMessage('恢复失败：EMPTY_BACKUP', 'error');
+                this.showMessage((window.i18n ? window.i18n.t('backup.restoreFailEmpty') : 'Restore failed: EMPTY_BACKUP'), 'error');
             } else if (error === 'INVALID_BACKUP') {
-                this.showMessage('云端备份文件格式无效', 'error');
+                this.showMessage((window.i18n ? window.i18n.t('backup.restoreFailInvalid') : 'Cloud backup file format is invalid'), 'error');
             } else {
                 this.showMessage(`同步设置失败：${error}`, 'error');
             }
@@ -245,7 +245,7 @@ class BackupSettings {
 
         await this.loadSettings();
         this.updateUI();
-        this.showMessage('已从云空间同步设置', 'success');
+        this.showMessage((window.i18n ? window.i18n.t('backup.syncSuccess') : 'Settings synced from cloud'), 'success');
         this.refreshLatestBackupInfo();
         return true;
     }

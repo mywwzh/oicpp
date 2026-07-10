@@ -66,7 +66,7 @@ class LspClientBridge {
             });
 
             if (!startResult || startResult.ok !== true) {
-                const errMsg = startResult?.error || 'clangd 重启失败（未知原因）';
+                const errMsg = startResult?.error || (window.i18n ? window.i18n.t('lsp.restartFailUnknown') : 'clangd 重启失败（未知原因）');
                 logError('[LSP] clangd 重启失败:', errMsg);
                 throw new Error('clangd restart failed: ' + errMsg);
             }
@@ -118,7 +118,7 @@ class LspClientBridge {
 
         // 检查 clangd 启动结果
         if (!startResult || startResult.ok !== true) {
-            const errMsg = startResult?.error || 'clangd 启动失败（未知原因）';
+            const errMsg = startResult?.error || (window.i18n ? window.i18n.t('lsp.startFailUnknown') : 'clangd 启动失败（未知原因）');
             logError('[LSP] clangd 启动失败:', errMsg);
             throw new Error('clangd start failed: ' + errMsg);
         }

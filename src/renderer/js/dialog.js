@@ -75,8 +75,8 @@ class DialogManager {
                     <input type="text" id="dialog-input" placeholder="${placeholder}" value="${defaultValue}" spellcheck="false" autocapitalize="none" autocomplete="off" autocorrect="off" />
                 </div>
                 <div class="dialog-footer">
-                    <button class="dialog-btn dialog-btn-cancel" onclick="dialogManager.hideDialog()">取消</button>
-                    <button class="dialog-btn dialog-btn-confirm" onclick="dialogManager.confirmDialog()">确定</button>
+                    <button class="dialog-btn dialog-btn-cancel" onclick="dialogManager.hideDialog()">${window.i18n ? window.i18n.t('dialog.cancel') : '取消'}</button>
+                    <button class="dialog-btn dialog-btn-confirm" onclick="dialogManager.confirmDialog()">${window.i18n ? window.i18n.t('dialog.ok') : '确定'}</button>
                 </div>
             `;
 
@@ -137,8 +137,8 @@ class DialogManager {
                     <p>${message}</p>
                 </div>
                 <div class="dialog-footer">
-                    <button class="dialog-btn dialog-btn-cancel" onclick="dialogManager.cancelDialog()">取消</button>
-                    <button class="dialog-btn dialog-btn-confirm" onclick="dialogManager.confirmDialog()">确定</button>
+                    <button class="dialog-btn dialog-btn-cancel" onclick="dialogManager.cancelDialog()">${window.i18n ? window.i18n.t('dialog.cancel') : '取消'}</button>
+                    <button class="dialog-btn dialog-btn-confirm" onclick="dialogManager.confirmDialog()">${window.i18n ? window.i18n.t('dialog.ok') : '确定'}</button>
                 </div>
             `;
 
@@ -206,24 +206,24 @@ class DialogManager {
             const safeYear = this.escapeHtml(String(displayYear));
             container.innerHTML = `
                 <div class="dialog-header newyear-header">
-                    <h3>新年快乐</h3>
-                    <button class="dialog-close" onclick="dialogManager.hideDialog()" aria-label="关闭">&times;</button>
+                    <h3>${window.i18n ? window.i18n.t('festival.newYearTitle') : '新年快乐'}</h3>
+                    <button class="dialog-close" onclick="dialogManager.hideDialog()" aria-label="${window.i18n ? window.i18n.t('dialog.close') : '关闭'}">&times;</button>
                 </div>
                 <div class="newyear-body">
                     <div class="newyear-hero">
                         <div class="newyear-badge" aria-hidden="true" data-ui-icon="sparkle"></div>
                         <div>
-                            <p class="newyear-title">欢迎来到 ${safeYear}</p>
-                            <div class="newyear-subtitle">愿你：灵感常在，思路清晰，提交一次就 AC。</div>
+                            <p class="newyear-title">${window.i18n ? window.i18n.t('festival.newYearHeading', { year: safeYear }) : '欢迎来到 ' + safeYear}</p>
+                            <div class="newyear-subtitle">${window.i18n ? window.i18n.t('festival.newYearSubtitle') : '愿你：灵感常在，思路清晰，提交一次就 AC。'}</div>
                         </div>
                     </div>
                     <div class="newyear-wishes">
-                        <p>新的一年，继续把热爱写进每一行代码。</p>
-                        <p class="muted">提示：点击空白处或按 Esc 也可关闭。</p>
+                        <p>${window.i18n ? window.i18n.t('festival.newYearMessage') : '新的一年，继续把热爱写进每一行代码。'}</p>
+                        <p class="muted">${window.i18n ? window.i18n.t('dialog.hint') : '提示：点击空白处或按 Esc 也可关闭。'}</p>
                     </div>
                 </div>
                 <div class="newyear-footer">
-                    <button class="dialog-btn dialog-btn-primary" onclick="dialogManager.confirmDialog()">开启新一年</button>
+                    <button class="dialog-btn dialog-btn-primary" onclick="dialogManager.confirmDialog()">${window.i18n ? window.i18n.t('festival.newYearButton') : '开启新一年'}</button>
                 </div>
             `;
 
@@ -260,24 +260,24 @@ class DialogManager {
 
             container.innerHTML = `
                 <div class="dialog-header newyear-header">
-                    <h3>春节快乐</h3>
-                    <button class="dialog-close" onclick="dialogManager.hideDialog()" aria-label="关闭">&times;</button>
+                    <h3>${window.i18n ? window.i18n.t('festival.springFestivalTitle') : '春节快乐'}</h3>
+                    <button class="dialog-close" onclick="dialogManager.hideDialog()" aria-label="${window.i18n ? window.i18n.t('dialog.close') : '关闭'}">&times;</button>
                 </div>
                 <div class="newyear-body">
                     <div class="newyear-hero">
                         <div class="newyear-badge" aria-hidden="true" data-ui-icon="sparkle"></div>
                         <div>
-                            <p class="newyear-title">${safeYear}，恭喜发财</p>
-                            <div class="newyear-subtitle">愿你：思路清晰，调试顺利，提交一次就 AC。</div>
+                            <p class="newyear-title">${window.i18n ? window.i18n.t('festival.springFestivalHeading', { year: safeYear }) : safeYear + '，恭喜发财'}</p>
+                            <div class="newyear-subtitle">${window.i18n ? window.i18n.t('festival.springFestivalSubtitle') : '愿你：思路清晰，调试顺利，提交一次就 AC。'}</div>
                         </div>
                     </div>
                     <div class="newyear-wishes">
-                        <p>新春快乐，写题愉快。</p>
-                        <p class="muted">提示：点击空白处或按 Esc 也可关闭。</p>
+                        <p>${window.i18n ? window.i18n.t('festival.springFestivalMessage') : '新春快乐，写题愉快。'}</p>
+                        <p class="muted">${window.i18n ? window.i18n.t('dialog.hint') : '提示：点击空白处或按 Esc 也可关闭。'}</p>
                     </div>
                 </div>
                 <div class="newyear-footer">
-                    <button class="dialog-btn dialog-btn-primary" onclick="dialogManager.confirmDialog()">开工！</button>
+                    <button class="dialog-btn dialog-btn-primary" onclick="dialogManager.confirmDialog()">${window.i18n ? window.i18n.t('festival.springFestivalButton') : '开工！'}</button>
                 </div>
             `;
 

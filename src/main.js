@@ -1456,6 +1456,7 @@ function getDefaultSettings() {
         enableAutoCompletion: true,
         autoSave: true,
         autoSaveInterval: 60000,
+        language: 'zh-cn',
         autoBackupSettings: false,
         receiveBetaUpdates: false,
         markdownMode: 'split',
@@ -3017,6 +3018,50 @@ function setupIPC() {
 
     ipcMain.handle('get-all-settings', () => {
         return settings;
+    });
+
+    ipcMain.handle('get-language', () => {
+        return settings.language || 'zh-cn';
+    });
+
+    ipcMain.handle('get-language-file', (_event, langCode) => {
+        try {
+            const langPath = path.join(__dirname, 'lang', `${langCode || settings.language || 'zh-cn'}.json`);
+            if (fs.existsSync(langPath)) {
+                return JSON.parse(fs.readFileSync(langPath, 'utf8'));
+            }
+            return null;
+        } catch (e) {
+            logError('[语言] 加载语言文件失败:', e);
+            return null;
+        }
+    });
+
+    ipcMain.handle('get-available-languages', () => {
+        try {
+            const langDir = path.join(__dirname, 'lang');
+            const languages = [];
+            if (fs.existsSync(langDir)) {
+                const files = fs.readdirSync(langDir);
+                for (const file of files) {
+                    if (!file.endsWith('.json') || file === 'index.js') continue;
+                    try {
+                        const content = JSON.parse(fs.readFileSync(path.join(langDir, file), 'utf8'));
+                        if (content.meta && content.meta.code) {
+                            languages.push({
+                                code: content.meta.code,
+                                name: content.meta.name,
+                                nameEn: content.meta.nameEn
+                            });
+                        }
+                    } catch (_) {}
+                }
+            }
+            return languages;
+        } catch (e) {
+            logError('[语言] 获取可用语言列表失败:', e);
+            return [];
+        }
     });
 
     ipcMain.handle('terminal-feature-status', () => {
@@ -6714,7 +6759,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'fileHistory', 'lastOpenTabs', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account', 'runAllSamples'];
+            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'language', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'fileHistory', 'lastOpenTabs', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account', 'runAllSamples'];
             let needsSaveAfterMigration = false;
 
             for (const key of validKeys) {
@@ -6817,7 +6862,7 @@ function loadSettings() {
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account', 'runAllSamples'];
+    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'language', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account', 'runAllSamples'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -6846,7 +6891,7 @@ function updateSettings(settingsType, newSettings) {
             'compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme',
             'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'autoSave', 'autoSaveInterval',
             'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'markdownMode', 'keybindings',
-            'fileHistory', 'lastOpenTabs', 'autoOpenLastWorkspace', 'autoBackupSettings', 'receiveBetaUpdates',
+            'fileHistory', 'lastOpenTabs', 'autoOpenLastWorkspace', 'language', 'autoBackupSettings', 'receiveBetaUpdates',
             'runAllSamples'
         ];
 
@@ -6893,6 +6938,21 @@ function updateSettings(settingsType, newSettings) {
             }
         }
 
+        if (newSettings.language) {
+            if (editorSettingsWindow) {
+                editorSettingsWindow.webContents.send('language-changed', newSettings.language);
+            }
+            if (compilerSettingsWindow) {
+                compilerSettingsWindow.webContents.send('language-changed', newSettings.language);
+            }
+            if (codeTemplatesWindow) {
+                codeTemplatesWindow.webContents.send('language-changed', newSettings.language);
+            }
+            if (backupSettingsWindow) {
+                backupSettingsWindow.webContents.send('language-changed', newSettings.language);
+            }
+        }
+
         logInfo('设置已更新:', settings);
         return { success: true };
     } catch (error) {
@@ -6906,7 +6966,7 @@ function getResettableSettingsKeys() {
         'compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath',
         'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors',
         'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled',
-        'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets',
+        'autoSave', 'autoSaveInterval', 'language', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets',
         'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace'
     ];
 }
@@ -6968,7 +7028,7 @@ function importSettings(filePath) {
             throw new Error('无效的设置文件格式');
         }
 
-        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'autoBackupSettings', 'receiveBetaUpdates', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'runAllSamples'];
+        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'language', 'autoBackupSettings', 'receiveBetaUpdates', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'runAllSamples'];
         const defaultSettings = getDefaultSettings();
 
         for (const key of validKeys) {

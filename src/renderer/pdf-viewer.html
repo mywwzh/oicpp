@@ -242,6 +242,7 @@
       background: #1976d2;
     }
   </style>
+  <script src="js/i18n.js"></script>
 </head>
 <body>
   <div id="viewerContainer" class="viewerContainer">
@@ -947,6 +948,13 @@
     document.addEventListener("mouseleave", cancelDrag, true);
 
     loadDocument();
+  </script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async function() {
+      if (window.i18n && typeof window.i18n.init === 'function') {
+        await window.i18n.init();
+      }
+    });
   </script>
 </body>
 </html>

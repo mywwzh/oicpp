@@ -258,7 +258,7 @@ class TabManager {
             if (!entry || !entry.fileName) {
                 continue;
             }
-            const displayName = entry.fileName || '未知文件';
+            const displayName = entry.fileName || (window.i18n ? window.i18n.t('panel.unknownFile') : '未知文件');
             try {
                 if (entry.fileObject && window.oicppApp?.openDroppedFile) {
                     await window.oicppApp.openDroppedFile(entry.fileObject, {
@@ -307,7 +307,7 @@ class TabManager {
                     continue;
                 }
 
-                throw new Error('无法读取文件内容');
+                throw new Error(window.i18n ? window.i18n.t('panel.cannotReadFile') : '无法读取文件内容');
             } catch (error) {
                 this.showDropError(displayName, error);
             }
@@ -320,9 +320,9 @@ class TabManager {
         if (!window.dialogManager?.showError) {
             return;
         }
-        const name = displayName || '未知文件';
-        const message = error?.message || String(error || '未知错误');
-        window.dialogManager.showError(`无法打开 ${name}\n${message}`);
+        const name = displayName || (window.i18n ? window.i18n.t('panel.unknownFile') : '未知文件');
+        const message = error?.message || String(error || (window.i18n ? window.i18n.t('panel.unknownError') : '未知错误'));
+        window.dialogManager.showError((window.i18n ? window.i18n.t('panel.cannotOpenFile', {name, message}) : `无法打开 ${name}\n${message}`));
     }
 
     ensureSplitOverlay() {
