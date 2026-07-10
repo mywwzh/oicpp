@@ -3,6 +3,12 @@
     document.addEventListener('DOMContentLoaded', async function () {
         try {
             await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Initialize i18n for settings pages
+            if (window.i18n && typeof window.i18n.init === 'function') {
+                await window.i18n.init();
+            }
+
             if (window.electronAPI && window.electronAPI.getAllSettings) {
                 const settings = await window.electronAPI.getAllSettings();
                 logInfo('启动时加载的设置:', settings);
@@ -55,6 +61,15 @@
             } else {
                 document.body.classList.add('theme-dark', 'dark-theme');
                 document.documentElement.classList.add('theme-dark', 'dark-theme');
+            }
+        }
+
+        if (settings.language) {
+            if (window.i18n && typeof window.i18n.t === 'function') {
+                // Re-apply translations to DOM elements with data-i18n attributes
+                if (typeof window.i18n._applyToDOM === 'function') {
+                    window.i18n._applyToDOM();
+                }
             }
         }
 

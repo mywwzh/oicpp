@@ -49,21 +49,21 @@ class CompilerManager {
                     <span class="compile-status" id="compile-status-text">编译输出</span>
                 </div>
                 <div class="compile-output-controls">
-                    <button class="compile-output-clear" id="clear-compile-output" title="清空输出">
+                    <button class="compile-output-clear" id="clear-compile-output" data-i18n-title="panel.clearOutput" title="清空输出">
                         <i class="icon-clear">🗑️</i>
                     </button>
-                    <button class="compile-output-close" id="close-compile-output" title="关闭">
+                    <button class="compile-output-close" id="close-compile-output" data-i18n-title="dialog.close" title="关闭">
                         <i class="icon-close">✕</i>
                     </button>
                 </div>
             </div>
             <div class="compile-output-content">
                 <div class="compile-output-toolbar">
-                    <div class="compile-output-tabs" role="tablist" aria-label="编译输出视图切换">
-                        <button class="compile-tab-btn active" data-pane="raw" role="tab" aria-selected="true">原始输出</button>
-                        <button class="compile-tab-btn" data-pane="analysis" role="tab" aria-selected="false">报错解析</button>
+                    <div class="compile-output-tabs" role="tablist" data-i18n="panel.compileOutputView" aria-label="Toggle compile output view">
+                        <button class="compile-tab-btn active" data-pane="raw" role="tab" aria-selected="true"><span data-i18n="panel.rawOutput">原始输出</span></button>
+                        <button class="compile-tab-btn" data-pane="analysis" role="tab" aria-selected="false"><span data-i18n="panel.errorParsing">报错解析</span></button>
                     </div>
-                    <div class="compile-output-hint">遇到警告/错误时自动切换至解析视图</div>
+                    <div class="compile-output-hint" data-i18n="panel.autoSwitchInfo">Automatically switches to parse view when warnings/errors are detected</div>
                 </div>
                 <div class="compile-output-body">
                     <div class="compile-pane compile-pane-raw active" data-pane="raw">
@@ -77,7 +77,7 @@ class CompilerManager {
                     </div>
                 </div>
             </div>
-            <div class="compile-output-resizer" title="拖拽调整高度"></div>
+            <div class="compile-output-resizer" data-i18n-title="panel.dragResize" title="拖拽调整高度"></div>
         `;
 
         const editorContainer = document.querySelector('.editor-container');
@@ -988,7 +988,7 @@ class CompilerManager {
             seen.add(key);
             items.push({
                 severity: diag.severity,
-                location: diag.location || '编译输出',
+                location: diag.location || (window.i18n ? window.i18n.t('compileOutput.title') : 'Compile Output'),
                 message: diag.message,
                 hint: translated || hint.title,
                 suggestion: hint.suggestion
@@ -1001,7 +1001,7 @@ class CompilerManager {
                 const hint = this.buildHintFromMessage(text);
                 items.push({
                     severity: 'error',
-                    location: '编译输出',
+                    location: window.i18n ? window.i18n.t('compileOutput.title') : 'Compile Output',
                     message: this.translateMessage(text),
                     hint: hint.title,
                     suggestion: hint.suggestion

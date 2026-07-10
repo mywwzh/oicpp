@@ -296,11 +296,11 @@ class TemplatesSettings {
             }
             
             if (result && result.success) {
-                this.showMessage('模板设置保存成功！', 'success');
+                this.showMessage((window.i18n ? window.i18n.t('templates.saveSuccess') : '模板设置保存成功！'), 'success');
                 logInfo('设置保存成功');
             } else {
                 const errorMsg = result ? result.error : '未知错误';
-                this.showMessage('保存设置失败：' + errorMsg, 'error');
+                this.showMessage((window.i18n ? window.i18n.t('templates.saveFail', {error: errorMsg}) : '保存设置失败：' + errorMsg), 'error');
                 logError('保存设置失败:', errorMsg);
             }
             
@@ -334,7 +334,7 @@ class TemplatesSettings {
                 }
                 
                 if (result && result.success) {
-                    this.showMessage('模板与片段已重置为默认设置', 'success');
+                    this.showMessage((window.i18n ? window.i18n.t('templates.resetSuccess') : '模板与片段已重置为默认设置'), 'success');
                     logInfo('设置重置成功');
                 } else {
                     this.showMessage('重置设置失败：' + (result ? result.error : '未知错误'), 'error');
@@ -433,7 +433,7 @@ class TemplatesSettings {
         const list = document.getElementById('snippets-list');
         if (!list) return;
         if (!this.snippets || this.snippets.length === 0) {
-            list.innerHTML = '<div style="opacity:.8; font-size:12px; padding:6px;">暂无片段。点击上方添加模板按钮添加代码片段。</div>';
+            list.innerHTML = '<div style="opacity:.8; font-size:12px; padding:6px;">' + (window.i18n ? window.i18n.t('templates.emptySnippetList') : 'No snippets yet. Click the Add button above to add a code snippet.') + '</div>';
             return;
         }
         const rows = this.snippets.map((s, i) => {
@@ -482,7 +482,7 @@ class TemplatesSettings {
             return;
         }
         
-        const templateContent = cppTemplateTextarea.value || '// 模板内容为空';
+        const templateContent = cppTemplateTextarea.value || (window.i18n ? window.i18n.t('templates.templateEmpty') : '// Template content is empty');
         
         const previewContent = document.getElementById('preview-content');
         if (previewContent) {

@@ -35,7 +35,7 @@
         if (list.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'quick-open-empty';
-            empty.textContent = '未找到匹配项';
+            empty.textContent = window.i18n ? window.i18n.t('panel.noMatch') : '未找到匹配项';
             results.appendChild(empty);
             return;
         }

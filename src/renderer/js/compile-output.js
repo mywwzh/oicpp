@@ -112,11 +112,14 @@ class CompileOutputManager {
     getStatusIndicator(status) {
         let className = 'ready';
         
-        if (status.includes('正在编译') || status.includes('编译中')) {
+        const compilingHint = window.i18n ? window.i18n.t('compileOutput.compiling') : '正在编译';
+        const successHint = window.i18n ? window.i18n.t('compileOutput.successSimple') : '成功';
+        const failHint = window.i18n ? window.i18n.t('compileOutput.failSimple') : '失败';
+        if (status.includes(compilingHint)) {
             className = 'compiling';
-        } else if (status.includes('成功')) {
+        } else if (status.includes(successHint) || status.includes('成功')) {
             className = 'success';
-        } else if (status.includes('失败') || status.includes('错误')) {
+        } else if (status.includes(failHint) || status.includes('失败') || status.includes('错误')) {
             className = 'error';
         }
         
@@ -155,76 +158,76 @@ class CompileOutputManager {
     startCompile(command) {
         this.show();
         this.clearMessages();
-        this.setStatus('正在编译...', command);
+        this.setStatus(window.i18n ? window.i18n.t('compileOutput.compiling') : '正在编译...', command);
         this.startTime = Date.now();
         
-        this.addMessage(`开始编译: ${command}`, 'info');
+        this.addMessage((window.i18n ? window.i18n.t('compileOutput.startCompile', { command }) : `开始编译: ${command}`), 'info');
     }
 
     onCompileSuccess(output = '', warnings = []) {
         const endTime = Date.now();
         const duration = this.startTime ? ((endTime - this.startTime) / 1000).toFixed(2) : '0.00';
         
-        this.setStatus(`编译成功 (${duration}s)`);
+        this.setStatus(window.i18n ? window.i18n.t('compileOutput.success', { time: duration }) : `Compilation successful (${duration}s)`);
         
         if (output && output.trim()) {
-            this.addMessage('编译输出:', 'info');
+            this.addMessage(window.i18n ? window.i18n.t('compileOutput.successOutput') : 'Compilation output:', 'info');
             this.addMessage(output, 'info');
         }
         
         if (warnings && warnings.length > 0) {
-            this.addMessage(`发现 ${warnings.length} 个警告:`, 'warning');
+            this.addMessage(window.i18n ? window.i18n.t('compileOutput.warningCount', { count: warnings.length }) : `Found ${warnings.length} warnings:`, 'warning');
             warnings.forEach(warning => {
                 this.addMessage(warning, 'warning');
             });
         }
         
-        this.addMessage(`编译成功完成，用时 ${duration} 秒`, 'success');
+        this.addMessage(window.i18n ? window.i18n.t('compileOutput.successDone', { time: duration }) : `Compilation completed successfully in ${duration} seconds`, 'success');
     }
 
     onCompileError(error, output = '') {
         const endTime = Date.now();
         const duration = this.startTime ? ((endTime - this.startTime) / 1000).toFixed(2) : '0.00';
         
-        this.setStatus(`编译失败 (${duration}s)`);
+        this.setStatus(window.i18n ? window.i18n.t('compileOutput.fail', { time: duration }) : `Compilation failed (${duration}s)`);
         
-        this.addMessage('编译失败:', 'error');
+        this.addMessage(window.i18n ? window.i18n.t('compileOutput.failSimple') + ':' : 'Compilation failed:', 'error');
         
         if (output && output.trim()) {
-            this.addMessage('编译器输出:', 'info');
+            this.addMessage(window.i18n ? window.i18n.t('compileOutput.failOutput') : 'Compiler output:', 'info');
             this.addMessage(output, 'info');
         }
         
         if (error && error.trim()) {
-            this.addMessage('错误信息:', 'error');
+            this.addMessage(window.i18n ? window.i18n.t('compileOutput.errorInfo') : 'Error information:', 'error');
             this.addMessage(error, 'error');
         }
         
-        this.addMessage(`编译失败，用时 ${duration} 秒`, 'error');
+        this.addMessage(window.i18n ? window.i18n.t('compileOutput.failDone', { time: duration }) : `Compilation failed in ${duration} seconds`, 'error');
     }
 
     onProgramStart() {
-        this.addMessage('正在运行程序...', 'info');
+        this.addMessage(window.i18n ? window.i18n.t('compileOutput.runningProgram') : 'Running program...', 'info');
     }
 
     onProgramOutput(output, exitCode = 0) {
         if (exitCode === 0) {
-            this.addMessage('程序运行完成', 'success');
+            this.addMessage(window.i18n ? window.i18n.t('compileOutput.programComplete') : 'Program execution completed', 'success');
             if (output && output.trim()) {
-                this.addMessage('程序输出:', 'info');
+                this.addMessage(window.i18n ? window.i18n.t('compileOutput.programOutput') : 'Program output:', 'info');
                 this.addMessage(output, 'info');
             }
         } else {
-            this.addMessage(`程序异常退出 (退出码: ${exitCode})`, 'error');
+                this.addMessage(window.i18n ? window.i18n.t('compileOutput.programExited', { code: exitCode }) : `Program exited abnormally (exit code: ${exitCode})`, 'error');
             if (output && output.trim()) {
-                this.addMessage('程序输出:', 'info');
+                this.addMessage(window.i18n ? window.i18n.t('compileOutput.programOutput') : 'Program output:', 'info');
                 this.addMessage(output, 'error');
             }
         }
     }
 
     onProgramError(error) {
-        this.addMessage('程序运行错误:', 'error');
+        this.addMessage((window.i18n ? window.i18n.t('compileOutput.programOutput') : 'Program run error:'), 'error');
         this.addMessage(error, 'error');
     }
 

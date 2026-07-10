@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>代码模板设置</title>
+    <title data-i18n="menu.templateSettings">模板设置</title>
     <link rel="stylesheet" href="../css/settings.css">
     <style>
         .template-info {
@@ -209,21 +209,21 @@
     <div class="settings-container">
         <div class="settings-layout">
             <div class="settings-sidebar">
-                <div class="sidebar-item active" data-target="tpl-section">文件模板</div>
-                <div class="sidebar-item" data-target="snippets-section">代码片段</div>
+                <div class="sidebar-item active" data-target="tpl-section" data-i18n="templates.templateTab">File Template</div>
+                <div class="sidebar-item" data-target="snippets-section" data-i18n="templates.snippetsTab">代码片段</div>
             </div>
             
             <div class="settings-main">
                 <!-- Template Section -->
                 <div id="tpl-section" class="settings-section active">
-                    <div class="section-title">文件模板</div>
+                    <div class="section-title" data-i18n="templates.templateTab">File Template</div>
                     <div class="template-info">
-                        <strong>说明：</strong>在这里可以编辑新建C++文件时使用的默认模板。模板支持标准的C++语法，保存后立即生效。
+                        <strong data-i18n="dialog.note">Note:</strong><span data-i18n="templates.templateDesc">Edit the default C++ template used when creating new files. Standard C++ syntax is supported. Changes take effect immediately.</span>
                     </div>
                     
                     <div class="setting-group">
-                        <label for="cpp-template">C++ 模板内容：</label>
-                        <textarea id="cpp-template" spellcheck="false" placeholder="在这里编辑 C++ 模板内容...">#include <bits/stdc++.h>
+                        <label for="cpp-template" data-i18n="templates.templateLabel">C++ Template Content:</label>
+                        <textarea id="cpp-template" spellcheck="false" data-i18n-placeholder="templates.templatePlaceholder" placeholder="在这里编辑 C++ 模板内容...">#include <bits/stdc++.h>
 
 using namespace std;
 
@@ -234,25 +234,25 @@ int main()
 }</textarea>
                         
                         <div class="template-preview">
-                            <button class="preview-btn" id="preview-template">预览模板</button>
+                            <button class="preview-btn" id="preview-template" data-i18n="templates.preview">预览模板</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- Snippets Section -->
                 <div id="snippets-section" class="settings-section">
-                    <div class="section-title">代码片段</div>
-                    <div class="template-info">
-                        <strong>关键字代码片段：</strong>在编辑器中输入关键词（如 sgt），自动补全将优先显示对应片段。
+                    <div class="section-title" data-i18n="templates.snippetsTab">代码片段</div>
+                    <div class="template-info" data-i18n="templates.snippetsInfo">
+                        <strong data-i18n="templates.snippetsInfoTitle">关键字代码片段：</strong>在编辑器中输入关键词（如 sgt），自动补全将优先显示对应片段。
                     </div>
                     <div class="setting-group">
                         <div class="btn-row">
-                            <button id="add-snippet" class="preview-btn">添加模板</button>
+                            <button id="add-snippet" class="preview-btn" data-i18n="templates.addSnippet">添加模板</button>
                         </div>
-                        <div class="hint" style="margin-top:8px;">提示：保存后主窗口即时生效；在编辑器中输入关键词即可看到补全。</div>
+                        <div class="hint" style="margin-top:8px;" data-i18n="templates.snippetsHint">提示：保存后主窗口即时生效；在编辑器中输入关键词即可看到补全。</div>
                     </div>
                     <div class="setting-group">
-                        <label>片段列表：</label>
+                        <label data-i18n="templates.snippetList">片段列表：</label>
                         <div id="snippets-list" class="snippets-list"></div>
                     </div>
                 </div>
@@ -260,9 +260,9 @@ int main()
         </div>
         
         <div class="settings-footer">
-            <button id="save-settings" class="btn btn-primary">保存</button>
-            <button id="cancel-settings" class="btn btn-secondary">取消</button>
-            <button id="reset-settings" class="btn btn-warning">重置默认</button>
+            <button id="save-settings" class="btn btn-primary" data-i18n="settings.save">保存</button>
+            <button id="cancel-settings" class="btn btn-secondary" data-i18n="settings.cancel">取消</button>
+            <button id="reset-settings" class="btn btn-warning" data-i18n="settings.reset">重置默认</button>
         </div>
     </div>
 
@@ -270,25 +270,25 @@ int main()
     <div id="snippet-dialog" class="modal-overlay" style="display:none;">
         <div class="modal-dialog" style="max-width:480px; max-height:90vh;">
             <div class="modal-header" style="padding:14px 20px;">
-                <h3 id="snippet-dialog-title" style="font-size:16px;">添加代码片段</h3>
+                <h3 id="snippet-dialog-title" style="font-size:16px;" data-i18n="templates.snippetDialogTitle">添加代码片段</h3>
                 <button id="close-snippet-dialog" class="modal-close">&times;</button>
             </div>
             <div class="modal-body" style="max-height:60vh; padding:16px 20px;">
                 <div class="setting-group" style="margin-bottom:12px;">
-                    <label for="snippet-dialog-keyword">关键词：</label>
-                    <input id="snippet-dialog-keyword" type="text" spellcheck="false" placeholder="关键词，如: sgt" style="width:100%; padding:6px 10px; border:1px solid var(--settings-input-border,#464647); border-radius:6px; background:var(--settings-input-bg,#1e1e1e); color:var(--settings-text,#ccc); box-sizing:border-box;">
+                    <label for="snippet-dialog-keyword" data-i18n="templates.snippetKeyword">关键词：</label>
+                    <input id="snippet-dialog-keyword" type="text" spellcheck="false" data-i18n-placeholder="templates.snippetKeywordPlaceholder" placeholder="关键词，如: sgt" style="width:100%; padding:6px 10px; border:1px solid var(--settings-input-border,#464647); border-radius:6px; background:var(--settings-input-bg,#1e1e1e); color:var(--settings-text,#ccc); box-sizing:border-box;">
                 </div>
                 <div class="setting-group" style="margin-bottom:12px;">
-                    <label for="snippet-dialog-desc">描述：</label>
-                    <input id="snippet-dialog-desc" type="text" spellcheck="false" placeholder="描述，如: 用户代码片段" style="width:100%; padding:6px 10px; border:1px solid var(--settings-input-border,#464647); border-radius:6px; background:var(--settings-input-bg,#1e1e1e); color:var(--settings-text,#ccc); box-sizing:border-box;">
+                    <label for="snippet-dialog-desc" data-i18n="templates.snippetDesc">描述：</label>
+                    <input id="snippet-dialog-desc" type="text" spellcheck="false" data-i18n-placeholder="templates.snippetDescPlaceholder" placeholder="描述，如: 用户代码片段" style="width:100%; padding:6px 10px; border:1px solid var(--settings-input-border,#464647); border-radius:6px; background:var(--settings-input-bg,#1e1e1e); color:var(--settings-text,#ccc); box-sizing:border-box;">
                 </div>
                 <div class="setting-group" style="margin-bottom:12px;">
-                    <label for="snippet-dialog-content">片段内容：</label>
-                    <textarea id="snippet-dialog-content" spellcheck="false" placeholder="支持占位符：${1:var}" rows="6" style="width:100%; min-height:120px; padding:10px; border:1px solid var(--settings-input-border,#464647); border-radius:8px; background:var(--settings-input-bg,#1e1e1e); color:var(--settings-text,#ccc); font-family:Consolas,Monaco,'Courier New',monospace; font-size:13px; resize:vertical; box-sizing:border-box;"></textarea>
+                    <label for="snippet-dialog-content" data-i18n="templates.snippetContent">片段内容：</label>
+                    <textarea id="snippet-dialog-content" spellcheck="false" data-i18n-placeholder="templates.snippetContentPlaceholder" placeholder="支持占位符：${1:var}" rows="6" style="width:100%; min-height:120px; padding:10px; border:1px solid var(--settings-input-border,#464647); border-radius:8px; background:var(--settings-input-bg,#1e1e1e); color:var(--settings-text,#ccc); font-family:Consolas,Monaco,'Courier New',monospace; font-size:13px; resize:vertical; box-sizing:border-box;"></textarea>
                 </div>
                 <div class="btn-row" style="display:flex; gap:10px; justify-content:flex-end; margin-top:12px; padding-bottom:4px;">
-                    <button id="cancel-snippet-btn" class="btn btn-secondary" style="background:#6c757d; color:#fff; border:none; padding:6px 18px; border-radius:6px; cursor:pointer; font-size:13px;">取消</button>
-                    <button id="confirm-snippet-btn" class="preview-btn" style="background:linear-gradient(135deg,#17a2b8 0%,#138496 100%); padding:6px 18px; font-size:13px;">确认添加</button>
+                    <button id="cancel-snippet-btn" class="btn btn-secondary" style="background:#6c757d; color:#fff; border:none; padding:6px 18px; border-radius:6px; cursor:pointer; font-size:13px;" data-i18n="templates.snippetCancel">取消</button>
+                    <button id="confirm-snippet-btn" class="preview-btn" style="background:linear-gradient(135deg,#17a2b8 0%,#138496 100%); padding:6px 18px; font-size:13px;" data-i18n="templates.snippetConfirm">确认添加</button>
                 </div>
             </div>
         </div>
@@ -297,7 +297,7 @@ int main()
     <div id="preview-dialog" class="modal-overlay">
         <div class="modal-dialog">
             <div class="modal-header">
-                <h3>模板预览</h3>
+                <h3 data-i18n="templates.previewDialogTitle">模板预览</h3>
                 <button id="close-preview" class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
@@ -321,6 +321,14 @@ int main()
         });
     </script>
     <script src="../js/electron-helper.js"></script>
+    <script src="../js/i18n.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', async function() {
+        if (window.i18n && typeof window.i18n.init === 'function') {
+            await window.i18n.init();
+        }
+    });
+    </script>
     <script src="templates.js"></script>
 </body>
 </html>

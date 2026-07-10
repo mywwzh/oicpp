@@ -468,9 +468,9 @@ class SidebarManager {
                 icon.setAttribute('title', '云文件仅支持基础编辑与手动保存');
             } else {
                 icon.classList.remove('disabled');
-                if (panel === 'debug') icon.setAttribute('title', '调试');
-                if (panel === 'samples') icon.setAttribute('title', '样例测试器');
-                if (panel === 'compare') icon.setAttribute('title', '代码对拍器');
+                if (panel === 'debug') icon.setAttribute('title', window.i18n ? window.i18n.t('sidebar.debug') : 'Debug');
+                if (panel === 'samples') icon.setAttribute('title', window.i18n ? window.i18n.t('sidebar.sampleTester') : 'Sample Tester');
+                if (panel === 'compare') icon.setAttribute('title', window.i18n ? window.i18n.t('sidebar.codeComparer') : 'Code Comparer');
             }
         });
     }

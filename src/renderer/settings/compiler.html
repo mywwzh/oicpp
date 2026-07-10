@@ -3,74 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>编译器设置</title>
+    <title data-i18n="compiler.settings">编译器设置</title>
     <link rel="stylesheet" href="../css/settings.css">
 </head>
 <body>
     <div class="settings-container">
         <div class="settings-layout">
             <div class="settings-sidebar">
-                <div class="sidebar-item active" data-target="compiler-section">编译器配置</div>
-                <div class="sidebar-item" data-target="testlib-section">Testlib 配置</div>
+                <div class="sidebar-item active" data-target="compiler-section" data-i18n="compiler.title">编译器配置</div>
+                <div class="sidebar-item" data-target="testlib-section" data-i18n="compiler.testlibTitle">Testlib 配置</div>
             </div>
             
             <div class="settings-main">
                 <div id="compiler-section" class="settings-section active">
-                    <div class="section-title">编译器配置</div>
+                    <div class="section-title" data-i18n="compiler.title">编译器配置</div>
                     
                     <div class="setting-group">
-                        <label for="compiler-path">编译器路径 (g++.exe)</label>
+                        <label for="compiler-path" data-i18n="compiler.compilerPath">编译器路径 (g++.exe)</label>
                         <div class="input-group">
-                            <input type="text" id="compiler-path" placeholder="请选择 g++.exe 路径" readonly>
-                            <button id="browse-compiler" class="btn btn-secondary">浏览本地</button>
-                            <button id="install-compiler" class="btn btn-primary">在线安装</button>
+                            <input type="text" id="compiler-path" data-i18n-placeholder="compiler.compilerPathPlaceholder" placeholder="请选择 g++.exe 路径" readonly>
+                            <button id="browse-compiler" class="btn btn-secondary" data-i18n="compiler.browseLocal">浏览本地</button>
+                            <button id="install-compiler" class="btn btn-primary" data-i18n="compiler.installOnline">在线安装</button>
                         </div>
-                        <div class="hint">选择 MinGW-w64 或其他 GCC 编译器的 g++.exe 文件</div>
+                        <div class="hint" data-i18n="compiler.compilerPathDesc">选择 MinGW-w64 或其他 GCC 编译器的 g++.exe 文件</div>
                     </div>
 
                     <div class="setting-group">
-                        <label for="compiler-options">编译选项</label>
-                        <input type="text" id="compiler-options" value="-std=c++14 -O2 -static" placeholder="例如: -std=c++14 -O2 -Wall">
-                        <div class="hint">常用的编译参数，多个参数用空格分隔</div>
+                        <label for="compiler-options" data-i18n="compiler.compilerArgs">编译选项</label>
+                        <input type="text" id="compiler-options" value="-std=c++14 -O2 -static" data-i18n-placeholder="compiler.compilerArgsPlaceholder" placeholder="例如: -std=c++14 -O2 -Wall">
+                        <div class="hint" data-i18n="compiler.compilerArgsDesc">常用的编译参数，多个参数用空格分隔</div>
                     </div>
 
                     <div class="setting-group">
-                        <label for="run-mode">运行方式</label>
+                        <label for="run-mode" data-i18n="compiler.runMode">Run Mode</label>
                         <select id="run-mode">
-                            <option value="popup">弹窗运行</option>
-                            <option value="integrated-terminal">内置终端运行</option>
+                            <option value="popup" data-i18n="compiler.runModePopup">Popup Window</option>
+                            <option value="integrated-terminal" data-i18n="compiler.runModeIntegrated">Integrated Terminal</option>
                         </select>
-                        <div class="hint">内置终端运行会新建终端并自动输入程序路径后回车执行</div>
+                        <div class="hint" data-i18n="compiler.runModeDesc">Integrated terminal mode creates a new terminal and runs the program automatically</div>
                     </div>
 
                     <div class="setting-group">
-                        <label for="python-interpreter-path">Python 解释器路径</label>
+                        <label for="python-interpreter-path" data-i18n="compiler.pythonInterpreter">Python 解释器路径</label>
                         <div class="input-group">
-                            <input type="text" id="python-interpreter-path" placeholder="请选择 python 解释器路径" readonly>
-                            <button id="browse-python-interpreter" class="btn btn-secondary">浏览本地</button>
+                            <input type="text" id="python-interpreter-path" data-i18n-placeholder="compiler.pythonInterpreterPlaceholder" placeholder="请选择 python 解释器路径" readonly>
+                            <button id="browse-python-interpreter" class="btn btn-secondary" data-i18n="compiler.browseLocal">浏览本地</button>
                         </div>
-                        <div class="hint">当对拍器数据生成器为 .py 文件时使用此解释器运行</div>
+                        <div class="hint"><span data-i18n="compiler.pythonHint">当对拍器数据生成器为 .py 文件时使用此解释器运行</span></div>
                     </div>
 
                 </div>
 
                 <div id="testlib-section" class="settings-section">
-                    <div class="section-title">Testlib 配置</div>
+                    <div class="section-title" data-i18n="compiler.testlibTitle">Testlib 配置</div>
                     
                     <div class="setting-group">
-                        <label for="testlib-path">Testlib 头文件路径</label>
+                        <label for="testlib-path" data-i18n="compiler.testlibPath">Testlib 头文件路径</label>
                         <div class="input-group">
-                            <input type="text" id="testlib-path" placeholder="testlib.h 所在目录" readonly>
-                            <button id="browse-testlib" class="btn btn-secondary">浏览本地</button>
-                            <button id="install-testlib" class="btn btn-primary">在线安装</button>
+                            <input type="text" id="testlib-path" data-i18n-placeholder="compiler.testlibPathPlaceholder" placeholder="testlib.h 所在目录" readonly>
+                            <button id="browse-testlib" class="btn btn-secondary" data-i18n="compiler.browseLocal">浏览本地</button>
+                            <button id="install-testlib" class="btn btn-primary" data-i18n="compiler.downloadTestlib">在线安装</button>
                         </div>
-                        <div class="hint">用于编写 Special Judge 的 testlib.h 库</div>
+                        <div class="hint" data-i18n="compiler.testlibPathDesc">用于编写 Special Judge 的 testlib.h 库</div>
                     </div>
 
                     <div class="setting-group">
-                        <label>环境检测</label>
+                        <label data-i18n="compiler.envCheck">环境检测</label>
                         <div class="test-testlib">
-                            <button id="test-testlib" class="btn btn-secondary">测试 Testlib 环境</button>
+                            <button id="test-testlib" class="btn btn-secondary" data-i18n="compiler.testTestlib">测试 Testlib 环境</button>
                             <div id="testlib-test-result" class="test-result"></div>
                         </div>
                     </div>
@@ -79,20 +79,20 @@
         </div>
 
         <div class="settings-footer">
-            <button id="save-settings" class="btn btn-primary">保存设置</button>
-            <button id="cancel-settings" class="btn btn-secondary">取消</button>
-            <button id="reset-settings" class="btn btn-warning">重置默认</button>
+            <button id="save-settings" class="btn btn-primary" data-i18n="settings.save">保存设置</button>
+            <button id="cancel-settings" class="btn btn-secondary" data-i18n="settings.cancel">取消</button>
+            <button id="reset-settings" class="btn btn-warning" data-i18n="settings.reset">重置默认</button>
         </div>
     </div>
 
     <div id="install-dialog" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>安装编译器</h3>
+                <h3 data-i18n="compiler.downloadCompiler">安装编译器</h3>
                 <button id="close-install-dialog" class="close-btn">&times;</button>
             </div>
             <div class="modal-body">
-                <p>选择要安装的编译器：</p>
+                <p data-i18n="compiler.downloadCompiler">选择要安装的编译器：</p>
                 <div id="compiler-list" class="compiler-list">
                 </div>
             </div>
@@ -102,11 +102,11 @@
     <div id="testlib-install-dialog" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>安装Testlib</h3>
+                <h3 data-i18n="compiler.installTestlib">安装Testlib</h3>
                 <button id="close-testlib-install-dialog" class="close-btn">&times;</button>
             </div>
             <div class="modal-body">
-                <p>选择要安装的Testlib版本：</p>
+                <p data-i18n="compiler.selectTestlibVersion">选择要安装的Testlib版本：</p>
                 <div id="testlib-list" class="compiler-list">
                 </div>
             </div>
@@ -115,6 +115,16 @@
 
     <div id="message-container"></div>
 
+    <script src="../js/electron-helper.js"></script>
+    <script src="../js/i18n.js"></script>
+    <script>
+    // Initialize i18n for this settings page
+    document.addEventListener('DOMContentLoaded', async function() {
+        if (window.i18n && typeof window.i18n.init === 'function') {
+            await window.i18n.init();
+        }
+    });
+    </script>
     <script src="compiler.js"></script>
 </body>
 </html>

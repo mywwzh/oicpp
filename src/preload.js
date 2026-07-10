@@ -572,6 +572,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+    getLanguage: () => ipcRenderer.invoke('get-language'),
+    getLanguageFile: (langCode) => ipcRenderer.invoke('get-language-file', langCode),
+    getAvailableLanguages: () => ipcRenderer.invoke('get-available-languages'),
+    onLanguageChanged: (callback) => ipcRenderer.on('language-changed', (_event, langCode) => callback && callback(langCode)),
+
     startIdeLogin: () => ipcRenderer.invoke('ide-login-start'),
     getIdeLoginStatus: () => ipcRenderer.invoke('ide-login-status'),
     logoutIdeAccount: () => ipcRenderer.invoke('ide-logout'),

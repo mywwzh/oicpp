@@ -27,51 +27,51 @@ class DebugPanel {
         wrap.className = 'debug-mini-wrap';
         wrap.innerHTML = `
       <div class="debug-toolbar">
-                <button id="dbg-start" class="icon-btn" title="开始" aria-label="开始">
+                <button id="dbg-start" class="icon-btn" data-i18n-title="debug.start" title="开始" aria-label="开始">
                     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
                         <path fill="currentColor" d="M5 3.5v9l7-4.5z"/>
                     </svg>
                 </button>
-                <button id="dbg-continue" class="icon-btn" title="继续(F6)" aria-label="继续">
+                <button id="dbg-continue" class="icon-btn" data-i18n-title="debug.continue" title="继续(F6)" aria-label="继续">
                     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
                         <path fill="currentColor" d="M3 3h2v10H3V3zm4.5 0 6 5-6 5V3z"/>
                     </svg>
                 </button>
-                <button id="dbg-step-over" class="icon-btn" title="步过(F7)" aria-label="步过">
+                <button id="dbg-step-over" class="icon-btn" data-i18n-title="debug.stepOver" title="步过(F7)" aria-label="步过">
                     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
                         <path fill="currentColor" d="M2 3h1.4v10H2V3zm2.8 5 6.6-3.8v7.6L4.8 8z"/>
                     </svg>
                 </button>
-                <button id="dbg-step-into" class="icon-btn" title="步入(F8)" aria-label="步入">
+                <button id="dbg-step-into" class="icon-btn" data-i18n-title="debug.stepInto" title="步入(F8)" aria-label="步入">
                     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
                         <path fill="currentColor" d="M8 2v5H5l3 5 3-5H8V2zM3 13h10v1.5H3z"/>
                     </svg>
                 </button>
-                <button id="dbg-step-out" class="icon-btn" title="步出(Shift+F8)" aria-label="步出">
+                <button id="dbg-step-out" class="icon-btn" data-i18n-title="debug.stepOut" title="步出(Shift+F8)" aria-label="步出">
                     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
                         <path fill="currentColor" d="M8 14V9h3L8 4l-3 5h3v5zM3 2h10V3.5H3z"/>
                     </svg>
                 </button>
-                <button id="dbg-stop" class="icon-btn" title="停止" aria-label="停止">
+                <button id="dbg-stop" class="icon-btn" data-i18n-title="debug.stop" title="停止" aria-label="停止">
                     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
                         <rect x="3" y="3" width="10" height="10" rx="1.2" fill="currentColor"/>
                     </svg>
                 </button>
         <div class="flex-spacer"></div>
-        <input id="dbg-watch-input" class="debug-watch-input" placeholder="添加监视表达式..."/>
-        <button id="dbg-add-watch" class="icon-btn" title="添加监视">＋</button>
+        <input id="dbg-watch-input" class="debug-watch-input" data-i18n-placeholder="debug.watchPlaceholder" placeholder="添加监视表达式..."/>
+        <button id="dbg-add-watch" class="icon-btn" data-i18n-title="debug.addWatch" title="添加监视">＋</button>
       </div>
       <div class="debug-split">
         <div class="left">
-          <div class="debug-section"><h4 class="debug-section-title">变量</h4>
+          <div class="debug-section"><h4 class="debug-section-title" data-i18n="debug.variables">变量</h4>
             <div class="variables-panel">
               <div class="variable-category">
-                <div class="category-header" data-cat="local"><span class="expand-arrow">▼</span> 局部变量</div>
-                <div class="category-content"><div id="local-variables"><div class="waiting-debug-message">等待开始调试...</div></div></div>
+                <div class="category-header" data-cat="local"><span class="expand-arrow">▼</span> <span data-i18n="debug.localVariables">局部变量</span></div>
+                <div class="category-content"><div id="local-variables"><div class="waiting-debug-message" data-i18n="debug.waitingDebug">等待开始调试...</div></div></div>
               </div>
               <div class="variable-category">
-                <div class="category-header" data-cat="watch"><span class="expand-arrow">▼</span> 监视</div>
-                <div class="category-content"><div id="watch-variables"><div class="no-debug-message">暂无</div></div></div>
+                <div class="category-header" data-cat="watch"><span class="expand-arrow">▼</span> <span data-i18n="debug.watch">监视</span></div>
+                <div class="category-content"><div id="watch-variables"><div class="no-debug-message" data-i18n="debug.noItems">暂无</div></div></div>
               </div>
             </div>
           </div>
@@ -324,7 +324,7 @@ class DebugPanel {
         if (!container) return;
         const names = Object.keys(variables || {});
         if (names.length === 0) {
-            const emptyText = scope === 'watch' ? '暂无' : '无';
+            const emptyText = scope === 'watch' ? (window.i18n ? window.i18n.t('debug.noItems') : '暂无') : (window.i18n ? window.i18n.t('debug.none') : '无');
             container.innerHTML = `<div class="no-debug-message">${emptyText}</div>`;
             return;
         }
@@ -439,7 +439,7 @@ class DebugPanel {
         if (isRoot && scope === 'watch') {
             const rm = document.createElement('button');
             rm.className = 'remove-watch-btn';
-            rm.title = '移除';
+            rm.title = window.i18n ? window.i18n.t('debug.remove') : '移除';
             rm.textContent = '×';
             const watchExpression = (data && typeof data.expression === 'string' && data.expression)
                 ? String(data.expression)
@@ -533,7 +533,7 @@ class DebugPanel {
             return;
         }
 
-        childrenWrap.innerHTML = '<div class="no-debug-message">加载中…</div>';
+        childrenWrap.innerHTML = '<div class="no-debug-message">' + (window.i18n ? window.i18n.t('debug.loading') : '加载中…') + '</div>';
         const payload = {
             scope,
             path,
@@ -601,12 +601,12 @@ class DebugPanel {
         if (forceVisible) {
             button.textContent = arrow;
         } else if (withLabel) {
-            const text = expanded ? '收起' : '展开';
+            const text = expanded ? (window.i18n ? window.i18n.t('debug.collapse') : '收起') : (window.i18n ? window.i18n.t('debug.expand') : '展开');
             button.innerHTML = `<span class="arrow">${arrow}</span><span class="label">${text}</span>`;
         } else {
             button.textContent = arrow;
         }
-        button.setAttribute('aria-label', expanded ? '折叠变量' : '展开变量');
+        button.setAttribute('aria-label', expanded ? (window.i18n ? window.i18n.t('debug.collapseVar') : '折叠变量') : (window.i18n ? window.i18n.t('debug.expandVar') : '展开变量'));
     }
 
     _shouldForceToggle(scope, data, elementCount) {
@@ -656,7 +656,7 @@ class DebugPanel {
         if (list.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'no-debug-message';
-            empty.textContent = '无子项';
+            empty.textContent = window.i18n ? window.i18n.t('debug.noChildren') : '无子项';
             container.appendChild(empty);
             return;
         }
@@ -670,10 +670,10 @@ class DebugPanel {
                 more.className = 'variable-item more-items';
                 const label = document.createElement('span');
                 label.className = 'variable-name';
-                label.textContent = child.name || '更多…';
+                label.textContent = child.name || (window.i18n ? window.i18n.t('debug.more') : '更多…');
                 const val = document.createElement('span');
                 val.className = 'variable-value';
-                val.textContent = child.value || '点击加载更多';
+                val.textContent = child.value || (window.i18n ? window.i18n.t('debug.clickToLoad') : '点击加载更多');
                 more.appendChild(label);
                 more.appendChild(val);
 
@@ -683,7 +683,7 @@ class DebugPanel {
                     const parentKey = this._makeNodeKey(scope, rootName, parentPath);
                     if (this.loadingMore.has(parentKey)) return;
                     this.loadingMore.add(parentKey);
-                    val.textContent = '加载中…';
+                    val.textContent = window.i18n ? window.i18n.t('debug.loading') : '加载中…';
                     const latestParent = this._getVariableNode(scope, rootName, parentPath) || parentData || {};
                     const nextIndex = Number.isFinite(child.nextIndex) ? child.nextIndex : loadedCount;
                     const count = Number.isFinite(child.chunkSize) && child.chunkSize > 0 ? child.chunkSize : 100;
@@ -738,14 +738,14 @@ class DebugPanel {
         const c = this.root.querySelector('#call-stack');
         if (!c) return;
         c.innerHTML = '';
-        if (!Array.isArray(stack) || stack.length === 0) { c.innerHTML = '<div class="no-debug-message">无</div>'; return; }
+        if (!Array.isArray(stack) || stack.length === 0) { c.innerHTML = '<div class="no-debug-message">' + (window.i18n ? window.i18n.t('debug.none') : '无') + '</div>'; return; }
         for (let i = 0; i < stack.length; i++) {
             const f = stack[i];
             const el = document.createElement('div');
             el.className = 'callstack-item';
             el.innerHTML = `
-        <div class="frame-info"><span class="frame-index">#${i}</span><span class="frame-function">${f.function || '未知函数'}</span></div>
-        <div class="frame-location"><span class="frame-file">${f.file || '未知文件'}</span>${f.line ? `<span class="frame-line">:${f.line}</span>` : ''}</div>`;
+        <div class="frame-info"><span class="frame-index">#${i}</span><span class="frame-function">${f.function || (window.i18n ? window.i18n.t('debug.unknownFunction') : '未知函数')}</span></div>
+        <div class="frame-location"><span class="frame-file">${f.file || (window.i18n ? window.i18n.t('debug.unknownFile') : '未知文件')}</span>${f.line ? `<span class="frame-line">:${f.line}</span>` : ''}</div>`;
             c.appendChild(el);
         }
     }
@@ -763,7 +763,8 @@ class DebugPanel {
         }
         if (data.isArray || data.isContainer) {
             const cnt = data.elementCount != null ? data.elementCount : '?';
-            display = `${data.isArray ? '数组' : '容器'}[${cnt}] ${display}`;
+            const typeLabel = data.isArray ? (window.i18n ? window.i18n.t('debug.array') : '数组') : (window.i18n ? window.i18n.t('debug.container') : '容器');
+            display = `${typeLabel}[${cnt}] ${display}`;
         }
         if (display.length > 60) display = display.slice(0, 57) + '...';
         return display;

@@ -44,13 +44,13 @@ class TitlebarManager {
                 </div>
                 <div class="titlebar-right">
                     <div class="titlebar-controls">
-                        <button class="titlebar-button minimize" title="最小化">
+                        <button class="titlebar-button minimize" data-i18n-title="titlebar.minimize" title="最小化">
                             <span class="icon">&#x2212;</span>
                         </button>
-                        <button class="titlebar-button maximize" title="最大化">
+                        <button class="titlebar-button maximize" data-i18n-title="titlebar.maximize" title="最大化">
                             <span class="icon">&#x2610;</span>
                         </button>
-                        <button class="titlebar-button close" title="关闭">
+                        <button class="titlebar-button close" data-i18n-title="titlebar.close" title="关闭">
                             <span class="icon">&#x2715;</span>
                         </button>
                     </div>
@@ -158,13 +158,13 @@ class TitlebarManager {
             const listHtml = shown
                 .map(name => `- ${this._escapeHtml(name)}`)
                 .join('<br>');
-            const moreHtml = moreCount > 0 ? `<br>... 还有 ${moreCount} 个文件` : '';
+            const moreHtml = moreCount > 0 ? `<br>${window.i18n ? window.i18n.t('dialog.unsavedFilesMore', { count: moreCount }) : '... 还有 ' + moreCount + ' 个文件'}` : '';
 
-            const message = `检测到 ${unsavedFiles.length} 个未保存文件：<br>${listHtml}${moreHtml}<br><br>请选择如何处理这些修改。`;
-            const result = await window.dialogManager.showActionDialog('确认退出', message, [
-                { id: 'save', label: '保存', className: 'dialog-btn-confirm' },
-                { id: 'discard', label: '丢弃', className: 'dialog-btn-cancel' },
-                { id: 'cancel', label: '取消' }
+            const message = window.i18n ? window.i18n.t('dialog.unsavedFiles', { count: unsavedFiles.length, list: listHtml, more: moreHtml }) : `检测到 ${unsavedFiles.length} 个未保存文件：<br>${listHtml}${moreHtml}<br><br>请选择如何处理这些修改。`;
+            const result = await window.dialogManager.showActionDialog(window.i18n ? window.i18n.t('dialog.confirmQuit') : '确认退出', message, [
+                { id: 'save', label: window.i18n ? window.i18n.t('dialog.save') : '保存', className: 'dialog-btn-confirm' },
+                { id: 'discard', label: window.i18n ? window.i18n.t('dialog.discard') : '丢弃', className: 'dialog-btn-cancel' },
+                { id: 'cancel', label: window.i18n ? window.i18n.t('dialog.cancel') : '取消' }
             ]);
 
             if (result === 'save') {
@@ -228,10 +228,10 @@ class TitlebarManager {
             if (svg) {
                 if (this.isMaximized) {
                     svg.setAttribute('d', 'M2 2h6v6H2V2zM4 4h6v6H4V4z');
-                    maximizeBtn.title = '还原';
+                    maximizeBtn.title = window.i18n ? window.i18n.t('titlebar.restore') : '还原';
                 } else {
                     svg.setAttribute('d', 'M2 2h8v8H2V2z');
-                    maximizeBtn.title = '最大化';
+                    maximizeBtn.title = window.i18n ? window.i18n.t('titlebar.maximize') : '最大化';
                 }
             }
         }

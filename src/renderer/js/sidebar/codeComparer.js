@@ -48,7 +48,7 @@ class CodeComparer {
     }
 
     async promptMissingPythonInterpreter(task) {
-        this.showTaskCompileError(task, 'settings', '请先设置 Python 解释器路径');
+        this.showTaskCompileError(task, 'settings', window.i18n ? window.i18n.t('compare.setPythonFirst') : 'Please set the Python interpreter path first');
         try {
             await window.electronAPI?.openCompilerSettings?.();
         } catch (error) {
@@ -80,7 +80,7 @@ class CodeComparer {
                     shouldStop: false,
                     currentTest: 0,
                     totalTests: 0,
-                    statusText: '准备中',
+                    statusText: (window.i18n ? window.i18n.t('compare.ready') : 'Ready'),
                     mode: 'idle', // idle | running | error | complete
                     errorResult: null,
                     warningMessage: null
@@ -349,10 +349,10 @@ class CodeComparer {
     async browseStandardCode() {
         try {
             const result = await window.electronAPI.showOpenDialog({
-                title: '选择标准/暴力代码文件',
+                title: window.i18n ? window.i18n.t('compare.selectStdCode') : 'Select Standard/Brute Force Code File',
                 filters: [
-                    { name: 'C++ 文件', extensions: ['cpp', 'cc', 'cxx', 'c'] },
-                    { name: '所有文件', extensions: ['*'] }
+                    { name: window.i18n ? window.i18n.t('compare.cppFilter') : 'C++ Files', extensions: ['cpp', 'cc', 'cxx', 'c'] },
+                    { name: window.i18n ? window.i18n.t('compare.allFilter') : 'All Files', extensions: ['*'] }
                 ],
                 properties: ['openFile']
             });
@@ -379,10 +379,10 @@ class CodeComparer {
             }
 
             const result = await window.electronAPI.showOpenDialog({
-                title: '选择要对拍的代码文件',
+                title: window.i18n ? window.i18n.t('compare.selectTestCode') : 'Select Code to Compare',
                 filters: [
-                    { name: 'C++ 文件', extensions: ['cpp', 'cc', 'cxx', 'c'] },
-                    { name: '所有文件', extensions: ['*'] }
+                    { name: window.i18n ? window.i18n.t('compare.cppFilter') : 'C++ Files', extensions: ['cpp', 'cc', 'cxx', 'c'] },
+                    { name: window.i18n ? window.i18n.t('compare.allFilter') : 'All Files', extensions: ['*'] }
                 ],
                 properties: ['openFile']
             });
@@ -419,9 +419,9 @@ class CodeComparer {
     async browseGenerator() {
         try {
             const result = await window.electronAPI.showOpenDialog({
-                title: '选择数据生成器文件',
+                title: window.i18n ? window.i18n.t('compare.selectGenerator') : 'Select Data Generator File',
                 filters: [
-                    { name: '数据生成器文件', extensions: ['cpp', 'cc', 'cxx', 'c', 'py'] },
+                    { name: window.i18n ? window.i18n.t('compare.genFilter') : 'Generator Files', extensions: ['cpp', 'cc', 'cxx', 'c', 'py'] },
                     { name: '所有文件', extensions: ['*'] }
                 ],
                 properties: ['openFile']
@@ -444,10 +444,10 @@ class CodeComparer {
     async browseSpjFile() {
         try {
             const result = await window.electronAPI.showOpenDialog({
-                title: '选择Special Judge文件',
+                title: window.i18n ? window.i18n.t('compare.selectSpjFile') : 'Select Special Judge File',
                 filters: [
-                    { name: 'C++ 文件', extensions: ['cpp', 'cc', 'cxx', 'c'] },
-                    { name: '所有文件', extensions: ['*'] }
+                    { name: window.i18n ? window.i18n.t('compare.cppFilter') : 'C++ Files', extensions: ['cpp', 'cc', 'cxx', 'c'] },
+                    { name: window.i18n ? window.i18n.t('compare.allFilter') : 'All Files', extensions: ['*'] }
                 ],
                 properties: ['openFile']
             });
@@ -472,9 +472,9 @@ class CodeComparer {
     updateFilePath(elementId, filePath) {
         const element = document.getElementById(elementId);
         if (element) {
-            const value = (filePath && String(filePath).trim()) ? String(filePath) : '未选择文件';
+            const value = (filePath && String(filePath).trim()) ? String(filePath) : (window.i18n ? window.i18n.t('compare.noFile') : 'No file selected');
             element.textContent = value;
-            if (value === '未选择文件') {
+            if (value === 'No file selected' || value === '未选择文件') {
                 element.classList.remove('selected');
             } else {
                 element.classList.add('selected');
@@ -522,7 +522,7 @@ class CodeComparer {
 
         if (task.state.mode === 'running') {
             this.showStatus();
-            this.updateStatusText(task.state.statusText || '运行中');
+            this.updateStatusText(task.state.statusText || (window.i18n ? window.i18n.t('compare.running') : 'Running...'));
             this.updateProgress(task.state.currentTest, task.state.totalTests);
         } else if (task.state.mode === 'error') {
             this.showError(task.state.errorResult);
@@ -540,7 +540,7 @@ class CodeComparer {
 
         if (!this.testCodePath) {
             const task = this.getActiveTask();
-            this.showTaskCompileError(task, 'general', '请先选择要对拍的代码文件');
+            this.showTaskCompileError(task, 'general', window.i18n ? window.i18n.t('compare.selectTestCodeFirst') : 'Please select the code to compare first');
             return;
         }
 
@@ -550,12 +550,12 @@ class CodeComparer {
         this.syncInstanceConfigToTask(task);
 
         if (!task.config.standardCodePath || !task.config.testCodePath || !task.config.generatorPath) {
-            this.showTaskCompileError(task, 'general', '请先选择所有必要的文件（标准代码、测试代码、数据生成器）');
+            this.showTaskCompileError(task, 'general', window.i18n ? window.i18n.t('compare.selectAllFilesFirst') : 'Please select all required files (standard code, test code, data generator)');
             return;
         }
 
         if (task.state.isRunning) {
-            this.showTaskCompileError(task, 'general', '该文件的对拍器正在运行');
+            this.showTaskCompileError(task, 'general', window.i18n ? window.i18n.t('compare.taskRunning') : 'A comparison task is already running for this file');
             return;
         }
 
@@ -567,7 +567,7 @@ class CodeComparer {
         try {
             const settings = await window.electronAPI.getAllSettings();
             if (!settings || !settings.compilerPath) {
-                this.showTaskCompileError(task, 'general', '请先设置编译器路径');
+                this.showTaskCompileError(task, 'general', window.i18n ? window.i18n.t('compare.setCompilerFirst') : 'Please set the compiler path first');
                 return;
             }
             if (this.isPythonGenerator(task.config.generatorPath) && !String(settings.pythonInterpreterPath || '').trim()) {
@@ -576,7 +576,7 @@ class CodeComparer {
             }
         } catch (error) {
             logError('获取编译器设置失败:', error);
-            this.showTaskCompileError(task, 'general', '无法获取编译器设置');
+            this.showTaskCompileError(task, 'general', window.i18n ? window.i18n.t('compare.noCompilerSettings') : 'Cannot get compiler settings');
             return;
         }
 
@@ -599,7 +599,7 @@ class CodeComparer {
         task.state.shouldStop = false;
         task.state.errorResult = null;
         task.state.warningMessage = null;
-        task.state.statusText = '准备中';
+        task.state.statusText = (window.i18n ? window.i18n.t('compare.ready') : 'Ready');
         task.state.mode = 'running';
 
         this.setActiveTaskKey(task.key, { syncTestCodePath: true });
@@ -613,7 +613,7 @@ class CodeComparer {
 
         this.runTask(task, effectiveTimeLimit, workerCount, maxParallel).catch((error) => {
             logError('对拍过程出错:', error);
-            this.showTaskCompileError(task, 'general', '对拍过程出错: ' + (error?.message || String(error)));
+            this.showTaskCompileError(task, 'general', (window.i18n ? window.i18n.t('compare.compareError') : 'Comparison error: ') + (error?.message || String(error)));
         });
     }
 
@@ -665,7 +665,7 @@ class CodeComparer {
             let generatorExe = null;
             let generatorRunTarget = null;
 
-            this.updateTaskStatus(task, '编译标准程序...');
+            this.updateTaskStatus(task, window.i18n ? window.i18n.t('compare.compileStd') : 'Compiling standard program...');
             const stdResult = await window.electronAPI.compileFile({
                 inputFile: task.config.standardCodePath,
                 outputFile: stdExe,
@@ -679,7 +679,7 @@ class CodeComparer {
                 return null;
             }
 
-            this.updateTaskStatus(task, '编译测试程序...');
+            this.updateTaskStatus(task, window.i18n ? window.i18n.t('compare.compileTest') : 'Compiling test program...');
             const testResult = await window.electronAPI.compileFile({
                 inputFile: task.config.testCodePath,
                 outputFile: testExe,
@@ -702,14 +702,14 @@ class CodeComparer {
                 }
                 const interpreterExists = await window.electronAPI.checkFileExists(interpreterPath);
                 if (!interpreterExists) {
-                    this.showTaskCompileError(task, 'settings', 'Python 解释器路径无效，请重新设置');
+                    this.showTaskCompileError(task, 'settings', window.i18n ? window.i18n.t('compare.pythonPathInvalid') : 'Python interpreter path is invalid. Please reconfigure.');
                     try {
                         await window.electronAPI?.openCompilerSettings?.();
                     } catch (_) { }
                     return null;
                 }
 
-                this.updateTaskStatus(task, '准备 Python 数据生成器...');
+                this.updateTaskStatus(task, window.i18n ? window.i18n.t('compare.preparePythonGen') : 'Preparing Python generator...');
                 generatorRunTarget = {
                     executablePath: interpreterPath,
                     args: [task.config.generatorPath],
@@ -717,7 +717,7 @@ class CodeComparer {
                 };
             } else {
                 generatorExe = await window.electronAPI.pathJoin(tempDir, `generator_${timestamp}${exeSuffix}`);
-                this.updateTaskStatus(task, '编译数据生成器...');
+                this.updateTaskStatus(task, window.i18n ? window.i18n.t('compare.compileGen') : 'Compiling data generator...');
                 const generatorResult = await window.electronAPI.compileFile({
                     inputFile: task.config.generatorPath,
                     outputFile: generatorExe,
@@ -736,7 +736,7 @@ class CodeComparer {
             let spjExe = null;
 
             if (task.config.useTestlib && task.config.spjPath) {
-                this.updateTaskStatus(task, '编译Special Judge程序...');
+                this.updateTaskStatus(task, window.i18n ? window.i18n.t('compare.compileSpj') : 'Compiling Special Judge...');
                 spjExe = await window.electronAPI.pathJoin(tempDir, `spj_${timestamp}${exeSuffix}`);
 
                 let spjCompilerArgs = compilerArgs;
@@ -785,7 +785,7 @@ class CodeComparer {
 
         } catch (error) {
             logError('编译程序失败:', error);
-            this.showTaskCompileError(task, 'general', '编译程序失败: ' + error.message);
+            this.showTaskCompileError(task, 'general', (window.i18n ? window.i18n.t('compare.compileError') : 'Compilation failed') + ': ' + error.message);
             return null;
         }
     }
@@ -810,14 +810,14 @@ class CodeComparer {
                 if (i > totalTests) return;
 
                 if (this.activeTaskKey === task.key) {
-                    this.updateTaskStatus(task, `第 ${i} 组测试`);
+                    this.updateTaskStatus(task, window.i18n ? window.i18n.t('compare.testGroup', { i }) : `Test ${i}`);
                     this.updateProgress(completed, totalTests);
                 }
 
                 try {
                     const generation = await this.generateTestData(generatorRunTarget || generatorExe, 0);
                     if (!generation || generation.success !== true) {
-                        const generatorMessage = generation?.message || '数据生成器运行失败';
+                        const generatorMessage = generation?.message || (window.i18n ? window.i18n.t('compare.genRunError') : 'Failed to run data generator');
                         const generatedOutput = generation?.result?.output || '';
                         const generatorType = generation?.type || 'unknown';
                         try {
@@ -826,9 +826,9 @@ class CodeComparer {
 
                         task.state.errorResult = {
                             testNumber: i,
-                            input: generatedOutput ? this.limitOutputLines(generatedOutput, 50) : '[生成器未产生有效输入]',
+                            input: generatedOutput ? this.limitOutputLines(generatedOutput, 50) : (window.i18n ? window.i18n.t('compare.noGenInput') : '[Generator did not produce valid input]'),
                             stdOutput: generatorMessage,
-                            testOutput: '标准/测试程序未运行',
+                            testOutput: window.i18n ? window.i18n.t('compare.noRunOutput') : 'Standard/Test program did not run',
                             errorType: 'generator_program_error',
                             generatorErrorType: generatorType
                         };
@@ -876,7 +876,7 @@ class CodeComparer {
                             testNumber: i,
                             input: inputData,
                             stdOutput: errorMsg,
-                            testOutput: '程序未运行',
+                            testOutput: window.i18n ? window.i18n.t('compare.programNotRun') : 'Program did not run',
                             errorType: 'standard_program_error'
                         };
                         task.state.mode = 'error';
@@ -1268,7 +1268,7 @@ class CodeComparer {
                 }
             }
             if (hint) {
-                hint.textContent = `上限 = CPU 线程数/2`;
+                hint.textContent = window.i18n ? window.i18n.t('compare.threadHint') : 'Max = CPU threads/2';
             }
             logInfo('[对拍器] 线程上限已更新', { cpuThreads, maxParallel });
         } catch (error) {
@@ -1294,7 +1294,7 @@ class CodeComparer {
         task.state.isRunning = false;
         task.state.currentTest = 0;
         task.state.totalTests = 0;
-        task.state.statusText = '准备中';
+        task.state.statusText = (window.i18n ? window.i18n.t('compare.ready') : '准备中');
         task.state.errorResult = null;
         task.state.warningMessage = null;
         task.state.mode = 'idle';
@@ -1331,7 +1331,7 @@ class CodeComparer {
         const progressFill = document.getElementById('progress-fill');
 
         if (currentTestEl) {
-            currentTestEl.textContent = `第 ${currentTest} 组`;
+            currentTestEl.textContent = window.i18n ? window.i18n.t('compare.statusGroup', { current: currentTest }) : `Test ${currentTest}`;
         }
 
         if (progressFill && totalTests > 0) {
@@ -1386,33 +1386,33 @@ class CodeComparer {
                 const errType = errorResult.errorType;
                 if (errType === 'generator_program_error') {
                     const generatorType = errorResult.generatorErrorType || '';
-                    let detailLabel = '运行错误';
+                    let detailLabel = window.i18n ? window.i18n.t('compare.errorRuntime') : 'Run Error (RE)';
                     if (generatorType === 'ole') {
-                        detailLabel = '输出超过限制 (OLE)';
+                        detailLabel = window.i18n ? window.i18n.t('compare.errorOverLimit') : 'Output exceeds limit (OLE)';
                     } else if (generatorType === 'tle') {
-                        detailLabel = '超时 (TLE)';
+                        detailLabel = window.i18n ? window.i18n.t('compare.errorTimeout') : 'Timeout (TLE)';
                     } else if (generatorType === 're') {
-                        detailLabel = '运行错误 (RE)';
+                        detailLabel = window.i18n ? window.i18n.t('compare.errorRuntime') : 'Run Error (RE)';
                     }
-                    errorTitle.textContent = `数据生成器${detailLabel}`;
+                    errorTitle.textContent = (window.i18n ? window.i18n.t('compare.errorDataGeneratorPrefix') : 'Data Generator') + detailLabel;
                 } else if (errType === 'standard_program_error' || errType === 'test_program_error') {
-                    errorTitle.textContent = '运行超时/错误';
+                    errorTitle.textContent = window.i18n ? window.i18n.t('compare.errorRunTimeout') : 'Run timeout/error';
                 } else if (errType === 'compile_error') {
                     const compileTypeMap = {
-                        'standard': '标准程序编译失败',
-                        'test': '测试程序编译失败',
-                        'generator': '数据生成器编译失败',
-                        'settings': '运行环境未设置',
-                        'general': '编译失败'
+                        'standard': window.i18n ? window.i18n.t('compare.stdCompileFail') : 'Standard program compilation failed',
+                        'test': window.i18n ? window.i18n.t('compare.testCompileFail') : 'Test program compilation failed',
+                        'generator': window.i18n ? window.i18n.t('compare.genCompileFail') : 'Data generator compilation failed',
+                        'settings': window.i18n ? window.i18n.t('compare.envNotSet') : 'Runtime environment not set',
+                        'general': window.i18n ? window.i18n.t('compare.compileFail') : 'Compilation failed'
                     };
-                    errorTitle.textContent = compileTypeMap[errorResult.compileType] || '编译失败';
+                    errorTitle.textContent = compileTypeMap[errorResult.compileType] || (window.i18n ? window.i18n.t('compare.compileFail') : 'Compilation failed');
                 } else {
-                    errorTitle.textContent = '发现差异';
+                    errorTitle.textContent = window.i18n ? window.i18n.t('compare.foundDiff') : 'Difference Found';
                 }
             }
 
             if (errorTestNum) {
-                errorTestNum.textContent = `第 ${errorResult.testNumber} 组`;
+                errorTestNum.textContent = window.i18n ? window.i18n.t('compare.errorGroup', { number: errorResult.testNumber }) : `Test ${errorResult.testNumber}`;
             }
 
             if (inputDiff) {
@@ -1425,24 +1425,24 @@ class CodeComparer {
                 if (errType === 'compile_error') {
                     stdOutputDiff.textContent = errorResult.errorMessage;
                     if (stdOutputDiffLabel) {
-                        stdOutputDiffLabel.textContent = '标准程序输出';
+                        stdOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorStandardOutput') : 'Standard Program Output';
                     }
                 } else if (errType === 'generator_program_error') {
                     const stdFullOutput = errorResult.stdOutput || '';
                     stdOutputDiff.textContent = errorResult.stdOutputExpanded ? stdFullOutput : this.limitOutputLines(stdFullOutput, 100);
                     if (stdOutputDiffLabel) {
-                        stdOutputDiffLabel.textContent = '数据生成器输出/错误';
+                        stdOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorGeneratorOutput') : 'Generator Output/Error';
                     }
                 } else if (errType === 'standard_program_error' || errType === 'test_program_error') {
                     const stdFullOutput = errorResult.stdOutput || '';
                     stdOutputDiff.textContent = errorResult.stdOutputExpanded ? stdFullOutput : this.limitOutputLines(stdFullOutput, 100);
                     if (stdOutputDiffLabel) {
-                        stdOutputDiffLabel.textContent = '标准程序输出';
+                        stdOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorStandardOutput') : 'Standard Program Output';
                     }
                 } else {
                     if (errorResult.usedSpj) {
                         if (stdOutputDiffLabel) {
-                            stdOutputDiffLabel.textContent = '标准程序输出';
+                            stdOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorStandardOutput') : 'Standard Program Output';
                         }
                         const stdFullOutput = errorResult.stdOutput || '';
                         stdOutputDiff.textContent = errorResult.stdOutputExpanded ? stdFullOutput : this.limitOutputLines(stdFullOutput, 100);
@@ -1450,9 +1450,10 @@ class CodeComparer {
                         const diffPosition = this.getDifferenceInfo(errorResult.stdOutput, errorResult.testOutput);
                         if (stdOutputDiffLabel) {
                             if (diffPosition) {
-                                stdOutputDiffLabel.innerHTML = `标准程序输出 <span class="diff-info">(第 ${diffPosition.line} 行第 ${diffPosition.char} 字符有差异)</span>`;
+                                const diffMsg = window.i18n ? window.i18n.t('compare.diffPosition', { line: diffPosition.line, char: diffPosition.char }) : `Difference at line ${diffPosition.line}, char ${diffPosition.char}`;
+                                stdOutputDiffLabel.innerHTML = (window.i18n ? window.i18n.t('compare.errorStandardOutput') : 'Standard Program Output') + ` <span class="diff-info">(${diffMsg})</span>`;
                             } else {
-                                stdOutputDiffLabel.textContent = '标准程序输出';
+                                stdOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorStandardOutput') : 'Standard Program Output';
                             }
                         }
                         if (errorResult.stdOutputExpanded) {
@@ -1469,24 +1470,24 @@ class CodeComparer {
                 if (errType === 'compile_error') {
                     testOutputDiff.textContent = '';
                     if (testOutputDiffLabel) {
-                        testOutputDiffLabel.textContent = '测试程序输出';
+                        testOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorTestOutput') : 'Test Program Output';
                     }
                 } else if (errType === 'generator_program_error') {
                     const testFullOutput = errorResult.testOutput || '';
                     testOutputDiff.textContent = errorResult.testOutputExpanded ? testFullOutput : this.limitOutputLines(testFullOutput, 100);
                     if (testOutputDiffLabel) {
-                        testOutputDiffLabel.textContent = '标准/测试程序输出';
+                        testOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorStdTestOutput') : 'Standard/Test Program Output';
                     }
                 } else if (errType === 'standard_program_error' || errType === 'test_program_error') {
                     const testFullOutput = errorResult.testOutput || '';
                     testOutputDiff.textContent = errorResult.testOutputExpanded ? testFullOutput : this.limitOutputLines(testFullOutput, 100);
                     if (testOutputDiffLabel) {
-                        testOutputDiffLabel.textContent = '测试程序输出';
+                        testOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorTestOutput') : 'Test Program Output';
                     }
                 } else {
                     if (errorResult.usedSpj) {
                         if (testOutputDiffLabel) {
-                            testOutputDiffLabel.textContent = '测试程序输出';
+                            testOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorTestOutput') : 'Test Program Output';
                         }
                         const testFullOutput = errorResult.testOutput || '';
                         testOutputDiff.textContent = errorResult.testOutputExpanded ? testFullOutput : this.limitOutputLines(testFullOutput, 100);
@@ -1494,9 +1495,10 @@ class CodeComparer {
                         const diffPosition = this.getDifferenceInfo(errorResult.testOutput, errorResult.stdOutput);
                         if (testOutputDiffLabel) {
                             if (diffPosition) {
-                                testOutputDiffLabel.innerHTML = `测试程序输出 <span class="diff-info">(第 ${diffPosition.line} 行第 ${diffPosition.char} 字符有差异)</span>`;
+                                const diffMsg = window.i18n ? window.i18n.t('compare.diffPosition', { line: diffPosition.line, char: diffPosition.char }) : `Difference at line ${diffPosition.line}, char ${diffPosition.char}`;
+                                testOutputDiffLabel.innerHTML = (window.i18n ? window.i18n.t('compare.errorTestOutput') : 'Test Program Output') + ` <span class="diff-info">(${diffMsg})</span>`;
                             } else {
-                                testOutputDiffLabel.textContent = '测试程序输出';
+                                testOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorTestOutput') : 'Test Program Output';
                             }
                         }
                         if (errorResult.testOutputExpanded) {
@@ -1538,9 +1540,9 @@ class CodeComparer {
         }
 
         if (warningMessage && completeInfo) {
-            completeInfo.innerHTML = `已完成 <span id="completed-tests">${totalTests}</span> 组测试，未发现差异<br><span style="color: #ffc107; font-size: 11px; margin-top: 4px; display: inline-block;">${warningMessage}</span>`;
+            completeInfo.innerHTML = (window.i18n ? window.i18n.t('compare.completedWithWarning', { count: totalTests, warning: warningMessage }) : `Completed <span id="completed-tests">${totalTests}</span> tests, no differences found<br><span style="color: #ffc107; font-size: 11px; margin-top: 4px; display: inline-block;">${warningMessage}</span>`);
         } else if (completeInfo) {
-            completeInfo.innerHTML = `已完成 <span id="completed-tests">${totalTests}</span> 组测试，未发现差异`;
+            completeInfo.innerHTML = (window.i18n ? window.i18n.t('compare.completedText', { count: totalTests }) : `Completed <span id="completed-tests">${totalTests}</span> tests, no differences found`);
         }
 
         this.hideStatus();
@@ -1727,8 +1729,8 @@ class CodeComparer {
             expanded = !!errorResult?.testOutputExpanded;
         }
         button.style.display = 'inline-flex';
-        button.textContent = expanded ? '收起' : '展开';
-        button.title = expanded ? '收起输出' : '展开完整输出';
+        button.textContent = expanded ? (window.i18n ? window.i18n.t('compare.collapse') : 'Collapse') : (window.i18n ? window.i18n.t('compare.expand') : 'Expand');
+        button.title = expanded ? 'Collapse output' : 'Expand full output';
     }
 
     async toggleErrorOutputExpand(outputType) {
