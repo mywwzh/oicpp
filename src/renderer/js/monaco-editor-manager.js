@@ -2770,6 +2770,7 @@ class MonacoEditorManager {
                 }
             });
 
+            this.setupSelectionGuards(editor);
             this.setupCtrlClickNavigation(editor);
 
             const resolvedFilePath = filePath || this.currentFilePath || null;
@@ -4813,6 +4814,37 @@ class MonacoEditorManager {
         }
     }
 
+    hasTextSelection(editor) {
+        try {
+            const selection = editor?.getSelection?.();
+            return !!selection && !selection.isEmpty();
+        } catch (_) {
+            return false;
+        }
+    }
+
+    setupSelectionGuards(editor) {
+        try {
+            if (!editor || editor.__oicppSelectionGuardsBound) return;
+            editor.__oicppSelectionGuardsBound = true;
+
+            const updateTabCompletion = () => {
+                const hasSelection = this.hasTextSelection(editor);
+                editor.updateOptions?.({
+                    tabCompletion: hasSelection || this._lspCompletionEnabled === false ? 'off' : 'on'
+                });
+                if (hasSelection) {
+                    editor.trigger?.('oicpp-selection', 'hideSuggestWidget', null);
+                }
+            };
+
+            editor.onDidChangeCursorSelection?.(updateTabCompletion);
+            updateTabCompletion();
+        } catch (error) {
+            logWarn('注册编辑器选区保护失败:', error);
+        }
+    }
+
     setupCtrlClickNavigation(editor) {
         try {
             if (!editor || editor.__oicppCtrlNavBound) return;
@@ -4840,7 +4872,7 @@ class MonacoEditorManager {
                         clearHover();
                         return;
                     }
-                    if (!(e.event.ctrlKey || e.event.metaKey)) {
+                    if (!(e.event.ctrlKey || e.event.metaKey) || this.hasTextSelection(editor)) {
                         clearHover();
                         return;
                     }
@@ -4886,6 +4918,7 @@ class MonacoEditorManager {
                     if (!e || !e.event) return;
                     if (!(e.event.ctrlKey || e.event.metaKey)) return;
                     if (!e.event.leftButton) return;
+                    if (this.hasTextSelection(editor)) return;
                     const pos = e.target?.position;
                     if (!pos) return;
                     e.event.preventDefault?.();
