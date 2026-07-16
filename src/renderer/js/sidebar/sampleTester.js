@@ -840,6 +840,10 @@ class SampleTester {
                             <textarea class="program-output" readonly spellcheck="false" data-i18n-placeholder="tester.outputPlaceholder" placeholder="运行程序后显示输出..." id="output-${sample.id}">${processedProgramOutput}</textarea>
                         </div>
                     </div>
+                    <div class="program-output-group stderr-output-group">
+                        <div class="sample-io-header"><span class="sample-io-label">标准错误</span></div>
+                        <div class="program-output-container"><textarea class="program-output" readonly spellcheck="false" placeholder="运行程序后显示标准错误..." id="stderr-${sample.id}">${sample.result?.stderr || ''}</textarea></div>
+                    </div>
                 </div>
                 <div class="sample-settings">
                     <div class="setting-group">
@@ -2012,6 +2016,7 @@ class SampleTester {
                 status: status,
                 output: this.truncateOutput(actualOutput),
                 rawOutput: actualOutput,
+                stderr: runResult.stderr || '',
                 outputSizeBytes: this.getOutputSizeBytes(actualOutput),
                 outputExpanded: false,
                 time: runResult.time,
@@ -2166,6 +2171,7 @@ class SampleTester {
                 status: status,
                 output: this.truncateOutput(actualOutput),
                 rawOutput: actualOutput,
+                stderr: runResult.stderr || '',
                 outputSizeBytes: this.getOutputSizeBytes(actualOutput),
                 outputExpanded: false,
                 time: runResult.time,
@@ -2533,6 +2539,10 @@ class SampleTester {
     }
 
     updateSampleResult(id, result, sample = null) {
+        const stderrTextarea = document.getElementById(`stderr-${id}`);
+        if (stderrTextarea) {
+            stderrTextarea.value = result?.stderr || '';
+        }
         const element = document.querySelector(`[data-sample-id="${id}"]`);
         if (!element) return;
 
