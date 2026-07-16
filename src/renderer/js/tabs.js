@@ -738,6 +738,17 @@ class TabManager {
                 tabData.previewContainer.dataset.groupId = targetGroupId;
                 tabData.previewContainer.style.display = 'none';
             }
+        } else if (tabData.viewType === 'browser') {
+            const newGroup = this.groups.get(targetGroupId);
+            const targetArea = newGroup?.editorArea;
+            if (targetArea && window.browserManager) {
+                const container = window.browserManager.moveContainerToGroup(uniqueKey, targetGroupId);
+                if (container) {
+                    // appendChild 会自动从旧父节点移除，保留 iframe 内容
+                    targetArea.appendChild(container);
+                    container.style.display = 'none';
+                }
+            }
         } else if (this.monacoEditorManager && tabData.tabId) {
             this.monacoEditorManager.moveEditorToGroup(tabData.tabId, targetGroupId);
         }
@@ -865,11 +876,12 @@ class TabManager {
         }
 
         const tabData = this.tabs.get(candidateKey);
-        if (tabData?.viewType === 'pdf') {
-            this.activateTabByUniqueKey(candidateKey).catch(logError);
-            return;
-        }
-        if (tabData?.viewType === 'markdown-preview') {
+        // 非 Monaco 视图必须通过 TabManager 自己恢复。特别是浏览器标签
+        // 被拖到新分组后，原分组的剩余浏览器标签不能交给 Monaco
+        // switchTab，否则其容器会保持隐藏，造成空白分屏。
+        if (tabData?.viewType === 'pdf' ||
+            tabData?.viewType === 'markdown-preview' ||
+            tabData?.viewType === 'browser') {
             this.activateTabByUniqueKey(candidateKey).catch(logError);
             return;
         }
@@ -1274,6 +1286,36 @@ class TabManager {
                 tabData.previewContainer.style.left = '0';
                 tabData.previewContainer.style.position = 'relative';
             }
+            if (this.monacoEditorManager) {
+                this.monacoEditorManager.groupActiveTab.set(tabData.groupId, null);
+            }
+        } else if (tabData.viewType === 'browser') {
+            this.hideGroupViewContainers(tabData.groupId);
+            if (!window.browserManager) {
+                logError('BrowserManager 未初始化');
+                return;
+            }
+            const targetGroup = this.groups.get(tabData.groupId);
+            const state = window.browserManager.getBrowserState(uniqueKey);
+            let container = state?.container;
+            if (!container) {
+                // 创建新的浏览器容器
+                container = window.browserManager.getOrCreateContainer({
+                    groupId: tabData.groupId,
+                    uniqueKey,
+                    url: tabData.browserUrl || 'about:blank'
+                });
+                if (targetGroup?.editorArea) {
+                    targetGroup.editorArea.appendChild(container);
+                }
+            } else if (container.dataset.groupId !== tabData.groupId) {
+                container.dataset.groupId = tabData.groupId;
+                if (targetGroup?.editorArea && container.parentNode !== targetGroup.editorArea) {
+                    targetGroup.editorArea.appendChild(container);
+                }
+            }
+            window.browserManager.showBrowserContainer(uniqueKey);
+            window.browserManager.focusBrowserTab(uniqueKey);
             if (this.monacoEditorManager) {
                 this.monacoEditorManager.groupActiveTab.set(tabData.groupId, null);
             }
@@ -2350,6 +2392,11 @@ class TabManager {
                 tabData.previewContainer.parentNode.removeChild(tabData.previewContainer);
             }
             tabData.previewContainer = null;
+        } else if (tabData.viewType === 'browser') {
+            // 清理浏览器标签页
+            if (window.browserManager && typeof window.browserManager.destroyBrowserTab === 'function') {
+                window.browserManager.destroyBrowserTab(uniqueKey);
+            }
         } else if (tabId && window.monacoEditorManager) {
             window.monacoEditorManager.cleanupEditor(tabId);
         }
@@ -3258,13 +3305,15 @@ class TabManager {
         if (!editorArea) {
             return;
         }
-        const panes = editorArea.querySelectorAll('.monaco-editor-container, .pdf-viewer-container, .markdown-preview-container');
+        const panes = editorArea.querySelectorAll('.monaco-editor-container, .pdf-viewer-container, .markdown-preview-container, .browser-container');
         panes.forEach((pane) => {
             pane.style.display = 'none';
-            if (pane.classList.contains('pdf-viewer-container')) {
-                pane.classList.remove('active');
-            }
+            pane.classList.remove('active');
         });
+        // 隐藏该分组的全部浏览器容器
+        if (window.browserManager && typeof window.browserManager.hideGroupBrowserContainers === 'function') {
+            window.browserManager.hideGroupBrowserContainers(groupId);
+        }
     }
 
     async openPdfTab({ fileName, filePath, uniqueKey, targetGroupId, targetGroup, isTempFile = false, pdfBase64 = null }) {
@@ -3337,6 +3386,114 @@ class TabManager {
 
         await this.registerFileWatchForTab(tabData);
         await this.activateTabByUniqueKey(uniqueKey);
+    }
+
+    /**
+     * 打开内置浏览器标签页
+     * @param {object} options
+     * @param {string} options.url - 要打开的 URL
+     * @param {string} [options.groupId] - 目标分组 ID
+     * @param {string} [options.title] - 标签标题
+     */
+    async openBrowserTab(options = {}) {
+        const url = options.url || '';
+        const targetGroupId = options.groupId || this.activeGroupId || this.groupOrder[0] || 'group-1';
+        const title = options.title || (window.i18n ? window.i18n.t('browser.newTab') : '新建浏览器标签页');
+
+        const uniqueKey = `browser:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+
+        if (this.tabs.has(uniqueKey)) {
+            await this.activateTabByUniqueKey(uniqueKey);
+            return;
+        }
+        if (this._openingKeys.has(uniqueKey)) {
+            return;
+        }
+        this._openingKeys.add(uniqueKey);
+
+        try {
+            let targetGroup = this.groups.get(targetGroupId);
+            if (!targetGroup) {
+                targetGroup = this.createGroup({ afterGroupId: this.activeGroupId });
+                if (!targetGroup) {
+                    logError('无法创建目标分组，放弃打开浏览器标签页');
+                    return;
+                }
+            }
+
+            // 创建标签元素
+            const tabElement = this.createTabElement(title, uniqueKey);
+            tabElement.dataset.groupId = targetGroupId;
+            tabElement.dataset.viewType = 'browser';
+            tabElement.classList.add('tab-type-browser');
+
+            // 添加浏览器图标
+            const iconSpan = document.createElement('span');
+            iconSpan.className = 'tab-icon-browser';
+            iconSpan.innerHTML = [
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+                '<circle cx="12" cy="12" r="10"/>',
+                '<ellipse cx="12" cy="12" rx="4" ry="10" transform="rotate(0)"/>',
+                '<path d="M2 12h20"/>',
+                '</svg>'
+            ].join('');
+            const label = tabElement.querySelector('.tab-label');
+            if (label && label.parentNode) {
+                label.parentNode.insertBefore(iconSpan, label);
+            }
+
+            this.addTabDragListeners(tabElement);
+
+            const tabData = {
+                element: tabElement,
+                fileName: title,
+                modified: false,
+                content: null,
+                active: true,
+                filePath: null,
+                tabId: uniqueKey,
+                uniqueKey,
+                groupId: targetGroupId,
+                viewType: 'browser',
+                isTempFile: false,
+                browserUrl: url
+            };
+
+            this.tabs.set(uniqueKey, tabData);
+            targetGroup.tabs.set(uniqueKey, tabData);
+
+            if (targetGroup.tabBar) {
+                this.bindTabBarEvents(targetGroup.tabBar);
+                targetGroup.tabBar.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                targetGroup.tabBar.appendChild(tabElement);
+            }
+            targetGroup.activeTabKey = uniqueKey;
+
+            this.activeTab = title;
+            this.activeTabKey = uniqueKey;
+            this.activeGroupId = targetGroupId;
+            tabElement.classList.add('active');
+
+            this.setTabElementUniqueKey(tabElement, uniqueKey);
+            this.syncGroupTabs(targetGroupId);
+
+            // 创建浏览器容器并添加到编辑区
+            if (window.browserManager) {
+                const container = window.browserManager.getOrCreateContainer({
+                    groupId: targetGroupId,
+                    uniqueKey,
+                    url
+                });
+                if (container && targetGroup.editorArea) {
+                    targetGroup.editorArea.appendChild(container);
+                }
+            }
+
+            await this.activateTabByUniqueKey(uniqueKey);
+            this.refreshTabLabels();
+        } finally {
+            this._openingKeys.delete(uniqueKey);
+        }
     }
 
     createMarkdownPreviewContainer(options) {

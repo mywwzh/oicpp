@@ -1,0 +1,195 @@
+/* ============================================
+   内置浏览器样式 (Built-in Browser)
+   ============================================ */
+
+/* 浏览器主容器 */
+.browser-container {
+    display: none;
+    width: 100%;
+    height: 100%;
+    background-color: var(--editor-bg, #1e1e1e);
+    position: relative;
+    overflow: hidden;
+}
+
+.browser-container.active {
+    display: flex;
+    flex-direction: column;
+}
+
+/* 导航栏 */
+.browser-nav-bar {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    background-color: var(--card-bg, #2d2d30);
+    border-bottom: 1px solid var(--border-color, #3c3c3c);
+    gap: 6px;
+    flex-shrink: 0;
+    min-height: 40px;
+}
+
+.browser-nav-bar.loading {
+    background-color: var(--info-bg, #1e3a4a);
+}
+
+/* 导航按钮组 */
+.browser-nav-buttons {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+/* 导航按钮 */
+.browser-nav-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 4px;
+    background-color: transparent;
+    color: var(--text-color, #cccccc);
+    cursor: pointer;
+    transition: background-color 0.15s;
+    padding: 0;
+    outline: none;
+}
+
+.browser-nav-btn:hover {
+    background-color: var(--hover-bg, #3c3c3c);
+}
+
+.browser-nav-btn:active {
+    background-color: var(--list-active-bg, #505050);
+}
+
+.browser-nav-btn.disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+}
+
+.browser-nav-btn svg {
+    display: block;
+}
+
+/* URL 输入框 */
+.browser-url-input {
+    flex: 1;
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid var(--border-color, #3c3c3c);
+    border-radius: 12px;
+    background-color: var(--editor-bg, #1e1e1e);
+    color: var(--text-color, #cccccc);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s, background-color 0.15s;
+    min-width: 80px;
+}
+
+.browser-url-input:focus {
+    border-color: var(--primary-color, #007acc);
+    background-color: var(--primary-bg, #252526);
+}
+
+.browser-url-input::placeholder {
+    color: var(--text-muted, #6a6a6a);
+}
+
+/* 在新标签页中打开按钮 */
+.browser-nav-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 4px;
+    background-color: transparent;
+    color: var(--text-color, #cccccc);
+    cursor: pointer;
+    transition: background-color 0.15s;
+    padding: 0;
+    outline: none;
+    flex-shrink: 0;
+}
+
+.browser-nav-action:hover {
+    background-color: var(--hover-bg, #3c3c3c);
+}
+
+/* webview 包装器 */
+.browser-webview-wrapper {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+/* webview 元素 */
+.browser-webview {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+}
+
+/* 加载进度条 */
+.browser-nav-bar.loading::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--primary-color, #007acc) 0%, var(--primary-color-hover, #4a9eff) 50%, var(--primary-color, #007acc) 100%);
+    background-size: 200% 100%;
+    animation: browser-loading-bar 0.8s linear infinite;
+}
+
+.browser-nav-bar {
+    position: relative;
+}
+
+@keyframes browser-loading-bar {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* 浏览器标签页图标 */
+.tab-icon-browser {
+    width: 14px;
+    height: 14px;
+    margin-right: 4px;
+    flex-shrink: 0;
+    color: var(--primary-color, #007acc);
+}
+
+/* 暗色/亮色主题变量适配 */
+body:not(.glass-effect-enabled) .browser-nav-bar {
+    background-color: var(--card-bg, #2d2d30);
+}
+
+body.glass-effect-enabled .browser-nav-bar {
+    background-color: var(--glass-surface, rgba(16, 19, 27, 0.42));
+    backdrop-filter: blur(var(--glass-blur, 18px));
+    border-bottom-color: var(--glass-border, rgba(255, 255, 255, 0.14));
+}
+
+body.glass-effect-enabled .browser-url-input {
+    background-color: var(--glass-surface-strong, rgba(14, 18, 24, 0.62));
+    border-color: var(--glass-border, rgba(255, 255, 255, 0.14));
+}
+
+/* 安全/非安全连接指示 */
+.browser-url-input.secure {
+    border-left: 3px solid var(--success-border, #2d5a2f);
+}
+
+.browser-url-input.insecure {
+    border-left: 3px solid var(--warning-border, #ffeaa7);
+}

@@ -299,6 +299,9 @@
             case 'open-file-history':
                 this.openFileHistory();
                 break;
+            case 'open-browser':
+                this.openBuiltinBrowser();
+                break;
             case 'ide-login':
                 await this.startIdeLogin();
                 break;
@@ -560,6 +563,18 @@
             if (typeof window.electronAPI.onMenuOpenFileHistory === 'function') {
                 window.electronAPI.onMenuOpenFileHistory(() => {
                     this.openFileHistory();
+                });
+            }
+
+            if (typeof window.electronAPI.onMenuOpenBrowser === 'function') {
+                window.electronAPI.onMenuOpenBrowser(() => {
+                    this.openBuiltinBrowser();
+                });
+            }
+
+            if (typeof window.electronAPI.onMenuNewBrowserTab === 'function') {
+                window.electronAPI.onMenuNewBrowserTab(() => {
+                    this.openBuiltinBrowser();
                 });
             }
 
@@ -4270,6 +4285,15 @@ ${data.message || '程序已加载，等待开始执行'}
             timer = null;
         };
         return debounced;
+    }
+
+    async openBuiltinBrowser() {
+        if (window.tabManager && typeof window.tabManager.openBrowserTab === 'function') {
+            window.tabManager.openBrowserTab({});
+        } else {
+            logError('TabManager 未就绪，无法打开浏览器');
+            this.showMessage?.(window.i18n?.t?.('browser.title') || '浏览器功能不可用', 'error');
+        }
     }
 
     async openFileHistory() {
