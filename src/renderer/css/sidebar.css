@@ -10,6 +10,22 @@
     transition: width 0.05s ease;
 }
 
+/* Keep the workspace sidebar on the same translucent layer as the editor. */
+body.glass-effect-enabled .sidebar,
+body.glass-effect-enabled .sidebar-panel,
+body.glass-effect-enabled .sidebar-icons,
+body.glass-effect-enabled .panel-header {
+    background-color: var(--glass-surface, rgba(16, 19, 27, 0.42));
+    -webkit-backdrop-filter: blur(var(--glass-blur, 18px)) saturate(130%);
+    backdrop-filter: blur(var(--glass-blur, 18px)) saturate(130%);
+}
+
+body.glass-effect-enabled .sidebar,
+body.glass-effect-enabled .sidebar-icons,
+body.glass-effect-enabled .panel-header {
+    border-color: var(--glass-border, rgba(255, 255, 255, 0.14));
+}
+
 .sidebar-resizer {
     position: absolute;
     top: 0;
