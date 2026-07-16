@@ -1145,21 +1145,17 @@ class IntegratedTerminalPanel {
 
     async getPreferredCwd() {
         const app = this.getApp();
-        if (!app || typeof app.getActiveFilePath !== 'function') {
-            return undefined;
+        const active = typeof app?.getActiveFilePath === 'function' ? app.getActiveFilePath() : null;
+        if (active && !app?.isCloudFilePath?.(active) && typeof window.electronAPI?.pathDirname === 'function') {
+            try {
+                return await window.electronAPI.pathDirname(active);
+            } catch (_) { }
         }
-        const active = app.getActiveFilePath();
-        if (!active || app.isCloudFilePath?.(active)) {
-            return undefined;
-        }
-        if (typeof window.electronAPI?.pathDirname !== 'function') {
-            return undefined;
-        }
-        try {
-            return await window.electronAPI.pathDirname(active);
-        } catch (_) {
-            return undefined;
-        }
+
+        // With no active local file, open the terminal in the selected workspace
+        // instead of falling back to the application's temporary directory.
+        const workspacePath = window.sidebarManager?.panels?.files?.workspacePath;
+        return typeof workspacePath === 'string' && workspacePath.trim() ? workspacePath : undefined;
     }
 }
 
