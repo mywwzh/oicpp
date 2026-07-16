@@ -5324,11 +5324,15 @@ void hello() {
             }
 
             try {
-                if (this.monacoEditorManager && tabData.tabId) {
-                    if (typeof this.monacoEditorManager.updateTabFilePath === 'function') {
-                        this.monacoEditorManager.updateTabFilePath(tabData.tabId, newPath);
+                // The manager can be injected on TabManager or exposed only globally,
+                // depending on initialization order. Keep the active editor in sync in
+                // both cases so subsequent saves and compiles use the renamed file.
+                const editorManager = this.monacoEditorManager || window.monacoEditorManager || window.editorManager;
+                if (editorManager && tabData.tabId) {
+                    if (typeof editorManager.updateTabFilePath === 'function') {
+                        editorManager.updateTabFilePath(tabData.tabId, newPath);
                     } else {
-                        const mm = this.monacoEditorManager;
+                        const mm = editorManager;
                         try { mm.tabIdToFilePath && mm.tabIdToFilePath.set(tabData.tabId, newPath); } catch (_) { }
                         try { const ed = mm.editors && mm.editors.get(tabData.tabId); if (ed) ed.filePath = newPath; } catch (_) { }
                     }

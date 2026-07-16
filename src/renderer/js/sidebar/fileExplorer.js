@@ -1190,8 +1190,8 @@ class FileExplorer {
                                 if (window.tabManager) {
                                     const sep = newPath.includes('\\') ? '\\' : '/';
                                     const newTitle = newPath.substring(newPath.lastIndexOf(sep) + 1);
-                                    window.tabManager.updateTabTitle(file.name, newTitle);
-                                    try { window.tabManager.updateTabPathBySource(oldPath, newPath); } catch (_) { }
+                                    // Keep the tab title, file path, and editor path in one update.
+                                    try { window.tabManager.updateTabPathBySource(oldPath, newPath, newTitle); } catch (_) { }
                                 }
 
                                 try {
