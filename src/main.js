@@ -1392,6 +1392,50 @@ function markLocalSave(filePath, state = {}) {
     }
 }
 
+function markLocalDeletion(filePath) {
+    const normalized = normalizeWatchKey(filePath);
+    if (!normalized) return [];
+
+    const now = Date.now();
+    const previousStates = [];
+    for (const entry of fileWatchRegistry.values()) {
+        if (!entry?.resolvedPath) continue;
+
+        let isDeletedTarget = false;
+        try {
+            const relative = path.relative(normalized.resolved, entry.resolvedPath);
+            isDeletedTarget = relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+        } catch (_) { }
+
+        if (!isDeletedTarget) continue;
+        previousStates.push({
+            entry,
+            lastLocalSave: entry.lastLocalSave,
+            lastEventSignature: entry.lastEventSignature,
+            lastKnownExists: entry.lastKnownExists,
+            lastKnownFingerprint: entry.lastKnownFingerprint,
+            lastObservedMtime: entry.lastObservedMtime
+        });
+        entry.lastLocalSave = now;
+        entry.lastEventSignature = null;
+        entry.lastKnownExists = false;
+        entry.lastKnownFingerprint = null;
+        entry.lastObservedMtime = null;
+    }
+    return previousStates;
+}
+
+function restoreFileWatchStates(previousStates) {
+    for (const state of previousStates || []) {
+        if (!state?.entry) continue;
+        state.entry.lastLocalSave = state.lastLocalSave;
+        state.entry.lastEventSignature = state.lastEventSignature;
+        state.entry.lastKnownExists = state.lastKnownExists;
+        state.entry.lastKnownFingerprint = state.lastKnownFingerprint;
+        state.entry.lastObservedMtime = state.lastObservedMtime;
+    }
+}
+
 function removeRendererWatchers(contentsId) {
     if (!contentsId) return;
     for (const [key, entry] of Array.from(fileWatchRegistry.entries())) {
@@ -4165,8 +4209,10 @@ function setupIPC() {
     });
 
     ipcMain.on('delete-file', async (event, filePath) => {
+        let previousWatchStates = [];
         try {
             const stat = fs.statSync(filePath);
+            previousWatchStates = markLocalDeletion(filePath);
             if (stat.isDirectory()) {
                 fs.rmSync(filePath, { recursive: true, force: true });
             } else {
@@ -4174,6 +4220,7 @@ function setupIPC() {
             }
             event.reply('file-deleted', filePath, null);
         } catch (error) {
+            restoreFileWatchStates(previousWatchStates);
             logError('删除文件失败:', error);
             event.reply('file-deleted', filePath, error.message);
         }
@@ -4749,10 +4796,13 @@ function setupIPC() {
     });
 
     ipcMain.handle('delete-file', async (event, filePath) => {
+        let previousWatchStates = [];
         try {
+            previousWatchStates = markLocalDeletion(filePath);
             await fs.promises.unlink(filePath);
             return { success: true };
         } catch (error) {
+            restoreFileWatchStates(previousWatchStates);
             logError(`[主进程] 删除文件失败: ${filePath}`, error);
             return { success: false, error: error.message };
         }
