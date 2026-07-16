@@ -2259,14 +2259,21 @@ function createWindow() {
         });
     }
 
+    // 拦截响应头：移除 X-Frame-Options 以允许 iframe 嵌入外部网站
     mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-        callback({
-            responseHeaders: {
-                ...details.responseHeaders,
-                'Content-Security-Policy': ["script-src 'self' 'unsafe-inline' 'unsafe-eval'; worker-src 'self' blob:;"],
-                'Permissions-Policy': ['fullscreen=*']
-            }
-        });
+        const headers = { ...details.responseHeaders };
+        // 移除禁止 iframe 嵌入的响应头
+        delete headers['x-frame-options'];
+        delete headers['X-Frame-Options'];
+        // 移除 CSP 中禁止被嵌入的指令（保留其他安全策略）
+        if (headers['content-security-policy'] || headers['Content-Security-Policy']) {
+            const cspKey = headers['content-security-policy'] ? 'content-security-policy' : 'Content-Security-Policy';
+            const csp = Array.isArray(headers[cspKey]) ? headers[cspKey].join(',') : (headers[cspKey] || '');
+            // 移除 frame-ancestors 指令，允许 iframe 嵌入
+            const cleaned = csp.replace(/;\s*frame-ancestors\s+[^;]*/gi, '');
+            headers[cspKey] = [cleaned];
+        }
+        callback({ responseHeaders: headers });
     });
 
     mainWindow.loadFile('src/renderer/index.html');
@@ -2383,6 +2390,41 @@ function createWindow() {
 
     ipcMain.handle('get-update-download-status', () => {
         return getUpdateDownloadState();
+    });
+
+    // === Browser (内置浏览器) IPC ===
+    ipcMain.handle('browser-resolve-url', async (_event, url) => {
+        try {
+            if (!url || typeof url !== 'string') return '';
+            const trimmed = url.trim();
+            if (!trimmed) return '';
+            // 如果用户输入了完整的 URL，直接使用
+            if (/^https?:\/\//i.test(trimmed)) return trimmed;
+            // 如果包含 . 但没有空格，可能是域名
+            if (/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(trimmed) && !/\s/.test(trimmed)) {
+                return 'https://' + trimmed;
+            }
+            // 否则作为搜索词
+            return 'https://www.google.com/search?q=' + encodeURIComponent(trimmed);
+        } catch (_) {
+            return '';
+        }
+    });
+
+    ipcMain.handle('browser-get-page-title', async (_event, url) => {
+        return new Promise((resolve) => {
+            if (!url || typeof url !== 'string') { resolve(''); return; }
+            try {
+                const parsedUrl = new URL(url);
+                const hostname = parsedUrl.hostname || '';
+                if (!hostname) { resolve(''); return; }
+                // 去掉 www. 前缀作为默认标题
+                const title = hostname.replace(/^www\./i, '');
+                resolve(title || '');
+            } catch (_) {
+                resolve('');
+            }
+        });
     });
 
     startSampleTesterServer();
@@ -2569,6 +2611,24 @@ function createMenuBar() {
                     click: () => {
                         if (mainWindow && !mainWindow.isDestroyed()) {
                             mainWindow.webContents.send('menu-open-terminal');
+                        }
+                    }
+                },
+                {
+                    label: '打开内置浏览器',
+                    accelerator: 'CmdOrCtrl+Shift+I',
+                    click: () => {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('menu-open-browser');
+                        }
+                    }
+                },
+                {
+                    label: '新建浏览器标签页',
+                    accelerator: 'CmdOrCtrl+Shift+B',
+                    click: () => {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('menu-new-browser-tab');
                         }
                     }
                 }
@@ -7870,20 +7930,6 @@ app.on('web-contents-created', (event, contents) => {
             return { action: 'deny' };
         });
     }
-
-    contents.on('will-navigate', (event, navigationUrl) => {
-        let parsedUrl = null;
-        try {
-            parsedUrl = new URL(navigationUrl);
-        } catch (_) {
-            return;
-        }
-
-        if (parsedUrl.origin !== 'file://') {
-            event.preventDefault();
-            void openExternalOnce(navigationUrl);
-        }
-    });
 
     contents.on('destroyed', () => {
         try { removeRendererWatchers(contents.id); } catch (_) { }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: http: https:; worker-src 'self' blob: file:; connect-src 'self' https://oicpp.mywwzh.top;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: http: https:; worker-src 'self' blob: file:; connect-src 'self' https://oicpp.mywwzh.top; frame-src * data:;">
     <meta http-equiv="Permissions-Policy" content="fullscreen=(self)">
     <title>OICPP IDE</title>
     <link rel="stylesheet" href="css/titlebar.css">
@@ -25,6 +25,7 @@
     <link rel="stylesheet" href="../../node_modules/katex/dist/katex.min.css">
     <link rel="stylesheet" href="../../node_modules/xterm/css/xterm.css">
     <link rel="stylesheet" href="css/markdown.css">
+    <link rel="stylesheet" href="css/browser.css">
 </head>
 <body>
     <div class="titlebar">
@@ -82,6 +83,11 @@
                         <div class="menu-dropdown-item" data-action="open-terminal">
                             <span data-i18n="menu.openTerminal">打开内置终端</span>
                             <span class="menu-shortcut">Ctrl+`</span>
+                        </div>
+                        <div class="menu-separator"></div>
+                        <div class="menu-dropdown-item" data-action="open-browser">
+                            <span data-i18n="browser.openBrowser">打开内置浏览器</span>
+                            <span class="menu-shortcut">Ctrl+Shift+I</span>
                         </div>
                     </div>
                 </div>
@@ -681,6 +687,7 @@
     <script src="js/lsp-client.js"></script>
     <script src="js/monaco-editor-manager.js"></script>
     <script src="js/titlebar.js"></script>
+    <script src="js/browser-manager.js"></script>
     <script src="js/sidebar/fileExplorer.js"></script>
     <script src="js/sidebar/sampleTester.js"></script>
     <script src="js/sidebar/debugPanel.js"></script>

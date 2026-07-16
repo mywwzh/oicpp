@@ -855,5 +855,24 @@
   },
   "monaco": {
     "userSnippet": "用户代码片段"
+  },
+  "browser": {
+    "title": "内置浏览器",
+    "openBrowser": "打开内置浏览器",
+    "newBrowserTab": "新建浏览器标签页",
+    "urlPlaceholder": "输入网址或搜索...",
+    "go": "前往",
+    "back": "后退",
+    "forward": "前进",
+    "reload": "刷新",
+    "stop": "停止",
+    "openInNewTab": "在新标签页中打开",
+    "newTab": "新建浏览器标签页",
+    "enterUrl": "输入网址或搜索词",
+    "loading": "加载中...",
+    "pageLoadError": "页面加载失败",
+    "insecure": "连接不安全",
+    "secure": "连接安全",
+    "defaultTitle": "内置浏览器"
   }
 }

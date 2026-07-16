@@ -884,5 +884,24 @@
   },
   "monaco": {
     "userSnippet": "User snippet"
+  },
+  "browser": {
+    "title": "Built-in Browser",
+    "openBrowser": "Open Built-in Browser",
+    "newBrowserTab": "New Browser Tab",
+    "urlPlaceholder": "Enter URL or search...",
+    "go": "Go",
+    "back": "Back",
+    "forward": "Forward",
+    "reload": "Refresh",
+    "stop": "Stop",
+    "openInNewTab": "Open in New Tab",
+    "newTab": "New Browser Tab",
+    "enterUrl": "Enter a URL or search term",
+    "loading": "Loading...",
+    "pageLoadError": "Failed to load page",
+    "insecure": "Insecure connection",
+    "secure": "Secure connection",
+    "defaultTitle": "Browser"
   }
 }

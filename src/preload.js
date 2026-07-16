@@ -535,6 +535,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onMenuOpenFolder: (callback) => ipcRenderer.on('menu-open-folder', callback),
     onMenuSaveAs: (callback) => ipcRenderer.on('menu-save-as', callback),
     onMenuOpenTerminal: (callback) => ipcRenderer.on('menu-open-terminal', callback),
+    onMenuOpenBrowser: (callback) => ipcRenderer.on('menu-open-browser', callback),
+    onMenuNewBrowserTab: (callback) => ipcRenderer.on('menu-new-browser-tab', callback),
     onMenuAbout: (callback) => ipcRenderer.on('menu-about', callback),
     onMenuSettings: (callback) => ipcRenderer.on('menu-settings', callback),
     onMenuCheckUpdates: (callback) => ipcRenderer.on('menu-check-updates', callback),
@@ -615,7 +617,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onLspNotification: (callback) => ipcRenderer.on('lsp-notification', (_event, payload) => callback && callback(payload)),
 
     onRequestSaveAll: (callback) => ipcRenderer.on('request-save-all', () => callback && callback()),
-    notifySaveAllComplete: () => ipcRenderer.send('save-all-complete')
+    notifySaveAllComplete: () => ipcRenderer.send('save-all-complete'),
+
+    // === 内置浏览器 API ===
+    browserResolveUrl: (url) => ipcRenderer.invoke('browser-resolve-url', url),
+    browserGetPageTitle: (url) => ipcRenderer.invoke('browser-get-page-title', url)
 });
 
 contextBridge.exposeInMainWorld('electronIPC', {
