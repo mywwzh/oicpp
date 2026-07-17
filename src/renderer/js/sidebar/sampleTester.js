@@ -840,11 +840,11 @@ class SampleTester {
                             <textarea class="program-output" readonly spellcheck="false" data-i18n-placeholder="tester.outputPlaceholder" placeholder="运行程序后显示输出..." id="output-${sample.id}">${processedProgramOutput}</textarea>
                         </div>
                     </div>
-                    <div class="program-output-group stderr-output-group">
+                    <div class="program-output-group stderr-output-group" style="display: ${sample.result?.stderr ? '' : 'none'};">
                         <div class="sample-io-header"><span class="sample-io-label">标准错误</span></div>
                         <div class="program-output-container"><textarea class="program-output" readonly spellcheck="false" placeholder="运行程序后显示标准错误..." id="stderr-${sample.id}">${sample.result?.stderr || ''}</textarea></div>
                     </div>
-                    <div class="program-output-group spj-output-group">
+                    <div class="program-output-group spj-output-group" style="display: ${sample.result?.spjOutput ? '' : 'none'};">
                         <div class="sample-io-header"><span class="sample-io-label">SPJ 返回信息</span></div>
                         <div class="program-output-container"><textarea class="program-output" readonly spellcheck="false" placeholder="SPJ 判题后显示返回信息..." id="spj-output-${sample.id}">${sample.result?.spjOutput || ''}</textarea></div>
                     </div>
@@ -2554,10 +2554,12 @@ class SampleTester {
         const stderrTextarea = document.getElementById(`stderr-${id}`);
         if (stderrTextarea) {
             stderrTextarea.value = result?.stderr || '';
+            stderrTextarea.closest('.stderr-output-group').style.display = result?.stderr ? '' : 'none';
         }
         const spjOutputTextarea = document.getElementById(`spj-output-${id}`);
         if (spjOutputTextarea) {
             spjOutputTextarea.value = result?.spjOutput || '';
+            spjOutputTextarea.closest('.spj-output-group').style.display = result?.spjOutput ? '' : 'none';
         }
         const element = document.querySelector(`[data-sample-id="${id}"]`);
         if (!element) return;
