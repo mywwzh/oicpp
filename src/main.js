@@ -1238,6 +1238,11 @@ function validateFileName(name) {
 }
 
 const fileWatchRegistry = new Map();
+// A watcher is cheap in isolation, but a bulk rename can generate several events
+// for every open file.  Do not let that burst monopolize Electron's main process:
+// it also delivers save and child-process stdout IPC messages.
+const FILE_WATCH_EVENT_DEBOUNCE_MS = 120;
+const MAX_ACTIVE_FILE_WATCHERS = 512;
 
 function normalizeWatchKey(filePath) {
     if (!filePath || typeof filePath !== 'string') {
@@ -1312,6 +1317,10 @@ function getSubscriberCount(entry) {
 
 function disposeWatcher(entry, key) {
     if (!entry) return;
+    if (entry.eventTimer) {
+        try { clearTimeout(entry.eventTimer); } catch (_) { }
+        entry.eventTimer = null;
+    }
     try { entry.watcher?.close(); } catch (_) { }
     if (key) {
         fileWatchRegistry.delete(key);
@@ -1335,7 +1344,7 @@ function broadcastExternalChange(entry, payload) {
     }
 }
 
-function handleWatcherEvent(key, eventType) {
+async function handleWatcherEvent(key, eventType) {
     const entry = fileWatchRegistry.get(key);
     if (!entry) return;
 
@@ -1348,7 +1357,7 @@ function handleWatcherEvent(key, eventType) {
     let mtimeMs = null;
     let fingerprint = null;
     try {
-        const stat = fs.statSync(entry.resolvedPath);
+        const stat = await fs.promises.stat(entry.resolvedPath);
         exists = true;
         mtimeMs = stat.mtimeMs;
     } catch (_) {
@@ -1356,7 +1365,15 @@ function handleWatcherEvent(key, eventType) {
     }
 
     if (exists) {
-        fingerprint = readFileContentFingerprint(entry.resolvedPath);
+        try {
+            const content = await fs.promises.readFile(entry.resolvedPath, 'utf8');
+            fingerprint = buildContentFingerprint(content);
+        } catch (_) {
+            // The file may have disappeared between stat() and readFile() during
+            // a move. Treat it as deleted and wait for the next watcher event.
+            exists = false;
+            mtimeMs = null;
+        }
         if (fingerprint && entry.lastKnownExists !== false && entry.lastKnownFingerprint === fingerprint) {
             entry.lastKnownExists = true;
             entry.lastObservedMtime = mtimeMs ?? null;
@@ -1456,6 +1473,26 @@ function restoreFileWatchStates(previousStates) {
         state.entry.lastKnownFingerprint = state.lastKnownFingerprint;
         state.entry.lastObservedMtime = state.lastObservedMtime;
     }
+}
+
+function scheduleWatcherEvent(key, eventType) {
+    const entry = fileWatchRegistry.get(key);
+    if (!entry) return;
+
+    // A rename is more informative than a change event on Windows. Coalesce the
+    // complete burst into one asynchronous filesystem read.
+    entry.pendingEventType = eventType === 'rename' ? 'rename' : (entry.pendingEventType || eventType);
+    if (entry.eventTimer) return;
+    entry.eventTimer = setTimeout(() => {
+        const current = fileWatchRegistry.get(key);
+        if (!current || current !== entry) return;
+        const pendingEventType = current.pendingEventType || 'change';
+        current.pendingEventType = null;
+        current.eventTimer = null;
+        handleWatcherEvent(key, pendingEventType).catch((error) => {
+            try { logger.logwarn('[FileWatch] 异步事件处理失败', { filePath: current.resolvedPath, error: error?.message || String(error) }); } catch (_) { }
+        });
+    }, FILE_WATCH_EVENT_DEBOUNCE_MS);
 }
 
 function removeRendererWatchers(contentsId) {
@@ -4078,10 +4115,17 @@ function setupIPC() {
 
         let entry = fileWatchRegistry.get(normalized.key);
         if (!entry) {
+            if (fileWatchRegistry.size >= MAX_ACTIVE_FILE_WATCHERS) {
+                // External-change prompts are optional. Keeping the main process
+                // responsive is more important than opening an unbounded number
+                // of native handles when a workspace contains hundreds of tabs.
+                try { logger.logwarn('[FileWatch] 已达到监听上限，跳过额外文件监听', { limit: MAX_ACTIVE_FILE_WATCHERS, filePath: normalized.resolved }); } catch (_) { }
+                return { success: true, reason: 'limit-reached' };
+            }
             try {
                 const watcher = fs.watch(normalized.resolved, { persistent: false }, (eventType) => {
                     try {
-                        handleWatcherEvent(normalized.key, eventType);
+                        scheduleWatcherEvent(normalized.key, eventType);
                     } catch (error) {
                         try { logger.logwarn('[FileWatch] 事件处理失败', { filePath: normalized.resolved, error: error?.message || String(error) }); } catch (_) { }
                     }
@@ -4089,6 +4133,11 @@ function setupIPC() {
                 watcher.on('error', (error) => {
                     try { logger.logwarn('[FileWatch] 监听出错', { filePath: normalized.resolved, error: error?.message || String(error) }); } catch (_) { }
                 });
+                let initialFingerprint = null;
+                try {
+                    const initialContent = await fs.promises.readFile(normalized.resolved, 'utf8');
+                    initialFingerprint = buildContentFingerprint(initialContent);
+                } catch (_) { }
                 entry = {
                     key: normalized.key,
                     resolvedPath: normalized.resolved,
@@ -4098,7 +4147,7 @@ function setupIPC() {
                     lastEventSignature: null,
                     lastObservedMtime: null,
                     lastKnownExists: true,
-                    lastKnownFingerprint: readFileContentFingerprint(normalized.resolved)
+                    lastKnownFingerprint: initialFingerprint
                 };
                 fileWatchRegistry.set(normalized.key, entry);
             } catch (error) {

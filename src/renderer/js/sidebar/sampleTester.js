@@ -2268,6 +2268,19 @@ class SampleTester {
             throw new Error(window.i18n ? window.i18n.t('tester.fileEmpty') : '文件内容为空');
         }
 
+        // Keep this path consistent with F11.  The tester compiles currentFile
+        // from disk, while the editor content above is only in memory.  Relying
+        // on the periodic auto-save means a busy renderer can compile an older
+        // (occasionally empty) version and report its output as this sample's.
+        if (!window.electronAPI?.saveFile) {
+            throw new Error('保存文件接口不可用');
+        }
+        await window.electronAPI.saveFile(this.currentFile, content);
+        try {
+            const uniqueKey = String(this.currentFile).replace(/\\/g, '/');
+            window.tabManager?.markTabAsSavedByUniqueKey?.(uniqueKey);
+        } catch (_) { }
+
         const settings = await window.electronAPI.getAllSettings();
         const compilerPath = settings.compilerPath;
         let compilerArgs = settings.compilerArgs || '-std=c++14 -O2';
