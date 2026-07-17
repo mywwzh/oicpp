@@ -49,6 +49,8 @@ class MonacoEditorManager {
         this._lspSemanticProviders = [];
         this._lspDocuments = new Map();
         this._lspChangeTimers = new Map();
+        this._lspChangeInFlight = new Set();
+        this._lspChangePending = new Set();
         this._lspReadyPromise = null;
         this._lspCompletionEnabled = true;
         this._syntaxCheckEnabled = true;
@@ -314,6 +316,10 @@ class MonacoEditorManager {
             } catch (e) { logWarn('定义自定义主题失败:', e); }
 
             this.registerCppSemanticHighlightingProviders();
+            // Local completion does not depend on clangd. Register it as soon
+            // as Monaco is available so suggestions remain usable while the
+            // language server is starting or recovering.
+            this._registerLocalCompletionProvider();
             
             this.isInitialized = true;
             logInfo('Monaco Editor 管理器初始化完成');
@@ -350,6 +356,8 @@ class MonacoEditorManager {
                 clearTimeout(timer);
             }
             this._lspChangeTimers.clear();
+            this._lspChangeInFlight.clear();
+            this._lspChangePending.clear();
 
             this._lspCompilerPath = newCompilerPath;
 
@@ -509,6 +517,7 @@ class MonacoEditorManager {
         }
         try {
             if (typeof monaco === 'undefined' || !monaco.languages) return;
+            this._registerLocalCompletionProvider();
             this._registerLspCompletionProvider();
             this._registerLspSignatureHelpProvider();
             this._registerLspHoverProvider();
@@ -532,6 +541,70 @@ class MonacoEditorManager {
             return this._lspDocuments.has(model);
         } catch (_) {
             return false;
+        }
+    }
+
+    _getLocalCompletionCandidates(model) {
+        const versionId = model?.getVersionId?.();
+        const cached = model?.__oicppLocalCompletionCache;
+        if (cached && cached.versionId === versionId) {
+            return cached.candidates;
+        }
+
+        const counts = new Map();
+        const text = model?.getValue?.() || '';
+        const identifierPattern = /\b[A-Za-z_][A-Za-z0-9_]*\b/g;
+        const ignored = new Set(['alignas', 'auto', 'bool', 'break', 'case', 'catch', 'char', 'class', 'const', 'continue', 'default', 'delete', 'do', 'double', 'else', 'enum', 'explicit', 'extern', 'false', 'float', 'for', 'friend', 'if', 'inline', 'int', 'long', 'namespace', 'new', 'nullptr', 'operator', 'private', 'protected', 'public', 'register', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch', 'template', 'this', 'throw', 'true', 'try', 'typedef', 'typename', 'union', 'unsigned', 'using', 'virtual', 'void', 'volatile', 'while']);
+        let match;
+        while ((match = identifierPattern.exec(text)) !== null) {
+            const name = match[0];
+            if (name.length < 2 || ignored.has(name)) continue;
+            counts.set(name, (counts.get(name) || 0) + 1);
+        }
+        const candidates = Array.from(counts.entries())
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+            .slice(0, 250)
+            .map(([label, count]) => ({ label, count }));
+        if (model) model.__oicppLocalCompletionCache = { versionId, candidates };
+        return candidates;
+    }
+
+    _registerLocalCompletionProvider() {
+        const commonCppItems = [
+            'vector', 'string', 'pair', 'map', 'set', 'queue', 'stack', 'deque',
+            'priority_queue', 'unordered_map', 'unordered_set', 'sort', 'reverse',
+            'lower_bound', 'upper_bound', 'binary_search', 'max', 'min', 'swap',
+            'push_back', 'emplace_back', 'begin', 'end', 'size', 'memset', 'fill'
+        ];
+        for (const language of ['cpp', 'c']) {
+            const key = `${language}:localCompletion`;
+            if (this._lspProviders.has(key)) continue;
+            const disposable = monaco.languages.registerCompletionItemProvider(language, {
+                provideCompletionItems: (model, position) => {
+                    if (!this._lspCompletionEnabled || !model || model.isDisposed?.()) return { suggestions: [] };
+                    const word = model.getWordUntilPosition(position);
+                    const prefix = (word.word || '').toLowerCase();
+                    const range = new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
+                    const seen = new Set();
+                    const suggestions = [];
+                    const add = (label, detail, count = 0, kind = monaco.languages.CompletionItemKind.Variable) => {
+                        const normalized = String(label || '').trim();
+                        if (!normalized || seen.has(normalized) || (prefix && !normalized.toLowerCase().includes(prefix))) return;
+                        seen.add(normalized);
+                        const exact = normalized.toLowerCase() === prefix;
+                        const startsWith = normalized.toLowerCase().startsWith(prefix);
+                        suggestions.push({
+                            label: normalized, kind, insertText: normalized, range, detail,
+                            // Prefer frequently used symbols from the current file.
+                            sortText: `${exact ? '00' : (startsWith ? '01' : '02')}${String(9999 - Math.min(count, 9999)).padStart(4, '0')}_${normalized}`
+                        });
+                    };
+                    this._getLocalCompletionCandidates(model).forEach(({ label, count }) => add(label, '当前文件', count));
+                    commonCppItems.forEach((label) => add(label, 'C++ 常用', 0, monaco.languages.CompletionItemKind.Keyword));
+                    return { suggestions };
+                }
+            });
+            this._lspProviders.set(key, disposable);
         }
     }
 
@@ -612,6 +685,18 @@ class MonacoEditorManager {
                         position.lineNumber, word.startColumn,
                         position.lineNumber, word.endColumn
                     );
+                    const prefix = (word.word || '').toLowerCase();
+                    const rankLspItem = (item, label) => {
+                        const candidate = String(item.filterText || label || '').toLowerCase();
+                        const matchRank = candidate === prefix ? '00' : (candidate.startsWith(prefix) ? '01' : '02');
+                        const kind = Number(item.kind) || 0;
+                        // Functions, methods and variables are generally more
+                        // useful while writing contest code than generic types
+                        // and low-relevance clangd entries.
+                        const kindRank = [2, 3, 5, 6, 10, 12, 13, 20, 21].includes(kind) ? '00'
+                            : ([7, 13, 22, 25].includes(kind) ? '01' : '02');
+                        return `${matchRank}${kindRank}_${String(item.sortText || label || '')}`;
+                    };
 
                     const suggestions = items.map((item) => {
                         const rawLabel = String(item.label || '').trim();
@@ -641,7 +726,7 @@ class MonacoEditorManager {
                             insertText,
                             range,
                             detail: item.detail || undefined,
-                            sortText: item.sortText,
+                            sortText: rankLspItem(item, rawLabel),
                             filterText: item.filterText,
                             documentation,
                             additionalTextEdits
@@ -1078,23 +1163,36 @@ class MonacoEditorManager {
     }
 
     queueLspDidChange(model) {
-        if (!model) return;
+        if (!model || model.isDisposed?.()) return;
         const existing = this._lspChangeTimers.get(model);
         if (existing) {
             clearTimeout(existing);
         }
+        const lineCount = model.getLineCount?.() || 0;
+        const contentLength = model.getValueLength?.() || 0;
+        // didChange sends the complete document. Give clangd time to settle
+        // after a large paste instead of queuing multiple full parses.
+        const delay = contentLength >= 100000 || lineCount >= 1000
+            ? 700
+            : (contentLength >= 15000 || lineCount >= 150 ? 350 : 150);
         const timer = setTimeout(() => {
             this._lspChangeTimers.delete(model);
             this.sendLspDidChange(model);
-        }, 150);
+        }, delay);
         this._lspChangeTimers.set(model, timer);
     }
 
     async sendLspDidChange(model) {
+        if (!model || model.isDisposed?.()) return;
+        if (this._lspChangeInFlight.has(model)) {
+            this._lspChangePending.add(model);
+            return;
+        }
         try {
-            if (!this.lspClient || !model) return;
+            if (!this.lspClient) return;
             const entry = this._lspDocuments.get(model);
             if (!entry) return;
+            this._lspChangeInFlight.add(model);
             entry.version += 1;
             const result = await this.lspClient.notify('textDocument/didChange', {
                 textDocument: { uri: entry.uri, version: entry.version },
@@ -1105,6 +1203,11 @@ class MonacoEditorManager {
             }
         } catch (err) {
             logWarn('[LSP] 文档变更失败:', err?.message || err);
+        } finally {
+            this._lspChangeInFlight.delete(model);
+            if (this._lspChangePending.delete(model) && !model.isDisposed?.() && this._lspDocuments.has(model)) {
+                this.queueLspDidChange(model);
+            }
         }
     }
 
@@ -1761,19 +1864,29 @@ class MonacoEditorManager {
 
             const provider = {
                 getLegend: () => legend,
-                provideDocumentSemanticTokens: async (model) => {
+                provideDocumentSemanticTokens: async (model, _lastResultId, cancellationToken) => {
                     try {
+                        if (!model || model.isDisposed?.() || cancellationToken?.isCancellationRequested) {
+                            return null;
+                        }
                         await this._ensureLspDocumentReady(model);
-                        if (!this.lspClient) {
-                            return { data: new Uint32Array(), resultId: null };
+                        if (!this.lspClient || model.isDisposed?.() || cancellationToken?.isCancellationRequested) {
+                            return null;
                         }
                         const uri = await this.getDocumentUriForModel(model);
-                        if (!uri) {
-                            return { data: new Uint32Array(), resultId: null };
+                        if (!uri || model.isDisposed?.() || cancellationToken?.isCancellationRequested) {
+                            return null;
                         }
+                        const modelVersion = model.getVersionId?.();
                         const result = await this.lspClient.request('textDocument/semanticTokens/full', {
                             textDocument: { uri }
                         });
+                        // A large paste can make clangd complete an older request
+                        // after the model changed. Do not paint stale token data.
+                        if (model.isDisposed?.() || cancellationToken?.isCancellationRequested
+                            || (modelVersion !== undefined && model.getVersionId?.() !== modelVersion)) {
+                            return null;
+                        }
                         if (!result || !Array.isArray(result.data)) {
                             return { data: new Uint32Array(), resultId: result?.resultId || null };
                         }
