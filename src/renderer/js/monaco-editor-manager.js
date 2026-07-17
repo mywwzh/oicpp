@@ -835,6 +835,13 @@ class MonacoEditorManager {
                                 character: position.column - 1
                             }
                         });
+                        // The editor/tab may have been disposed while clangd was
+                        // answering. Returning locations for it makes Monaco's
+                        // built-in definition action attempt to reference a model
+                        // that no longer exists.
+                        if (!model || (typeof model.isDisposed === 'function' && model.isDisposed())) {
+                            return null;
+                        }
                         if (!result) return null;
 
                         const locations = Array.isArray(result) ? result : [result];
@@ -4924,9 +4931,9 @@ class MonacoEditorManager {
                     e.event.preventDefault?.();
                     e.event.stopPropagation?.();
                     setTimeout(() => {
-                        Promise.resolve(this.handleCtrlClickNavigation(editor, pos)).finally(() => {
-                            clearHover();
-                        });
+                        Promise.resolve(this.handleCtrlClickNavigation(editor, pos))
+                            .catch(() => {})
+                            .finally(() => clearHover());
                     }, 0);
                 } catch (_) {}
             });

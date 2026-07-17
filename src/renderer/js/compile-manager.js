@@ -1,4 +1,8 @@
 class CompilerManager {
+    t(key, params, fallback) {
+        return window.i18n?.t?.(key, params) || fallback || key;
+    }
+
     constructor() {
         this.settings = {
             compilerPath: '',
@@ -269,7 +273,7 @@ class CompilerManager {
 
             this.isCompiling = true;
             this.showOutput();
-            this.setStatus('正在编译...');
+            this.setStatus(this.t('compileOutput.compiling', null, 'Compiling...'));
             this.clearOutput();
 
             const inputFile = filePath;
@@ -292,11 +296,11 @@ class CompilerManager {
                 }
                 compilerArgs = compilerArgs.replace(/-s\b/g, '');
                 compilerArgs = compilerArgs.replace(/\s+/g, ' ').trim();
-                this.appendOutput('编译模式: 调试模式 (包含调试信息，禁用优化)\n', 'info');
+                this.appendOutput(this.t('compileOutput.modeDebug', null, 'Compilation mode: Debug (debug info, optimizations disabled)') + '\n', 'info');
             } else {
                 if (!compilerArgs.includes('-g')) {
                     compilerArgs = compilerArgs + ' -g';
-                    this.appendOutput('编译模式: 普通模式 (包含调试信息)\n', 'info');
+                    this.appendOutput(this.t('compileOutput.modeNormal', null, 'Compilation mode: Normal (with debug info)') + '\n', 'info');
                 }
             }
 
@@ -306,9 +310,9 @@ class CompilerManager {
             logInfo(`目标文件: ${outputFile}`);
             logInfo(`编译命令: ${compileCommand}`);
 
-            this.appendOutput(`编译命令: ${compileCommand}\n`, 'command');
-            this.appendOutput(`目标文件: ${outputFile}\n`, 'info');
-            this.appendOutput('正在编译...\n', 'info');
+            this.appendOutput(this.t('compileOutput.command', { command: compileCommand }, `Compilation command: ${compileCommand}`) + '\n', 'command');
+            this.appendOutput(this.t('compileOutput.targetFile', { file: outputFile }, `Output file: ${outputFile}`) + '\n', 'info');
+            this.appendOutput(this.t('compileOutput.compiling', null, 'Compiling...') + '\n', 'info');
 
             if (typeof require !== 'undefined') {
                 try {
@@ -515,7 +519,7 @@ class CompilerManager {
 
             this.isRunning = true;
             this.showOutput();
-            this.appendOutput(`正在启动程序: ${executablePath}\n`, 'info');
+            this.appendOutput(this.t('compileOutput.startingProgram', { file: executablePath }, `Starting program: ${executablePath}`) + '\n', 'info');
             this.runExecutable(executablePath);
 
         } catch (error) {
@@ -1154,11 +1158,11 @@ class CompilerManager {
         this.isCompiling = false;
         
             if (result.success) {
-            this.setStatus('编译成功');
-            this.appendOutput('编译成功!\n', 'success');
+            this.setStatus(this.t('compileOutput.successSimple', null, 'Compilation successful'));
+            this.appendOutput(this.t('compileOutput.successSimple', null, 'Compilation successful') + '!\n', 'success');
             
             if (result.warnings && result.warnings.length > 0) {
-                this.appendOutput('警告信息:\n', 'warning');
+                this.appendOutput(this.t('compileOutput.warningCount', { count: result.warnings.length }, `Found ${result.warnings.length} warnings:`) + '\n', 'warning');
                     result.warnings.forEach(warning => {
                         this.appendOutput(`${warning}\n`, 'warning');
                     });
@@ -1177,12 +1181,12 @@ class CompilerManager {
                 this.runCurrentFile();
             }
             } else {
-            this.setStatus('编译失败');
-            this.appendOutput('编译失败!\n', 'error');
+            this.setStatus(this.t('compileOutput.failSimple', null, 'Compilation failed'));
+            this.appendOutput(this.t('compileOutput.failSimple', null, 'Compilation failed') + '!\n', 'error');
             this.shouldRunAfterCompile = false;
             
             if (result.errors && result.errors.length > 0) {
-                this.appendOutput('错误信息:\n', 'error');
+                this.appendOutput(this.t('compileOutput.errorInfo', null, 'Error information:') + '\n', 'error');
                 result.errors.forEach(error => {
                     this.appendOutput(`${this._stringifyError(error)}\n`, 'error');
                 });
@@ -1215,9 +1219,9 @@ class CompilerManager {
 
     handleCompileError(error) {
         this.isCompiling = false;
-        this.setStatus('编译错误');
+        this.setStatus(this.t('compileOutput.failSimple', null, 'Compilation failed'));
         const msg = this._stringifyError(error);
-        this.appendOutput(`编译错误: ${msg}\n`, 'error');
+        this.appendOutput(`${this.t('compileOutput.failSimple', null, 'Compilation failed')}: ${msg}\n`, 'error');
 
         this.renderSmartAnalysis({ errors: [msg] });
         if (this.analysisHasContent && this.analysisAvailable) {
@@ -1238,24 +1242,24 @@ class CompilerManager {
         this.setStatus(success ? `${title}成功` : `${title}失败`);
 
         if (result.stdout) {
-            this.appendOutput('标准输出:\n', 'info');
+            this.appendOutput(this.t('compileOutput.standardOutput', null, 'Standard output:') + '\n', 'info');
             this.appendOutput(`${result.stdout}\n`, 'info');
         }
 
         if (result.stderr) {
-            this.appendOutput('标准错误:\n', 'error');
+            this.appendOutput(this.t('compileOutput.standardError', null, 'Standard error:') + '\n', 'error');
             this.appendOutput(`${result.stderr}\n`, 'error');
         }
 
         if (result.errors && result.errors.length > 0) {
-            this.appendOutput('错误信息:\n', 'error');
+            this.appendOutput(this.t('compileOutput.errorInfo', null, 'Error information:') + '\n', 'error');
             result.errors.forEach((err) => {
                 this.appendOutput(`${this._stringifyError(err)}\n`, 'error');
             });
         }
 
         if (result.warnings && result.warnings.length > 0) {
-            this.appendOutput('警告信息:\n', 'warning');
+            this.appendOutput(this.t('compileOutput.warningCount', { count: result.warnings.length }, `Found ${result.warnings.length} warnings:`) + '\n', 'warning');
             result.warnings.forEach((warning) => {
                 this.appendOutput(`${warning}\n`, 'warning');
             });
@@ -1283,8 +1287,9 @@ class CompilerManager {
             return;
         }
         if (result.success) {
-            this.appendOutput('程序已在新窗口中启动\n', 'success');
-            this.showMessage('程序已在新窗口中启动', 'success');
+            const message = this.t('compileOutput.programStartedNewWindow', null, 'Program started in a new window');
+            this.appendOutput(message + '\n', 'success');
+            this.showMessage(message, 'success');
         }
         logInfo('程序运行完成:', result);
     }
@@ -1306,8 +1311,9 @@ class CompilerManager {
             });
 
             this.hideOutput();
-            this.appendOutput('程序已在内置终端中启动\n', 'success');
-            this.showMessage('程序已在内置终端中启动', 'success');
+            const message = this.t('compileOutput.programStartedIntegratedTerminal', null, 'Program started in the integrated terminal');
+            this.appendOutput(message + '\n', 'success');
+            this.showMessage(message, 'success');
             logInfo('程序运行完成(内置终端):', result);
         } catch (error) {
             this.handleRunError(error?.message || error);

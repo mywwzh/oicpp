@@ -49,6 +49,10 @@
         this._isMacPlatform = undefined;
     }
 
+    t(key, params, fallback) {
+        return window.i18n?.t?.(key, params) || fallback || key;
+    }
+
     async init() {
         try {
             logInfo('开始初始化 OICPP App...');
@@ -2844,7 +2848,7 @@
     this._debugSessionId++;
     this._debugExited = false;
         
-        this.updateAllDebugPanels('调试会话已启动，程序已加载');
+        this.updateAllDebugPanels(this.t('debug.sessionStarted', null, 'Debug session started; program loaded'));
         
         this.updateDebugStatus('调试器已启动，程序准备运行');
     this.showDebugInfo(`调试会话已启动
@@ -3400,6 +3404,7 @@ ${data.message || '程序已加载，等待开始执行'}
     }
 
     showFeedback() {
+        const t = this.t.bind(this);
         const dialog = document.createElement('div');
         dialog.className = 'about-dialog-overlay';
         dialog.innerHTML = `
@@ -3408,18 +3413,18 @@ ${data.message || '程序已加载，等待开始执行'}
                     <div class="about-logo">
                         <img id="feedback-dialog-icon" src="" width="48" height="48" alt="OICPP IDE">
                     </div>
-                    <h2>用户反馈</h2>
+                    <h2>${t('feedback.title', null, 'Feedback')}</h2>
                 </div>
                 <div class="about-content">
                     <div class="feedback-section">
-                        <p class="feedback-description">点击按钮打开 GitHub Issues，如打不开请搜索"github 打不开"解决。</p>
+                        <p class="feedback-description">${t('feedback.description', null, 'Click the button to open GitHub Issues.')}</p>
                         <div class="feedback-actions">
-                            <button id="open-github-btn" class="feedback-btn primary">打开 GitHub Issues</button>
+                            <button id="open-github-btn" class="feedback-btn primary">${t('feedback.openIssues', null, 'Open GitHub Issues')}</button>
                         </div>
                     </div>
                 </div>
                 <div class="about-footer">
-                    <button id="feedback-close-btn">关闭</button>
+                    <button id="feedback-close-btn">${t('dialog.close', null, 'Close')}</button>
                 </div>
             </div>
         `;
@@ -3432,36 +3437,37 @@ ${data.message || '程序已加载，等待开始执行'}
 
     async uploadClientLogFromMenu() {
         if (!window.electronAPI) {
-            this.showMessage('上传日志功能不可用', 'error');
+            this.showMessage(this.t('feedback.logUnavailable', null, 'Log upload is unavailable'), 'error');
             return;
         }
 
         if (typeof window.electronAPI.listClientLogs !== 'function' || typeof window.electronAPI.uploadClientLog !== 'function') {
-            this.showMessage('当前版本不支持上传日志', 'error');
+            this.showMessage(this.t('feedback.logUnsupported', null, 'This version does not support log upload'), 'error');
             return;
         }
 
         try {
             const listResult = await window.electronAPI.listClientLogs();
             if (!listResult || listResult.success !== true) {
-                this.showMessage(listResult?.message || '读取日志列表失败', 'error');
+                this.showMessage(listResult?.message || this.t('feedback.logListFailed', null, 'Failed to read the log list'), 'error');
                 return;
             }
 
             const logs = Array.isArray(listResult.logs) ? listResult.logs : [];
             if (logs.length === 0) {
-                this.showMessage('当前没有可上传的日志文件', 'info');
+                this.showMessage(this.t('feedback.noLogs', null, 'There are no log files to upload'), 'info');
                 return;
             }
 
             this.showUploadLogPickerDialog(logs);
         } catch (error) {
             logError('上传日志失败:', error);
-            this.showMessage('上传日志失败: ' + (error?.message || error), 'error');
+            this.showMessage(this.t('feedback.logUploadFailed', { error: error?.message || error }, `Log upload failed: ${error?.message || error}`), 'error');
         }
     }
 
     showUploadLogPickerDialog(logs) {
+        const t = this.t.bind(this);
         const dialog = document.createElement('div');
         dialog.className = 'about-dialog-overlay';
 
@@ -3474,7 +3480,7 @@ ${data.message || '程序已加载，等待开始执行'}
 
         const formatTime = (ms) => {
             const date = new Date(Number(ms) || 0);
-            if (Number.isNaN(date.getTime())) return '未知时间';
+            if (Number.isNaN(date.getTime())) return t('feedback.unknownTime', null, 'Unknown time');
             const pad = (v) => String(v).padStart(2, '0');
             return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
         };
@@ -3487,7 +3493,7 @@ ${data.message || '程序已加载，等待开始执行'}
             .replace(/'/g, '&#39;');
 
         const rows = logs.map((item, index) => {
-            const safeName = String(item?.name || `日志 ${index + 1}`)
+            const safeName = String(item?.name || `Log ${index + 1}`)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
@@ -3504,18 +3510,18 @@ ${data.message || '程序已加载，等待开始执行'}
         dialog.innerHTML = `
             <div class="about-dialog log-picker-dialog">
                 <div class="about-header">
-                    <h2>选择要上传的日志</h2>
+                    <h2>${t('feedback.selectLogTitle', null, 'Select a log to upload')}</h2>
                 </div>
                 <div class="about-content">
                     <div class="feedback-section">
-                        <p class="feedback-description">请点击一条日志开始上传。</p>
+                        <p class="feedback-description">${t('feedback.selectLogDescription', null, 'Click a log to start uploading.')}</p>
                         <div class="log-picker-list">
                             ${rows}
                         </div>
                     </div>
                 </div>
                 <div class="about-footer">
-                    <button id="pick-log-close-btn">取消</button>
+                    <button id="pick-log-close-btn">${t('dialog.cancel', null, 'Cancel')}</button>
                 </div>
             </div>
         `;
@@ -3538,15 +3544,15 @@ ${data.message || '程序已加载，等待开始执行'}
             btn.addEventListener('click', async () => {
                 const logPath = btn.getAttribute('data-log-path') || '';
                 if (!logPath) {
-                    this.showMessage('日志路径无效', 'error');
+                    this.showMessage(t('feedback.invalidLogPath', null, 'Invalid log path'), 'error');
                     return;
                 }
 
                 try {
-                    this.showMessage('正在上传日志，请稍候...', 'info');
+                    this.showMessage(t('feedback.uploadingLog', null, 'Uploading log, please wait...'), 'info');
                     const result = await window.electronAPI.uploadClientLog(logPath);
                     if (!result || result.success !== true) {
-                        this.showMessage(result?.message || '日志上传失败', 'error');
+                        this.showMessage(result?.message || t('feedback.logUploadFailed', { error: '' }, 'Log upload failed'), 'error');
                         return;
                     }
 
@@ -3554,39 +3560,40 @@ ${data.message || '程序已加载，等待开始执行'}
                     this.showTraceCodeDialog(result.traceCode || '', result.uploadedAt || '');
                 } catch (error) {
                     logError('上传日志失败:', error);
-                    this.showMessage('上传日志失败: ' + (error?.message || error), 'error');
+                    this.showMessage(t('feedback.logUploadFailed', { error: error?.message || error }, `Log upload failed: ${error?.message || error}`), 'error');
                 }
             });
         });
     }
 
     showTraceCodeDialog(traceCode, uploadedAt) {
+        const t = this.t.bind(this);
         const dialog = document.createElement('div');
         dialog.className = 'about-dialog-overlay';
 
-        const safeTraceCode = String(traceCode || '').trim() || '未返回追踪码';
+        const safeTraceCode = String(traceCode || '').trim() || t('feedback.traceCodeMissing', null, 'No trace code returned');
         const uploadedAtText = String(uploadedAt || '').trim();
 
         dialog.innerHTML = `
             <div class="about-dialog trace-code-dialog">
                 <div class="about-header">
-                    <h2>日志上传成功</h2>
+                    <h2>${t('feedback.uploadSuccessTitle', null, 'Log uploaded successfully')}</h2>
                 </div>
                 <div class="about-content">
                     <div class="feedback-section">
-                        <p class="feedback-description">请在反馈问题时附带下方追踪码，方便开发者快速定位日志。</p>
+                        <p class="feedback-description">${t('feedback.traceDescription', null, 'Please include the trace code below when reporting an issue.')}</p>
                         <div class="about-info">
-                            <p><strong>追踪码:</strong> <span id="trace-code-value" class="trace-code-value"></span></p>
-                            ${uploadedAtText ? `<p><strong>上传时间:</strong> ${uploadedAtText}</p>` : ''}
+                            <p><strong>${t('feedback.traceCode', null, 'Trace code:')}</strong> <span id="trace-code-value" class="trace-code-value"></span></p>
+                            ${uploadedAtText ? `<p><strong>${t('feedback.uploadedAt', null, 'Uploaded at:')}</strong> ${uploadedAtText}</p>` : ''}
                         </div>
                         <div class="feedback-actions">
-                            <button id="copy-trace-code-btn" class="feedback-btn primary">复制追踪码</button>
-                            <button id="open-issue-from-trace-btn" class="feedback-btn">打开反馈</button>
+                            <button id="copy-trace-code-btn" class="feedback-btn primary">${t('feedback.copyTraceCode', null, 'Copy Trace Code')}</button>
+                            <button id="open-issue-from-trace-btn" class="feedback-btn">${t('feedback.openFeedback', null, 'Open Feedback')}</button>
                         </div>
                     </div>
                 </div>
                 <div class="about-footer">
-                    <button id="trace-close-btn">关闭</button>
+                    <button id="trace-close-btn">${t('dialog.close', null, 'Close')}</button>
                 </div>
             </div>
         `;
@@ -3616,13 +3623,13 @@ ${data.message || '程序已加载，等待开始执行'}
                 try {
                     if (window.electronAPI && typeof window.electronAPI.clipboardWriteText === 'function') {
                         await window.electronAPI.clipboardWriteText(safeTraceCode);
-                        this.showMessage('追踪码已复制', 'success');
+                        this.showMessage(t('feedback.traceCodeCopied', null, 'Trace code copied'), 'success');
                     } else {
-                        this.showMessage('复制功能不可用，请手动复制追踪码', 'warning');
+                        this.showMessage(t('feedback.copyUnavailable', null, 'Copy is unavailable; please copy the trace code manually'), 'warning');
                     }
                 } catch (error) {
                     logWarn('复制追踪码失败:', error);
-                    this.showMessage('复制失败，请手动复制追踪码', 'error');
+                    this.showMessage(t('feedback.copyFailed', null, 'Copy failed; please copy the trace code manually'), 'error');
                 }
             });
         }
@@ -3638,7 +3645,7 @@ ${data.message || '程序已加载，等待开始执行'}
                 } catch (error) {
                     logWarn('打开反馈页失败:', error);
                 }
-                this.showMessage(`反馈时请附带追踪码: ${safeTraceCode}`, 'info');
+                this.showMessage(t('feedback.includeTraceCode', { code: safeTraceCode }, `Please include this trace code in your feedback: ${safeTraceCode}`), 'info');
                 closeDialog();
             });
         }
@@ -3659,6 +3666,7 @@ ${data.message || '程序已加载，等待开始执行'}
     }
 
     setupFeedbackDialogListeners(dialog) {
+        const t = this.t.bind(this);
         const closeBtn = dialog.querySelector('#feedback-close-btn');
         closeBtn.addEventListener('click', () => {
             dialog.remove();
@@ -3760,6 +3768,7 @@ ${data.message || '程序已加载，等待开始执行'}
     }
 
     showOpenSourceLicenses() {
+        const t = this.t.bind(this);
         const openSourceLibs = [
             { name: 'Electron', license: 'MIT', url: 'https://github.com/electron/electron' },
             { name: 'Monaco Editor', license: 'MIT', url: 'https://github.com/microsoft/monaco-editor' },
@@ -3803,17 +3812,17 @@ ${data.message || '程序已加载，等待开始执行'}
         dialog.innerHTML = `
             <div class="about-dialog oss-dialog">
                 <div class="about-header">
-                    <h2>开源软件使用声明</h2>
+                    <h2>${t('openSource.title', null, 'Open Source Licenses')}</h2>
                 </div>
                 <div class="about-content oss-content">
-                    <p class="oss-intro">OICPP IDE 使用了以下开源软件，在此向这些项目的开发者和贡献者表示感谢。</p>
+                    <p class="oss-intro">${t('openSource.intro', null, 'OICPP IDE uses the following open-source software. We thank their developers and contributors.')}</p>
                     <div class="oss-table-wrap">
                         <table class="oss-table">
                             <thead>
                                 <tr>
-                                    <th>名称</th>
-                                    <th>许可证</th>
-                                    <th>项目地址</th>
+                                    <th>${t('openSource.name', null, 'Name')}</th>
+                                    <th>${t('openSource.license', null, 'License')}</th>
+                                    <th>${t('openSource.projectUrl', null, 'Project URL')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -3823,7 +3832,7 @@ ${data.message || '程序已加载，等待开始执行'}
                     </div>
                 </div>
                 <div class="about-footer">
-                    <button id="oss-close-btn">关闭</button>
+                    <button id="oss-close-btn">${t('dialog.close', null, 'Close')}</button>
                 </div>
             </div>
         `;
@@ -3892,13 +3901,13 @@ ${data.message || '程序已加载，等待开始执行'}
 
     checkForUpdates() {
         if (this.updateDownloadState.autoChecking) {
-            this.showMessage('正在执行启动自动检查，请稍后再手动检查更新', 'info');
+            this.showMessage(this.t('message.updateAutoChecking', null, 'Auto check in progress.'), 'info');
             return;
         }
 
         if (this.updateDownloadState.downloading) {
             const versionSuffix = this.updateDownloadState.version ? ` (${this.updateDownloadState.version})` : '';
-            this.showMessage(`更新正在后台下载${versionSuffix}，当前进度 ${this.updateDownloadState.progress}%`, 'info');
+            this.showMessage(this.t('message.updateDownloading', { version: versionSuffix, progress: this.updateDownloadState.progress }, `Downloading update${versionSuffix}, ${this.updateDownloadState.progress}%`), 'info');
             return;
         }
 
@@ -3912,11 +3921,11 @@ ${data.message || '程序已加载，等待开始执行'}
                 this.showUpdateCheckingDialog();
             } catch (error) {
                 logError('[渲染进程] 检查更新失败:', error);
-                alert('检查更新功能暂时不可用');
+                alert(this.t('message.updateUnavailable', null, 'Update checking is temporarily unavailable'));
             }
         } else {
             logWarn('[渲染进程] Electron环境不可用，无法检查更新');
-            alert('检查更新功能仅在Electron环境中可用');
+            alert(this.t('message.updateElectronOnly', null, 'Update checking is available only in the Electron application'));
         }
     }
 
@@ -3927,14 +3936,14 @@ ${data.message || '程序已加载，等待开始执行'}
         dialog.innerHTML = `
             <div class="update-dialog">
                 <div class="update-header">
-                    <h3>检查更新</h3>
+                    <h3>${this.t('menu.checkUpdate', null, 'Check for Updates')}</h3>
                 </div>
                 <div class="update-content">
                     <div class="update-spinner"></div>
-                    <p>正在检查更新，请稍候...</p>
+                    <p>${this.t('message.updateChecking', null, 'Checking for updates, please wait...')}</p>
                 </div>
                 <div class="update-footer">
-                    <button onclick="this.parentElement.parentElement.parentElement.remove()">取消</button>
+                    <button onclick="this.parentElement.parentElement.parentElement.remove()">${this.t('dialog.cancel', null, 'Cancel')}</button>
                 </div>
             </div>
         `;
