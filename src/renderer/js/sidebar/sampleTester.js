@@ -724,6 +724,8 @@ class SampleTester {
             </div>
         `;
         summaryEl.style.display = 'flex';
+        const summaryLabel = summaryEl.querySelector('.summary-label');
+        if (summaryLabel && window.i18n) summaryLabel.textContent = window.i18n.t('tester.overview');
     }
 
     renderSamples() {
@@ -754,6 +756,34 @@ class SampleTester {
                 this.autoResizeProgramOutput(textarea);
             });
         }, 0);
+        this.applyDynamicTranslations();
+    }
+
+    applyDynamicTranslations() {
+        const t = (key, params, fallback) => window.i18n?.t?.(key, params) || fallback || key;
+        document.querySelectorAll('.sample-title').forEach((el) => {
+            const id = el.closest('.sample-group')?.dataset.sampleId || '';
+            el.textContent = t('tester.testGroup', { i: id }, `Test ${id}`);
+        });
+        document.querySelectorAll('.sample-run-btn').forEach((el) => {
+            el.textContent = t('tester.runSample', null, 'Run');
+            el.title = t('tester.runSample', null, 'Run Sample');
+        });
+        document.querySelectorAll('.sample-delete-btn').forEach((el) => el.title = t('tester.deleteSample', null, 'Delete Sample'));
+        document.querySelectorAll('.sample-io-label [data-i18n]').forEach((el) => el.textContent = t(el.dataset.i18n, null, el.textContent));
+        document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => el.placeholder = t(el.dataset.i18nPlaceholder, null, el.placeholder));
+        document.querySelectorAll('.sample-io-group .file-btn').forEach((el) => {
+            const key = el.classList.contains('switch-btn') ? 'tester.manualInput' : 'tester.readFromFile';
+            el.textContent = t(key, null, el.textContent.trim());
+            el.title = t(key, null, el.title);
+        });
+        document.querySelectorAll('.export-output-btn').forEach((el) => {
+            if (el.classList.contains('expand-output-btn')) {
+                el.textContent = t('tester.expand', null, 'Expand');
+            } else {
+                el.textContent = t('tester.export', null, 'Export');
+            }
+        });
     }
 
     createSampleElement(sample) {
@@ -912,8 +942,10 @@ class SampleTester {
             const lines = (content || '').split('\n').length;
             const autoHeight = lines <= 1 ? 'auto-height' : '';
 
+            const placeholderKey = type === 'input' ? 'tester.inputPlaceholder' : 'tester.expectedOutputPlaceholder';
+            const placeholderFallback = type === 'input' ? 'Enter test data...' : 'Enter expected output...';
             return `<textarea class="sample-textarea ${autoHeight}" spellcheck="false"
-           placeholder="输入${type === 'input' ? '测试数据' : '期望输出'}..."
+           data-i18n-placeholder="${placeholderKey}" placeholder="${window.i18n?.t?.(placeholderKey) || placeholderFallback}"
            onfocus="sampleTester.expandTextarea(this)"
            onblur="sampleTester.collapseTextarea(this)"
            oninput="sampleTester.autoResizeTextarea(this); sampleTester.updateSampleContent(${sample.id}, '${type}', this.value)"

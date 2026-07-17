@@ -472,7 +472,7 @@ class CodeComparer {
     updateFilePath(elementId, filePath) {
         const element = document.getElementById(elementId);
         if (element) {
-            const value = (filePath && String(filePath).trim()) ? String(filePath) : (window.i18n ? window.i18n.t('compare.noFile') : 'No file selected');
+            const value = (filePath && String(filePath).trim()) ? String(filePath) : (window.i18n ? window.i18n.t('compare.noFileSelected') : 'No file selected');
             element.textContent = value;
             if (value === 'No file selected' || value === '未选择文件') {
                 element.classList.remove('selected');
