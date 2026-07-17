@@ -245,10 +245,31 @@ jobs:
           }
           '@ | node
 
-      - name: Build Unpacked App
+      - name: Build Windows app for NSIS
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build
+        run: |
+          npm run prebuild:buildinfo
+          npm run prebuild:icons
+          npx electron-builder --win dir
+
+      - name: Verify packaged language files
+        shell: powershell
+        run: |
+          @'
+          const fs = require("fs");
+          const path = require("path");
+          const asar = require("@electron/asar");
+          const archive = path.join(process.cwd(), "dist", "win-unpacked", "resources", "app.asar");
+          const languageFiles = ["src/lang/index.js", "src/lang/en.json", "src/lang/zh-cn.json"];
+          if (!fs.existsSync(archive)) throw new Error(`Missing packaged app archive: ${archive}`);
+          for (const file of languageFiles) {
+            const content = asar.extractFile(archive, file).toString("utf8");
+            if (!content) throw new Error(`Packaged language file is empty: ${file}`);
+            if (file.endsWith(".json")) JSON.parse(content);
+            console.log(`Verified packaged language file: ${file}`);
+          }
+          '@ | node
 
       - name: Verify packaged node-pty in app.asar.unpacked
         shell: powershell

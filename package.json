@@ -58,6 +58,7 @@
     },
     "files": [
       "src/**/*",
+      "src/lang/**/*",
       "node_modules/**/*",
       "oicpp.ico"
     ],
