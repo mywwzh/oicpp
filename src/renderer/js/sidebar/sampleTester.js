@@ -844,6 +844,10 @@ class SampleTester {
                         <div class="sample-io-header"><span class="sample-io-label">标准错误</span></div>
                         <div class="program-output-container"><textarea class="program-output" readonly spellcheck="false" placeholder="运行程序后显示标准错误..." id="stderr-${sample.id}">${sample.result?.stderr || ''}</textarea></div>
                     </div>
+                    <div class="program-output-group spj-output-group">
+                        <div class="sample-io-header"><span class="sample-io-label">SPJ 返回信息</span></div>
+                        <div class="program-output-container"><textarea class="program-output" readonly spellcheck="false" placeholder="SPJ 判题后显示返回信息..." id="spj-output-${sample.id}">${sample.result?.spjOutput || ''}</textarea></div>
+                    </div>
                 </div>
                 <div class="sample-settings">
                     <div class="setting-group">
@@ -1968,6 +1972,7 @@ class SampleTester {
 
             let status;
             let spjUsed = false;
+            let spjOutput = '';
 
             if (runResult.outputLimitExceeded) {
                 status = 'OLE';
@@ -1995,7 +2000,9 @@ class SampleTester {
                     if (!spjExists) {
                         status = 'WA';
                     } else {
-                        status = await this.judgeWithSpj(spjExecutablePath, inputData, normalizedActual, normalizedExpected);
+                        const spjJudgeResult = await this.judgeWithSpj(spjExecutablePath, inputData, normalizedActual, normalizedExpected);
+                        status = spjJudgeResult.status;
+                        spjOutput = spjJudgeResult.output;
                     }
                     spjUsed = true;
                 } else {
@@ -2021,6 +2028,7 @@ class SampleTester {
                 outputExpanded: false,
                 time: runResult.time,
                 usedSpj: spjUsed
+                ,spjOutput
             };
         } catch (error) {
             throw error;
@@ -2118,6 +2126,7 @@ class SampleTester {
 
             let status;
             let spjUsed = false;
+            let spjOutput = '';
 
             try {
                 if (runResult.outputLimitExceeded) {
@@ -2147,7 +2156,9 @@ class SampleTester {
 
                             status = 'WA';
                         } else {
-                            status = await this.judgeWithSpj(spjExecutablePath, inputData, normalizedActual, normalizedExpected);
+                            const spjJudgeResult = await this.judgeWithSpj(spjExecutablePath, inputData, normalizedActual, normalizedExpected);
+                            status = spjJudgeResult.status;
+                            spjOutput = spjJudgeResult.output;
 
                         }
                         spjUsed = true;
@@ -2176,6 +2187,7 @@ class SampleTester {
                 outputExpanded: false,
                 time: runResult.time,
                 usedSpj: spjUsed
+                ,spjOutput
             };
         } finally {
             // 主程序编译结果会被缓存复用，这里不删除可执行文件。
@@ -2543,6 +2555,10 @@ class SampleTester {
         if (stderrTextarea) {
             stderrTextarea.value = result?.stderr || '';
         }
+        const spjOutputTextarea = document.getElementById(`spj-output-${id}`);
+        if (spjOutputTextarea) {
+            spjOutputTextarea.value = result?.spjOutput || '';
+        }
         const element = document.querySelector(`[data-sample-id="${id}"]`);
         if (!element) return;
 
@@ -2893,15 +2909,16 @@ class SampleTester {
                 };
 
                 const spjResult = await window.electronAPI.runProgram(spjParams);
+                const output = [spjResult.stdout, spjResult.stderr].filter(Boolean).join(spjResult.stdout && spjResult.stderr ? '\n' : '');
 
                 if (spjResult.outputLimitExceeded) {
-                    return 'OLE';
+                    return { status: 'OLE', output };
                 } else if (spjResult.timeout) {
-                    return 'TLE';
+                    return { status: 'TLE', output };
                 } else if (spjResult.exitCode === 0) {
-                    return 'AC';
+                    return { status: 'AC', output };
                 } else {
-                    return 'WA';
+                    return { status: 'WA', output };
                 }
             } finally {
                 await window.electronAPI.deleteTempFile(inputFile);
@@ -2910,7 +2927,7 @@ class SampleTester {
             }
         } catch (error) {
             logError('SPJ判题失败:', error);
-            return 'Error';
+            return { status: 'Error', output: error?.message || String(error) };
         }
     }
 
