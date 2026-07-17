@@ -2637,8 +2637,6 @@
             }
             logInfo('检查可执行文件:', executablePath);
             
-            await new Promise(resolve => setTimeout(resolve, 500));
-
             this._autoContinueOnStart = true;
             this.startDebugSession(currentFile, {
                 runMode: debugRunMode,

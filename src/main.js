@@ -26,6 +26,10 @@ const APP_VERSION = '1.4.7';
 const SAVE_ALL_TIMEOUT = 4000;
 const EXTERNAL_OPEN_DEDUP_WINDOW_MS = 800;
 const recentExternalOpens = new Map();
+// Compiler probing starts child processes and filesystem scans. Results depend
+// on the compiler installation, so reuse them for this application session.
+const compilerInfoCache = new Map();
+const compilerIncludeCache = new Map();
 
 function normalizeExternalOpenUrl(url) {
     const value = String(url || '').trim();
@@ -318,7 +322,7 @@ function collectStdCxxIncludeDirs(compilerPath) {
         if (!fs.existsSync(rootDir)) {
             continue;
         }
-        const depth = rootDir.endsWith(path.join('include', 'c++')) ? 4 : 6;
+        const depth = rootDir.endsWith(path.join('include', 'c++')) ? 4 : 4;
         scanDirTree(rootDir, depth);
     }
 
@@ -446,7 +450,7 @@ function searchCompilerTreeForStdCxxIncludeDir(compilerPath, headerName = 'bits/
     };
 
     for (const rootDir of searchRoots) {
-        scanDirTree(rootDir, 8);
+        scanDirTree(rootDir, 5);
     }
 
     return result;
@@ -654,7 +658,12 @@ class ClangdLspManager {
         // 如果提供了编译器路径，运行编译器获取真实的 include 路径和 target
         if (compilerPath && fs.existsSync(compilerPath)) {
             try {
-                const compilerInfo = await queryCompilerInfo(compilerPath, fallbackFlags);
+                const compilerCacheKey = path.resolve(compilerPath);
+                let compilerInfo = compilerInfoCache.get(compilerCacheKey);
+                if (!compilerInfo) {
+                    compilerInfo = await queryCompilerInfo(compilerPath, fallbackFlags);
+                    compilerInfoCache.set(compilerCacheKey, compilerInfo);
+                }
 
                 if (compilerInfo.target && compilerInfo.target !== 'x86_64-pc-windows-msvc') {
                     const hasTarget = fallbackFlags.some(f => f.startsWith('--target='));
@@ -672,7 +681,22 @@ class ClangdLspManager {
                     logInfo('[LSP] 已将 ' + compilerInfo.includePaths.length + ' 个编译器 include 路径添加到回退参数');
                 }
 
-                const probedStdCxxIncludeDir = await queryCompilerHeaderIncludeDir(compilerPath, 'bits/stdc++.h');
+                let compilerIncludes = compilerIncludeCache.get(compilerCacheKey);
+                if (!compilerIncludes) {
+                    const probedStdCxxIncludeDir = await queryCompilerHeaderIncludeDir(compilerPath, 'bits/stdc++.h');
+                    const stdCxxIncludeDirs = collectStdCxxIncludeDirs(compilerPath);
+                    const searchedStdCxxIncludeDirs = stdCxxIncludeDirs.length > 0
+                        ? []
+                        : searchCompilerTreeForStdCxxIncludeDir(compilerPath, 'bits/stdc++.h');
+                    compilerIncludes = {
+                        probedStdCxxIncludeDir,
+                        stdCxxIncludeDirs,
+                        searchedStdCxxIncludeDirs
+                    };
+                    compilerIncludeCache.set(compilerCacheKey, compilerIncludes);
+                }
+
+                const { probedStdCxxIncludeDir, stdCxxIncludeDirs, searchedStdCxxIncludeDirs } = compilerIncludes;
                 if (probedStdCxxIncludeDir) {
                     addStdCxxIncludeBundle(fallbackFlags, probedStdCxxIncludeDir);
                     logInfo('[LSP] 通过编译器直接探测到标准 C++ 头文件路径:', probedStdCxxIncludeDir);
@@ -682,14 +706,12 @@ class ClangdLspManager {
                     fallbackFlags.push('-Wno-system-headers');
                 }
 
-                const stdCxxIncludeDirs = collectStdCxxIncludeDirs(compilerPath);
                 if (stdCxxIncludeDirs.length > 0) {
                     for (const includeDir of stdCxxIncludeDirs) {
                         addStdCxxIncludeBundle(fallbackFlags, includeDir);
                     }
                     logInfo('[LSP] 已补充标准 C++ 头文件路径:', stdCxxIncludeDirs.join('; '));
                 } else {
-                    const searchedStdCxxIncludeDirs = searchCompilerTreeForStdCxxIncludeDir(compilerPath, 'bits/stdc++.h');
                     if (searchedStdCxxIncludeDirs.length > 0) {
                         for (const includeDir of searchedStdCxxIncludeDirs) {
                             addStdCxxIncludeBundle(fallbackFlags, includeDir);
@@ -7229,6 +7251,21 @@ async function compileFile(options) {
 
     const { inputFile, outputFile, compilerPath, compilerArgs, workingDirectory } = options;
 
+    // If the executable is at least as new as its source, compilation has
+    // already succeeded for the current file contents.
+    try {
+        if (inputFile && outputFile && fs.existsSync(inputFile) && fs.existsSync(outputFile)) {
+            const inputMtime = fs.statSync(inputFile).mtimeMs;
+            const outputMtime = fs.statSync(outputFile).mtimeMs;
+            if (outputMtime >= inputMtime) {
+                logInfo('[编译缓存] 源文件未变更，跳过编译:', inputFile);
+                return { success: true, cached: true, exitCode: 0, stdout: '', stderr: '', warnings: [], errors: [], diagnostics: [] };
+            }
+        }
+    } catch (cacheError) {
+        logWarn('[编译缓存] mtime 检查失败，将正常编译:', cacheError?.message || cacheError);
+    }
+
     function parseArgsPreservingQuotes(argString) {
         if (!argString || typeof argString !== 'string') return [];
         const args = [];
@@ -7471,6 +7508,13 @@ async function compileFile(options) {
             shell: false // 禁用shell模式以避免路径解析问题
         });
 
+        let timedOut = false;
+        const compilationTimeout = setTimeout(() => {
+            timedOut = true;
+            logWarn('[编译] 超过 120 秒，正在终止编译器进程:', inputFile);
+            try { compiler.kill(); } catch (_) { }
+        }, 120000);
+
         const stdoutChunks = [];
         const stderrChunks = [];
 
@@ -7483,6 +7527,7 @@ async function compileFile(options) {
         });
 
         compiler.on('close', (code) => {
+            clearTimeout(compilationTimeout);
             const stdoutBuf = Buffer.concat(stdoutChunks);
             const stderrBuf = Buffer.concat(stderrChunks);
             const stdout = decodeBufferAuto(stdoutBuf);
@@ -7499,7 +7544,7 @@ async function compileFile(options) {
             const outputExists = fs.existsSync(outputFile);
 
             const result = {
-                success: code === 0,
+                success: code === 0 && !timedOut,
                 exitCode: code,
                 stdout: stdout,
                 stderr: stderr,
@@ -7507,6 +7552,10 @@ async function compileFile(options) {
                 errors: [],
                 diagnostics: []
             };
+
+            if (timedOut) {
+                result.errors.push('编译超时（120 秒），已终止编译器进程。');
+            }
 
             if (code !== 0 && !stderr.trim() && !stdout.trim()) {
                 result.errors.push('编译失败，但编译器未提供错误信息。可能的原因：');
@@ -7604,6 +7653,7 @@ async function compileFile(options) {
         });
 
         compiler.on('error', (error) => {
+            clearTimeout(compilationTimeout);
             logError('编译进程启动失败:', error);
             logError('错误代码:', error.code);
             logError('错误路径:', error.path);
