@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Installer version override (e.g., 1.4.7)"
+        description: "Installer version override (e.g., 1.5.0-beta1)"
         required: false
 
 permissions:
