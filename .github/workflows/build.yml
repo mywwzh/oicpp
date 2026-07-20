@@ -41,6 +41,8 @@ jobs:
           node -e "try { require('sharp'); console.log('sharp ok'); } catch (e) { console.log('sharp unavailable, will use committed png icons fallback'); }"
 
       - name: Prepare clangd bundle
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run prebuild:clangd
 
       - name: Verify node-pty linux binary
@@ -128,6 +130,8 @@ jobs:
           node -e "try { require('sharp'); console.log('sharp ok'); } catch (e) { console.log('sharp unavailable, will use committed png icons fallback'); }"
 
       - name: Prepare clangd bundle
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run prebuild:clangd
 
       - name: Ensure dmg-license is installed
@@ -220,6 +224,8 @@ jobs:
           node -e "try { require('sharp'); console.log('sharp ok'); } catch (e) { console.log('sharp unavailable, will use committed png icons fallback'); }"
 
       - name: Prepare clangd bundle
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run prebuild:clangd
 
       - name: Verify node-pty windows binary
