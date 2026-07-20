@@ -47,7 +47,19 @@ const ensureDir = (dirPath) => {
     fs.mkdirSync(dirPath, { recursive: true });
 };
 
-const requestJson = (url, token) => new Promise((resolve, reject) => {
+const getRetryDelayMs = (retryAfter) => {
+    const seconds = Number.parseInt(retryAfter, 10);
+    return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 30 * 1000;
+};
+
+const retryAfterRateLimit = (retryAfter, retriesLeft, action) => {
+    if (retriesLeft <= 0) return null;
+    const delayMs = getRetryDelayMs(retryAfter);
+    console.warn(`[clangd] GitHub returned 403, retrying in ${Math.ceil(delayMs / 1000)} seconds (${retriesLeft} retries left)`);
+    return new Promise((resolve) => setTimeout(resolve, delayMs)).then(action);
+};
+
+const requestJson = (url, token, retriesLeft = 3) => new Promise((resolve, reject) => {
     const opts = new URL(url);
     const headers = {
         'User-Agent': 'oicpp-clangd-downloader',
@@ -61,6 +73,13 @@ const requestJson = (url, token) => new Promise((resolve, reject) => {
         let data = '';
         res.on('data', (chunk) => { data += chunk; });
         res.on('end', () => {
+            if (res.statusCode === 403) {
+                const retry = retryAfterRateLimit(res.headers['retry-after'], retriesLeft, () => requestJson(url, token, retriesLeft - 1));
+                if (retry) {
+                    retry.then(resolve, reject);
+                    return;
+                }
+            }
             if (res.statusCode && res.statusCode >= 400) {
                 reject(new Error(`GitHub API error ${res.statusCode}: ${data.slice(0, 200)}`));
                 return;
@@ -74,7 +93,7 @@ const requestJson = (url, token) => new Promise((resolve, reject) => {
     }).on('error', reject);
 });
 
-const downloadFile = (url, dest, token) => new Promise((resolve, reject) => {
+const downloadFile = (url, dest, token, retriesLeft = 3) => new Promise((resolve, reject) => {
     const opts = new URL(url);
     const headers = { 'User-Agent': 'oicpp-clangd-downloader' };
     if (token) {
@@ -85,8 +104,16 @@ const downloadFile = (url, dest, token) => new Promise((resolve, reject) => {
     https.get(opts, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
             res.resume();
-            downloadFile(res.headers.location, dest, token).then(resolve).catch(reject);
+            downloadFile(res.headers.location, dest, token, retriesLeft).then(resolve).catch(reject);
             return;
+        }
+        if (res.statusCode === 403) {
+            res.resume();
+            const retry = retryAfterRateLimit(res.headers['retry-after'], retriesLeft, () => downloadFile(url, dest, token, retriesLeft - 1));
+            if (retry) {
+                retry.then(resolve, reject);
+                return;
+            }
         }
         if (res.statusCode && res.statusCode >= 400) {
             res.resume();
