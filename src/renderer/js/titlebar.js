@@ -123,6 +123,14 @@ class TitlebarManager {
         if (this._closeConfirmInProgress) return;
         if (!window.electronIPC) return;
 
+        const tempFilesHandled = await this._confirmTemporaryFilesBeforeClose();
+        if (!tempFilesHandled) {
+            if (source === 'system') {
+                window.electronIPC.send('app-close-cancelled');
+            }
+            return;
+        }
+
         const unsavedFiles = (() => {
             try {
                 if (window.tabManager && typeof window.tabManager.getUnsavedFiles === 'function') {
@@ -192,6 +200,30 @@ class TitlebarManager {
         } finally {
             this._closeConfirmInProgress = false;
         }
+    }
+
+    async _confirmTemporaryFilesBeforeClose() {
+        const tempFiles = Array.from(window.tabManager?.tabs?.values?.() || [])
+            .filter((tab) => tab?.isTempFile && tab.viewType !== 'pdf');
+        for (const tab of tempFiles) {
+            const fileName = this._escapeHtml(tab.fileName || '临时文件');
+            const result = await window.dialogManager?.showActionDialog?.(
+                '确认丢弃临时文件',
+                `临时文件“${fileName}”未保存。<br><br>请选择如何处理临时文件。`,
+                [
+                    { id: 'save', label: '保存', className: 'dialog-btn-confirm' },
+                    { id: 'discard', label: '丢弃', className: 'dialog-btn-cancel' },
+                    { id: 'cancel', label: '取消' }
+                ]
+            );
+            if (result === 'cancel' || !result) return false;
+            if (result === 'save') {
+                const content = window.tabManager.getTabContentForSave?.(tab);
+                const savedPath = await window.electronAPI?.saveAsFile?.(content);
+                if (!savedPath) return false;
+            }
+        }
+        return true;
     }
 
     setupElectronEvents() {
