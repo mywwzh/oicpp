@@ -2247,7 +2247,7 @@ class TabManager {
             return;
         }
 
-        if (!options.force && !options.skipCloseConfirm && tabData.viewType !== 'pdf' && tabData.modified) {
+        if (!options.force && !options.skipCloseConfirm && tabData.viewType !== 'pdf' && (tabData.modified || tabData.isTempFile)) {
             const escapeHtml = (text) => {
                 try {
                     const div = document.createElement('div');
@@ -2259,7 +2259,9 @@ class TabManager {
             };
 
             const safeName = escapeHtml(tabData.fileName || fileName || '当前文件');
-            const message = `标签页 “${safeName}” 有未保存修改。<br><br>请选择如何处理这些修改。`;
+            const message = tabData.isTempFile
+                ? `临时文件 “${safeName}” 未保存。<br><br>请选择如何处理临时文件。`
+                : `标签页 “${safeName}” 有未保存修改。<br><br>请选择如何处理这些修改。`;
 
             const proceedSave = async () => {
                 try {
@@ -2272,7 +2274,11 @@ class TabManager {
                         return typeof p === 'string' && /^cloud:/i.test(p);
                     };
 
-                    if (path && typeof content === 'string') {
+                    if (tabData.isTempFile) {
+                        if (!window.electronAPI?.saveAsFile) return;
+                        const savedPath = await window.electronAPI.saveAsFile(content);
+                        if (!savedPath) return;
+                    } else if (path && typeof content === 'string') {
                         if (isCloudPath(path)) {
                             if (window.oicppApp && typeof window.oicppApp.saveCloudFileToServer === 'function') {
                                 const ok = await window.oicppApp.saveCloudFileToServer(path, content);
@@ -2292,7 +2298,7 @@ class TabManager {
 
             try {
                 if (window.dialogManager?.showActionDialog) {
-                    window.dialogManager.showActionDialog('确认关闭标签页', message, [
+                    window.dialogManager.showActionDialog(tabData.isTempFile ? '确认丢弃临时文件' : '确认关闭标签页', message, [
                         { id: 'save', label: '保存', className: 'dialog-btn-confirm' },
                         { id: 'discard', label: '丢弃', className: 'dialog-btn-cancel' },
                         { id: 'cancel', label: '取消' }
@@ -2344,7 +2350,7 @@ class TabManager {
             }
         }
 
-        if (!options.skipAutoSave && !this.isDiscardCloseInProgress() && tabData.viewType !== 'pdf') {
+        if (!options.skipAutoSave && !this.isDiscardCloseInProgress() && !tabData.isTempFile && tabData.viewType !== 'pdf') {
             try {
                 const path = tabData.filePath || (uniqueKey && uniqueKey.includes('/') ? uniqueKey : null);
                 const content = this.getTabContentForSave(tabData);
@@ -4593,7 +4599,7 @@ class TabManager {
         }
 
         const modifiedEntries = Array.from(this.tabs.entries()).filter(([, tabData]) => {
-            return tabData && tabData.modified && tabData.viewType !== 'pdf';
+            return tabData && tabData.modified && !tabData.isTempFile && tabData.viewType !== 'pdf';
         });
 
         if (modifiedEntries.length === 0) {
