@@ -261,7 +261,7 @@ jobs:
           const path = require("path");
           const asar = require("@electron/asar");
           const archive = path.join(process.cwd(), "dist", "win-unpacked", "resources", "app.asar");
-          const languageFiles = ["src/lang/index.js", "src/lang/en.json", "src/lang/zh-cn.json"];
+          const languageFiles = ["lang/index.js", "lang/en.json", "lang/zh-cn.json"];
           if (!fs.existsSync(archive)) throw new Error(`Missing packaged app archive: ${archive}`);
           for (const file of languageFiles) {
             const content = asar.extractFile(archive, file).toString("utf8");
