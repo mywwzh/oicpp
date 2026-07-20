@@ -23,6 +23,8 @@ jobs:
         run: npm install
 
       - name: Prepare clangd bundle
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run prebuild:clangd
 
       - name: Build macOS DMG
