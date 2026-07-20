@@ -82,18 +82,19 @@ const downloadFile = (url, dest, token) => new Promise((resolve, reject) => {
     }
     opts.headers = headers;
 
-    const file = fs.createWriteStream(dest);
     https.get(opts, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            file.close(() => {
-                downloadFile(res.headers.location, dest, token).then(resolve).catch(reject);
-            });
+            res.resume();
+            downloadFile(res.headers.location, dest, token).then(resolve).catch(reject);
             return;
         }
         if (res.statusCode && res.statusCode >= 400) {
+            res.resume();
             reject(new Error(`Download failed ${res.statusCode}: ${url}`));
             return;
         }
+        const file = fs.createWriteStream(dest);
+        file.on('error', reject);
         res.pipe(file);
         file.on('finish', () => file.close(resolve));
     }).on('error', (err) => {
