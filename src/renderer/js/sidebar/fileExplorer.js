@@ -64,6 +64,12 @@ class FileExplorer {
         return { valid: true, error: null };
     }
 
+    hasFileExtension(fileName) {
+        const baseName = String(fileName || '').replace(/^.*[\\/]/, '');
+        const lastDot = baseName.lastIndexOf('.');
+        return lastDot > 0 && lastDot < baseName.length - 1;
+    }
+
     async confirmOperation(title, message) {
         try {
             if (window.dialogManager?.showConfirmDialog) {
@@ -1558,7 +1564,7 @@ class FileExplorer {
                 }
 
                 try {
-                    if (!/\.[^.\\/]+$/.test(fileName)) {
+                    if (!this.hasFileExtension(fileName)) {
                         fileName = fileName + '.cpp';
                     }
                 } catch (_) { }
@@ -1722,7 +1728,7 @@ class FileExplorer {
                 }
 
                 try {
-                    if (!/\.[^.\\/]+$/.test(fileName)) {
+                    if (!this.hasFileExtension(fileName)) {
                         fileName = fileName + '.cpp';
                     }
                 } catch (_) { }
