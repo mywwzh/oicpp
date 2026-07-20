@@ -7,7 +7,7 @@ class CloudSyncPanel {
         this.selectedItems = new Map();
         this.remainingFiles = null;
         this.allowedExtensions = new Set(['.ans', '.in', '.out', '.cpp', '.py', '.txt', '.md', '.h', '.hpp']);
-        this.maxFileSize = 20 * 1024;
+        this.maxFileSize = 50 * 1024;
         this.isLoading = false;
         this._lastLoggedIn = false;
         this._contextMenu = null;
@@ -527,7 +527,7 @@ class CloudSyncPanel {
         }
         const bytes = new TextEncoder().encode(content || '').length;
         if (bytes > this.maxFileSize) {
-            this.showMessage(window.i18n ? window.i18n.t('cloud.fileSizeExceeded') : '文件大小超过 20KB，无法上传', 'error');
+            this.showMessage(window.i18n ? window.i18n.t('cloud.fileSizeExceeded') : '文件大小超过 50KB，无法上传', 'error');
             return false;
         }
         const ext = this.getExtension(cloudPath);
@@ -625,7 +625,13 @@ class CloudSyncPanel {
         try {
             const result = await window.electronAPI.showOpenDialog({
                 title: window.i18n ? window.i18n.t('dialog.selectUploadFile') : '选择要上传的文件',
-                properties: ['openFile']
+                properties: ['openFile'],
+                filters: [
+                    {
+                        name: window.i18n ? window.i18n.t('cloud.supportedFileTypes') : 'Supported Files',
+                        extensions: Array.from(this.allowedExtensions, (extension) => extension.slice(1))
+                    }
+                ]
             });
             const filePath = result?.filePaths?.[0];
             if (!filePath) return;
@@ -638,7 +644,7 @@ class CloudSyncPanel {
             const buffer = await window.electronAPI.readFileBuffer(filePath);
             const byteLength = buffer?.byteLength ?? buffer?.length ?? 0;
             if (byteLength > this.maxFileSize) {
-                this.showMessage(window.i18n ? window.i18n.t('cloud.fileSizeExceeded') : '文件大小超过 20KB，无法上传', 'error');
+                this.showMessage(window.i18n ? window.i18n.t('cloud.fileSizeExceeded') : '文件大小超过 50KB，无法上传', 'error');
                 return;
             }
             const content = await window.electronAPI.readFileContent(filePath);
@@ -776,7 +782,7 @@ class CloudSyncPanel {
 
             let message = `上传完成：${uploaded} 个文件`;
             if (skippedSize > 0) {
-                message += `，跳过 ${skippedSize} 个超出 20KB 的文件`;
+                message += `，跳过 ${skippedSize} 个超出 50KB 的文件`;
             }
             this.showUploadProgress(entries.length, entries.length, message);
             this.hideUploadProgress(2000);
