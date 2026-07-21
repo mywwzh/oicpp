@@ -2626,6 +2626,7 @@ class MonacoEditorManager {
                 wordWrap: 'off',
                 tabSize,
                 insertSpaces: false,
+                trimAutoWhitespace: false,
                 renderWhitespace: 'none',
                 renderControlCharacters: false,
                 selectionHighlight: true,
