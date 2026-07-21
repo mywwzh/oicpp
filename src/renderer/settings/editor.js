@@ -1297,7 +1297,7 @@ class EditorSettings {
 
             const reset = document.createElement('button');
             reset.className = 'btn btn-secondary keybinding-reset';
-            reset.textContent = window.i18n ? window.i18n.t('settings.resetClangFormat') : '恢复默认';
+            reset.textContent = window.i18n ? window.i18n.t('settings.resetKeybinding') : '恢复默认';
             reset.addEventListener('click', () => {
                 input.value = defaults[item.key];
             });
@@ -2083,6 +2083,9 @@ class EditorSettings {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+    if (window.i18n && typeof window.i18n.init === 'function') {
+        await window.i18n.init();
+    }
     const editorSettings = new EditorSettings();
     await editorSettings.init();
 });

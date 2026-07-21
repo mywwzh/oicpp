@@ -178,6 +178,7 @@
     "resetClangFormat": "恢复默认",
     "keybindingsDesc": "仅支持配置编辑与编译调试相关快捷键。基础系统操作（如新建文件、复制/粘贴/剪切）使用固定快捷键。",
     "resetKeybindings": "恢复全部默认快捷键",
+    "resetKeybinding": "恢复默认",
     "save": "保存设置",
     "cancel": "取消",
     "reset": "重置默认",
