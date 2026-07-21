@@ -74,6 +74,11 @@ class BrowserManager {
 
         const webview = document.createElement('webview');
         webview.className = 'browser-webview';
+        webview.setAttribute('partition', 'persist:oicpp-browser');
+        const browserUserAgent = navigator.userAgent
+            .replace(/\sElectron\/\S+/i, '')
+            .replace(/\soicpp-ide\/\S+/i, '');
+        webview.setAttribute('useragent', browserUserAgent);
         webview.setAttribute('src', initialUrl);
         webview.style.width = '100%';
         webview.style.height = '100%';
