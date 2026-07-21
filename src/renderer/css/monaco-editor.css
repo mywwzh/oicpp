@@ -847,14 +847,6 @@ body[data-theme="solarized-light"] {
     background-color: var(--editor-selection, #264f78) !important;
 }
 
-.monaco-editor .view-line span.oicpp-force-sel-inline {
-    background-color: rgba(87, 161, 255, 0.60) !important;
-}
-body.theme-dark .monaco-editor .view-line span.oicpp-force-sel-inline,
-body[data-theme="dark"] .monaco-editor .view-line span.oicpp-force-sel-inline,
-body[data-editor-theme="dark"] .monaco-editor .view-line span.oicpp-force-sel-inline {
-    background-color: rgba(38, 79, 120, 0.90) !important;
-}
 .monaco-editor .findMatch,
 .monaco-editor .currentFindMatch {
     background-color: rgba(234, 92, 0, 0.33) !important;
