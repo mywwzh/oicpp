@@ -72,24 +72,20 @@ class BrowserManager {
         frameWrapper.style.position = 'relative';
         frameWrapper.style.overflow = 'hidden';
 
-        // iframe 元素（webSecurity:false 已禁用同源策略，可自由跨域）
-        const iframe = document.createElement('iframe');
-        iframe.className = 'browser-webview';
-        iframe.setAttribute('src', initialUrl);
-        iframe.setAttribute('allowpopups', '');
-        // 允许全屏、相机等权限
-        iframe.setAttribute('allow', 'fullscreen *; camera *; microphone *');
-        iframe.style.width = '100%';
-        iframe.style.height = '100%';
-        iframe.style.border = 'none';
+        const webview = document.createElement('webview');
+        webview.className = 'browser-webview';
+        webview.setAttribute('src', initialUrl);
+        webview.style.width = '100%';
+        webview.style.height = '100%';
+        webview.style.border = 'none';
 
-        frameWrapper.appendChild(iframe);
+        frameWrapper.appendChild(webview);
         container.appendChild(frameWrapper);
 
         // 保存引用
         const state = {
-            webview: iframe,  // 保持接口名兼容，实际是 iframe
-            iframe,
+            webview,
+            iframe: webview,
             container,
             navBar,
             urlInput: navBar.querySelector('.browser-url-input'),
@@ -98,12 +94,11 @@ class BrowserManager {
             canGoForward: false,
             isLoading: false,
             currentUrl: initialUrl,
-            history: []       // 导航历史
+            history: []
         };
         this.browserTabs.set(uniqueKey, state);
 
-        // 绑定 iframe 事件
-        this._bindIframeEvents(uniqueKey, state);
+        this._bindWebviewEvents(uniqueKey, state);
 
         return container;
     }
@@ -213,72 +208,43 @@ class BrowserManager {
     }
 
     /**
-     * 绑定 iframe 事件
+     * 绑定 webview 事件
      */
-    _bindIframeEvents(uniqueKey, state) {
-        const { iframe, navBar, urlInput } = state;
+    _bindWebviewEvents(uniqueKey, state) {
+        const { webview, navBar, urlInput } = state;
+        const updateLocation = (url) => {
+            if (!url || url === 'about:blank' || url.startsWith('data:text/html')) return;
+            state.currentUrl = url;
+            urlInput.value = url;
+            this._updateNavButtons(uniqueKey);
+        };
 
-        // iframe 加载完成
-        iframe.addEventListener('load', () => {
+        webview.addEventListener('did-start-loading', () => {
+            state.isLoading = true;
+            this._updateReloadButton(uniqueKey, true);
+            navBar.classList.add('loading');
+        });
+        webview.addEventListener('did-stop-loading', () => {
             state.isLoading = false;
             this._updateReloadButton(uniqueKey, false);
             navBar.classList.remove('loading');
-
-            // 更新 URL
-            try {
-                const currentSrc = iframe.contentWindow?.location?.href || iframe.src;
-                if (currentSrc && currentSrc !== 'about:blank') {
-                    state.currentUrl = currentSrc;
-                    urlInput.value = currentSrc;
-                    // 记录历史
-                    if (state.history[state.history.length - 1] !== currentSrc) {
-                        state.history.push(currentSrc);
-                    }
-                }
-            } catch (_) {
-                // 跨域限制时使用 iframe.src
-                const src = iframe.src;
-                if (src && src !== 'about:blank') {
-                    state.currentUrl = src;
-                    urlInput.value = src;
-                }
-            }
-
-            // 尝试获取标题
-            try {
-                const docTitle = iframe.contentDocument?.title;
-                if (docTitle) {
-                    state.title = docTitle;
-                    this._updateTabTitle(uniqueKey, docTitle);
-                }
-            } catch (_) {
-                // 跨域时无法获取标题，使用域名
-                try {
-                    const hostname = new URL(state.currentUrl).hostname.replace(/^www\./i, '');
-                    if (hostname) {
-                        this._updateTabTitle(uniqueKey, hostname);
-                    }
-                } catch (_) {}
-            }
-
-            this._updateNavButtons(uniqueKey);
+            try { updateLocation(webview.getURL()); } catch (_) {}
+        });
+        webview.addEventListener('did-navigate', (event) => updateLocation(event.url));
+        webview.addEventListener('did-navigate-in-page', (event) => updateLocation(event.url));
+        webview.addEventListener('page-title-updated', (event) => {
+            const title = typeof event.title === 'string' ? event.title.trim() : '';
+            if (!title) return;
+            state.title = title;
+            this._updateTabTitle(uniqueKey, title);
+        });
+        webview.addEventListener('did-fail-load', (event) => {
+            if (event.errorCode === -3) return;
+            state.isLoading = false;
+            this._updateReloadButton(uniqueKey, false);
+            navBar.classList.remove('loading');
         });
 
-        // 开始加载（通过轮转 src 检测）
-        const originalSetSrc = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'src');
-        // 用 mutation observer 监测 src 变化
-        const observer = new MutationObserver(() => {
-            const newSrc = iframe.src;
-            if (newSrc && newSrc !== state.currentUrl && newSrc !== 'about:blank') {
-                state.isLoading = true;
-                this._updateReloadButton(uniqueKey, true);
-                navBar.classList.add('loading');
-            }
-        });
-        observer.observe(iframe, { attributes: true, attributeFilter: ['src'] });
-        state._srcObserver = observer;
-
-        // 更新导航按钮状态
         this._updateNavButtons(uniqueKey);
     }
 
@@ -308,14 +274,8 @@ class BrowserManager {
         } catch (_) {}
         if (!url) return;
         state.currentUrl = url;
-        state.iframe.src = url;
+        state.webview.loadURL(url).catch(() => {});
         state.urlInput.value = url;
-        // 记录历史
-        if (state.history[state.history.length - 1] !== url) {
-            state.history.push(url);
-        }
-        state.canGoBack = state.history.length > 1;
-        state.canGoForward = false;
         this._updateNavButtons(uniqueKey);
     }
 
@@ -324,18 +284,10 @@ class BrowserManager {
      */
     goBack(uniqueKey) {
         const state = this.browserTabs.get(uniqueKey);
-        if (!state || state.history.length < 2) return;
-        const current = state.history.pop();
-        state._forwardStack = state._forwardStack || [];
-        state._forwardStack.push(current);
-        const prevUrl = state.history[state.history.length - 1];
-        if (prevUrl) {
-            state.currentUrl = prevUrl;
-            state.iframe.src = prevUrl;
-            state.urlInput.value = prevUrl;
-        }
-        state.canGoBack = state.history.length > 1;
-        state.canGoForward = (state._forwardStack?.length || 0) > 0;
+        if (!state?.webview) return;
+        try {
+            if (state.webview.canGoBack()) state.webview.goBack();
+        } catch (_) {}
         this._updateNavButtons(uniqueKey);
     }
 
@@ -344,16 +296,10 @@ class BrowserManager {
      */
     goForward(uniqueKey) {
         const state = this.browserTabs.get(uniqueKey);
-        if (!state || !state._forwardStack || state._forwardStack.length === 0) return;
-        const nextUrl = state._forwardStack.pop();
-        if (nextUrl) {
-            state.history.push(nextUrl);
-            state.currentUrl = nextUrl;
-            state.iframe.src = nextUrl;
-            state.urlInput.value = nextUrl;
-        }
-        state.canGoBack = state.history.length > 1;
-        state.canGoForward = (state._forwardStack?.length || 0) > 0;
+        if (!state?.webview) return;
+        try {
+            if (state.webview.canGoForward()) state.webview.goForward();
+        } catch (_) {}
         this._updateNavButtons(uniqueKey);
     }
 
@@ -362,16 +308,8 @@ class BrowserManager {
      */
     reload(uniqueKey) {
         const state = this.browserTabs.get(uniqueKey);
-        if (state && state.iframe) {
-            try {
-                state.iframe.contentWindow?.location?.reload();
-            } catch (_) {
-                // 跨域时回退到重新设置 src
-                const currentSrc = state.iframe.src;
-                if (currentSrc && currentSrc !== 'about:blank') {
-                    state.iframe.src = currentSrc;
-                }
-            }
+        if (state?.webview) {
+            try { state.webview.reload(); } catch (_) {}
         }
     }
 
@@ -380,12 +318,8 @@ class BrowserManager {
      */
     stopLoading(uniqueKey) {
         const state = this.browserTabs.get(uniqueKey);
-        if (state && state.iframe) {
-            try {
-                state.iframe.contentWindow?.stop();
-            } catch (_) {
-                // 跨域时无法停止，只能忽略
-            }
+        if (state?.webview) {
+            try { state.webview.stop(); } catch (_) {}
         }
     }
 
@@ -397,8 +331,14 @@ class BrowserManager {
         if (!state) return;
         const backBtn = state.navBar.querySelector('.browser-nav-back');
         const forwardBtn = state.navBar.querySelector('.browser-nav-forward');
-        if (backBtn) backBtn.classList.toggle('disabled', !state.canGoBack);
-        if (forwardBtn) forwardBtn.classList.toggle('disabled', !state.canGoForward);
+        let canGoBack = false;
+        let canGoForward = false;
+        try {
+            canGoBack = state.webview?.canGoBack?.() || false;
+            canGoForward = state.webview?.canGoForward?.() || false;
+        } catch (_) {}
+        if (backBtn) backBtn.classList.toggle('disabled', !canGoBack);
+        if (forwardBtn) forwardBtn.classList.toggle('disabled', !canGoForward);
     }
 
     /**
@@ -461,16 +401,9 @@ class BrowserManager {
         const state = this.browserTabs.get(uniqueKey);
         if (!state) return;
         try {
-            // 断开 MutationObserver
-            if (state._srcObserver) {
-                try { state._srcObserver.disconnect(); } catch (_) {}
-                state._srcObserver = null;
-            }
-            // 清理 iframe
-            if (state.iframe && state.iframe.parentNode) {
-                // 释放 iframe 资源
-                try { state.iframe.src = 'about:blank'; } catch (_) {}
-                state.iframe.parentNode.removeChild(state.iframe);
+            if (state.webview && state.webview.parentNode) {
+                try { state.webview.stop(); } catch (_) {}
+                state.webview.parentNode.removeChild(state.webview);
             }
             // 清理导航栏
             if (state.navBar && state.navBar.parentNode) {
@@ -522,36 +455,28 @@ class BrowserManager {
         if (!state || !state.container) return;
         state.container.classList.add('active');
         state.container.style.display = '';
-        // 确保 iframe 明确撑满
-        if (state.iframe) {
-            state.iframe.style.width = '100%';
-            state.iframe.style.height = '100%';
-            try { state.iframe.focus(); } catch (_) {}
+        if (state.webview) {
+            state.webview.style.width = '100%';
+            state.webview.style.height = '100%';
+            try { state.webview.focus(); } catch (_) {}
 
             // 如果是因为 DOM 搬移需要恢复内容，或有内容丢失迹象，则重新加载
             const needsRestore = state._needsContentRestore;
             state._needsContentRestore = false;
 
-            const shouldReload = needsRestore || (() => {
-                try {
-                    const loc = state.iframe.contentWindow?.location?.href;
-                    return !loc || loc === 'about:blank';
-                } catch (_) {
-                    // 跨域：如果当前 url 不是 data: 则信任它已加载，否则重新设置
-                    return !state.currentUrl || state.currentUrl.startsWith('data:');
-                }
-            })();
+            let shouldReload = needsRestore;
+            try { shouldReload = shouldReload || !state.webview.getURL(); } catch (_) {}
 
             if (shouldReload) {
                 const url = state.currentUrl || this._newTabPage || 'about:blank';
                 // 用 requestAnimationFrame 确保 DOM 已挂载后再设置 src
                 requestAnimationFrame(() => {
                     try {
-                        if (state.iframe.src !== url) {
-                            state.iframe.src = url;
+                        if (state.webview.getURL() !== url) {
+                            state.webview.loadURL(url).catch(() => {});
                         }
                     } catch (_) {
-                        state.iframe.src = url;
+                        state.webview.setAttribute('src', url);
                     }
                 });
             }
@@ -581,7 +506,7 @@ class BrowserManager {
     }
 
     /**
-     * 移动浏览器容器到新分组（直接搬移 DOM，不重建 iframe）
+     * 移动浏览器容器到新分组（直接搬移 DOM，不重建 webview）
      */
     moveContainerToGroup(uniqueKey, newGroupId) {
         const state = this.browserTabs.get(uniqueKey);
@@ -590,8 +515,7 @@ class BrowserManager {
         // 只更新分组 ID，DOM 节点由调用方通过 appendChild 搬移
         state.container.dataset.groupId = newGroupId;
 
-        // appendChild 会自动从旧父节点移除，iframe 的浏览上下文会被保留
-        // 但为防止 Chromium 搬移 iframe 后丢失内容，标记需要恢复
+        // appendChild 会自动从旧父节点移除，标记需要恢复以兼容 webview 重挂载
         state._needsContentRestore = true;
 
         return state.container;
