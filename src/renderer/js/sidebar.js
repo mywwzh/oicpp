@@ -254,9 +254,14 @@ class SidebarManager {
 
         this.sidebarPanel.style.display = '';
 
-        const width = 350;
+        const currentWidth = parseInt(this.sidebar.style.width, 10);
+        const rememberedWidth = parseInt(this.savedWidth, 10);
+        const storedWidth = parseInt(localStorage.getItem('sidebar-width'), 10);
+        const width = [currentWidth, rememberedWidth, storedWidth]
+            .find(candidate => Number.isFinite(candidate) && candidate >= 200) || 350;
         this.sidebar.style.width = width + 'px';
 
+        localStorage.setItem('sidebar-width', width);
         localStorage.removeItem('sidebar-collapsed');
 
         logInfo('侧边栏已展开，宽度:', width, 'isCollapsed:', this.isCollapsed);
