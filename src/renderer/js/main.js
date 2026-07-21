@@ -3742,20 +3742,20 @@ ${data.message || '程序已加载，等待开始执行'}
                     <div class="about-logo">
                         <img id="about-dialog-icon" src="" width="48" height="48" alt="OICPP IDE">
                     </div>
-                    <h2 data-i18n="app.about">About OICPP IDE</h2>
+                    <h2>${this.t('app.about', null, 'About OICPP IDE')}</h2>
                 </div>
                 <div class="about-content">
                     <div class="about-info">
-                        <p><strong data-i18n="app.version">Version:</strong> ${versionLabel}</p>
-                        <p><strong>Build Time:</strong> ${buildInfo.buildTime}</p>
-                        <p><strong>Developer:</strong> ${buildInfo.author}</p>
-                        <p><strong>Description:</strong> C++ development environment optimized for OI competitors</p>
-                        <p><strong>QQ Group:</strong> 931577836</p>
-                        <p><strong>Website:</strong> https://oicpp.mywwzh.top</p>
+                        <p><strong>${this.t('app.version', null, 'Version')}:</strong> ${versionLabel}</p>
+                        <p><strong>${this.t('app.buildTime', null, 'Build Time')}:</strong> ${buildInfo.buildTime}</p>
+                        <p><strong>${this.t('app.developer', null, 'Developer')}:</strong> ${buildInfo.author}</p>
+                        <p><strong>${this.t('app.description', null, 'Description')}:</strong> ${this.t('app.descriptionText', null, 'C++ development environment optimized for OI competitors')}</p>
+                        <p><strong>${this.t('app.qqGroup', null, 'QQ Group')}:</strong> 931577836</p>
+                        <p><strong>${this.t('app.website', null, 'Website')}:</strong> https://oicpp.mywwzh.top</p>
                     </div>
                 </div>
                 <div  class="about-footer">
-                    <button id="about-close-btn" data-i18n="dialog.close">Close</button>
+                    <button id="about-close-btn">${this.t('dialog.close', null, 'Close')}</button>
                 </div>
             </div>
         `;
@@ -4527,4 +4527,3 @@ ${data.message || '程序已加载，等待开始执行'}
 }
 
 window.OICPPApp = OICPPApp;
-
