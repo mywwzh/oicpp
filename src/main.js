@@ -2504,9 +2504,21 @@ function createWindow() {
             if (!trimmed) return '';
             // 如果用户输入了完整的 URL，直接使用
             if (/^https?:\/\//i.test(trimmed)) return trimmed;
-            // 如果包含 . 但没有空格，可能是域名
-            if (/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(trimmed) && !/\s/.test(trimmed)) {
-                return 'https://' + trimmed;
+            // 识别域名、IPv4、带方括号的 IPv6 和 localhost
+            if (!/\s/.test(trimmed)) {
+                try {
+                    const candidate = new URL('https://' + trimmed);
+                    const hostname = candidate.hostname.replace(/^\[|\]$/g, '');
+                    const ipv4Parts = hostname.split('.');
+                    const isIpv4 = ipv4Parts.length === 4
+                        && ipv4Parts.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255);
+                    const isIpv6 = hostname.includes(':');
+                    const isLocalhost = hostname.toLowerCase() === 'localhost';
+                    const isDomain = /^[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/.test(hostname);
+                    if (isIpv4 || isIpv6 || isLocalhost || isDomain) {
+                        return candidate.href;
+                    }
+                } catch (_) { }
             }
             // 否则作为搜索词
             return 'https://www.google.com/search?q=' + encodeURIComponent(trimmed);
