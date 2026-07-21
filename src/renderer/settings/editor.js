@@ -9,6 +9,7 @@ class EditorSettings {
             theme: 'dark',
             syntaxColorsByTheme: {},
             syntaxFontStyles: {},
+            unifiedPreprocessorColor: false,
             tabSize: 4,
             formatterIndentStyle: 'editor',
             wordWrap: false,
@@ -508,6 +509,7 @@ class EditorSettings {
             'namespace',
             'preprocessor',
             'operator',
+            'punctuation',
             'pointer',
             'variable'
         ];
@@ -527,6 +529,7 @@ class EditorSettings {
                 namespace: '#4fc1ff',
                 preprocessor: '#c586c0',
                 operator: '#d4d4d4',
+                punctuation: '#d4d4d4',
                 pointer: '#d4d4d4',
                 variable: '#9cdcfe'
             },
@@ -541,6 +544,7 @@ class EditorSettings {
                 namespace: '#0451a5',
                 preprocessor: '#0000ff',
                 operator: '#000000',
+                punctuation: '#000000',
                 pointer: '#001080',
                 variable: '#001080'
             },
@@ -555,6 +559,7 @@ class EditorSettings {
                 namespace: '#66d9ef',
                 preprocessor: '#f92672',
                 operator: '#f8f8f2',
+                punctuation: '#f8f8f2',
                 pointer: '#fd971f',
                 variable: '#f8f8f2'
             },
@@ -569,6 +574,7 @@ class EditorSettings {
                 namespace: '#005cc5',
                 preprocessor: '#d73a49',
                 operator: '#24292e',
+                punctuation: '#24292e',
                 pointer: '#e36209',
                 variable: '#24292e'
             },
@@ -583,6 +589,7 @@ class EditorSettings {
                 namespace: '#79c0ff',
                 preprocessor: '#ff7b72',
                 operator: '#e6edf3',
+                punctuation: '#e6edf3',
                 pointer: '#ffa657',
                 variable: '#c9d1d9'
             },
@@ -597,6 +604,7 @@ class EditorSettings {
                 namespace: '#268bd2',
                 preprocessor: '#859900',
                 operator: '#586e75',
+                punctuation: '#586e75',
                 pointer: '#cb4b16',
                 variable: '#657b83'
             },
@@ -611,6 +619,7 @@ class EditorSettings {
                 namespace: '#268bd2',
                 preprocessor: '#859900',
                 operator: '#93a1a1',
+                punctuation: '#93a1a1',
                 pointer: '#cb4b16',
                 variable: '#93a1a1'
             },
@@ -625,6 +634,7 @@ class EditorSettings {
                 namespace: '#8be9fd',
                 preprocessor: '#ff79c6',
                 operator: '#f8f8f2',
+                punctuation: '#f8f8f2',
                 pointer: '#ffb86c',
                 variable: '#f8f8f2'
             }
@@ -1093,6 +1103,13 @@ class EditorSettings {
             });
         }
 
+        const unifiedPreprocessorCheckbox = document.getElementById('editor-unified-preprocessor-color');
+        if (unifiedPreprocessorCheckbox) {
+            unifiedPreprocessorCheckbox.addEventListener('change', () => {
+                this.notifyMainWindowPreview();
+            });
+        }
+
         const tabSizeInput = document.getElementById('editor-tab-size');
         if (tabSizeInput) {
             tabSizeInput.addEventListener('input', () => {
@@ -1435,6 +1452,7 @@ class EditorSettings {
                     syntaxFontStyles: (() => {
                         return this.normalizeSyntaxFontStyles(allSettings.syntaxFontStyles);
                     })(),
+                    unifiedPreprocessorColor: !!allSettings.unifiedPreprocessorColor,
                     tabSize: allSettings.tabSize || 4,
                     formatterIndentStyle: (() => {
                         const rawStyle = typeof allSettings.formatterIndentStyle === 'string' ? allSettings.formatterIndentStyle.trim().toLowerCase() : 'editor';
@@ -1469,6 +1487,7 @@ class EditorSettings {
                     theme: 'dark',
                     syntaxColorsByTheme: {},
                     syntaxFontStyles: {},
+                    unifiedPreprocessorColor: false,
                     tabSize: 4,
                     formatterIndentStyle: 'editor',
                     clangFormatStyle: this.getDefaultClangFormatStyle(),
@@ -1499,6 +1518,7 @@ class EditorSettings {
                 theme: 'dark',
                 syntaxColorsByTheme: {},
                 syntaxFontStyles: {},
+                unifiedPreprocessorColor: false,
                 tabSize: 4,
                 formatterIndentStyle: 'editor',
                 clangFormatStyle: this.getDefaultClangFormatStyle(),
@@ -1699,6 +1719,10 @@ class EditorSettings {
         this.setSyntaxStyleOverride(syntaxFontStyles);
         newSettings.syntaxColorsByTheme = syntaxColorsByTheme;
         newSettings.syntaxFontStyles = this.normalizeSyntaxFontStyles(this.settings.syntaxFontStyles);
+        const unifiedPreprocessorCheckbox = document.getElementById('editor-unified-preprocessor-color');
+        if (unifiedPreprocessorCheckbox) {
+            newSettings.unifiedPreprocessorColor = !!unifiedPreprocessorCheckbox.checked;
+        }
 
         const defaultKeybindings = this.getDefaultKeybindings();
         const editableKeys = new Set(this.getEditableKeybindingKeys());
@@ -1853,6 +1877,7 @@ class EditorSettings {
         const opacityValue = document.getElementById('editor-opacity-value');
         const glassEffectCheckbox = document.getElementById('editor-glass-effect-enabled');
         const bgImageInput = document.getElementById('editor-bg-image');
+        const unifiedPreprocessorCheckbox = document.getElementById('editor-unified-preprocessor-color');
 
         // Populate language selector
         this.populateLanguageSelector();
@@ -1905,6 +1930,9 @@ class EditorSettings {
         const effectiveSyntaxStyles = this.getEffectiveSyntaxStyles(this.settings.syntaxFontStyles);
         this.updateSyntaxColorUI(effectiveSyntaxColors, currentTheme);
         this.updateSyntaxPreview(effectiveSyntaxColors, currentTheme, effectiveSyntaxStyles);
+        if (unifiedPreprocessorCheckbox) {
+            unifiedPreprocessorCheckbox.checked = !!this.settings.unifiedPreprocessorColor;
+        }
         if (foldingCheckbox) {
             foldingCheckbox.checked = this.settings.foldingEnabled !== false;
         }

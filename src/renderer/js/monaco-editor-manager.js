@@ -44,6 +44,7 @@ class MonacoEditorManager {
         this.lineHeightSetting = 0;
         this.syntaxColorsByTheme = {};
         this.syntaxStyles = {};
+        this.unifiedPreprocessorColor = false;
         this.formatterIndentStyle = 'editor';
         this.clangFormatStyle = this.getDefaultClangFormatStyle();
         this._lspSemanticProviders = [];
@@ -1274,6 +1275,7 @@ class MonacoEditorManager {
             'namespace',
             'preprocessor',
             'operator',
+            'punctuation',
             'pointer',
             'variable'
         ];
@@ -1293,6 +1295,7 @@ class MonacoEditorManager {
                 namespace: '#4fc1ff',
                 preprocessor: '#c586c0',
                 operator: '#d4d4d4',
+                punctuation: '#d4d4d4',
                 pointer: '#d4d4d4',
                 variable: '#9cdcfe'
             },
@@ -1307,6 +1310,7 @@ class MonacoEditorManager {
                 namespace: '#0451a5',
                 preprocessor: '#0000ff',
                 operator: '#000000',
+                punctuation: '#000000',
                 pointer: '#001080',
                 variable: '#001080'
             },
@@ -1321,6 +1325,7 @@ class MonacoEditorManager {
                 namespace: '#66d9ef',
                 preprocessor: '#f92672',
                 operator: '#f8f8f2',
+                punctuation: '#f8f8f2',
                 pointer: '#fd971f',
                 variable: '#f8f8f2'
             },
@@ -1335,6 +1340,7 @@ class MonacoEditorManager {
                 namespace: '#005cc5',
                 preprocessor: '#d73a49',
                 operator: '#24292e',
+                punctuation: '#24292e',
                 pointer: '#e36209',
                 variable: '#24292e'
             },
@@ -1349,6 +1355,7 @@ class MonacoEditorManager {
                 namespace: '#79c0ff',
                 preprocessor: '#ff7b72',
                 operator: '#e6edf3',
+                punctuation: '#e6edf3',
                 pointer: '#ffa657',
                 variable: '#c9d1d9'
             },
@@ -1363,6 +1370,7 @@ class MonacoEditorManager {
                 namespace: '#268bd2',
                 preprocessor: '#859900',
                 operator: '#586e75',
+                punctuation: '#586e75',
                 pointer: '#cb4b16',
                 variable: '#657b83'
             },
@@ -1377,6 +1385,7 @@ class MonacoEditorManager {
                 namespace: '#268bd2',
                 preprocessor: '#859900',
                 operator: '#93a1a1',
+                punctuation: '#93a1a1',
                 pointer: '#cb4b16',
                 variable: '#93a1a1'
             },
@@ -1391,6 +1400,7 @@ class MonacoEditorManager {
                 namespace: '#8be9fd',
                 preprocessor: '#ff79c6',
                 operator: '#f8f8f2',
+                punctuation: '#f8f8f2',
                 pointer: '#ffb86c',
                 variable: '#f8f8f2'
             }
@@ -1527,7 +1537,10 @@ class MonacoEditorManager {
             makeRule('support.function.builtin', 'function'),
             makeRule('function', 'function'),
             makeRule('operator', 'operator'),
-            makeRule('delimiter', 'operator'),
+            makeRule('delimiter', 'punctuation'),
+            makeRule('delimiter.parenthesis', 'punctuation'),
+            makeRule('delimiter.square', 'punctuation'),
+            makeRule('delimiter.curly', 'punctuation'),
             makeRule('operator.pointer', 'pointer'),
             makeRule('pointer', 'pointer'),
             makeRule('variable', 'variable'),
@@ -1569,6 +1582,51 @@ class MonacoEditorManager {
             operator: withStyle('operator', 'operator'),
             decorator: withStyle('preprocessor', 'preprocessor')
         };
+    }
+
+    updatePreprocessorLineDecorations(editor, enabled, color) {
+        if (!editor || typeof monaco === 'undefined') return;
+        const target = editor.getModifiedEditor ? editor.getModifiedEditor() : editor;
+        const model = target.getModel?.();
+        if (!model) return;
+
+        target.__unifiedPreprocessorEnabled = !!enabled;
+        target.__unifiedPreprocessorColor = color || '#c586c0';
+        const container = target.getDomNode?.()?.closest?.('.monaco-editor-container');
+        if (container) {
+            container.style.setProperty('--oicpp-preprocessor-color', target.__unifiedPreprocessorColor);
+        }
+
+        const decorations = [];
+        if (target.__unifiedPreprocessorEnabled) {
+            for (let line = 1; line <= model.getLineCount(); line++) {
+                const text = model.getLineContent(line);
+                const marker = text.search(/\S/);
+                if (marker < 0 || text[marker] !== '#') continue;
+                decorations.push({
+                    range: new monaco.Range(line, marker + 1, line, model.getLineMaxColumn(line)),
+                    options: { inlineClassName: 'oicpp-unified-preprocessor' }
+                });
+            }
+        }
+        target.__preprocessorLineDecorations = target.deltaDecorations(
+            target.__preprocessorLineDecorations || [],
+            decorations
+        );
+
+        if (!target.__preprocessorColorListener) {
+            target.__preprocessorColorListener = model.onDidChangeContent(() => {
+                this.updatePreprocessorLineDecorations(
+                    target,
+                    target.__unifiedPreprocessorEnabled,
+                    target.__unifiedPreprocessorColor
+                );
+            });
+            target.onDidDispose?.(() => {
+                target.__preprocessorColorListener?.dispose?.();
+                target.__preprocessorColorListener = null;
+            });
+        }
     }
 
     getThemeSyntaxOverride(theme, syntaxSettings = {}) {
@@ -2532,6 +2590,7 @@ class MonacoEditorManager {
             let foldingEnabled = true; // 代码折叠
             let stickyScrollEnabled = true; // 上方显示当前作用域（函数/类）
             let fontLigaturesEnabled = true; // 字体连字
+            let unifiedPreprocessorColor = false;
             let tabSize = 4;
             let autoCompletionEnabled = true;
             let lineHeightSetting = 0;
@@ -2565,6 +2624,8 @@ class MonacoEditorManager {
                         foldingEnabled = allSettings.foldingEnabled !== false;
                         stickyScrollEnabled = allSettings.stickyScrollEnabled !== false;
                         fontLigaturesEnabled = allSettings.fontLigaturesEnabled !== false;
+                        unifiedPreprocessorColor = !!allSettings.unifiedPreprocessorColor;
+                        this.unifiedPreprocessorColor = unifiedPreprocessorColor;
                         autoCompletionEnabled = allSettings.enableAutoCompletion !== false;
                         this._syntaxCheckEnabled = allSettings.syntaxCheckEnabled !== false;
                         this._lspCompletionEnabled = autoCompletionEnabled;
@@ -2590,6 +2651,7 @@ class MonacoEditorManager {
             this.lineHeightSetting = lineHeightSetting;
             
             const monacoTheme = this.resolveMonacoTheme(currentTheme, syntaxSettings);
+            const syntaxOverride = this.getThemeSyntaxOverride(currentTheme, syntaxSettings);
 
             const editor = monaco.editor.create(monacoContainer, {
                 value: content,
@@ -2603,7 +2665,7 @@ class MonacoEditorManager {
                     selectionHighlight: true,
                     matchBrackets: 'never',
                     colorDecorators: true,
-                    bracketPairColorization: { enabled: true },
+                    bracketPairColorization: { enabled: false },
                 guides: {
                     indentation: true,
                     highlightActiveIndentation: true,
@@ -2685,6 +2747,11 @@ class MonacoEditorManager {
                     },
                     stickyScroll: { enabled: stickyScrollEnabled }
             });
+            this.updatePreprocessorLineDecorations(
+                editor,
+                unifiedPreprocessorColor,
+                syntaxOverride.colors.preprocessor
+            );
             try {
                 monaco.editor.setTheme(monacoTheme);
                 this.updateIndentGuideTone(monacoTheme);
@@ -4418,6 +4485,27 @@ class MonacoEditorManager {
             } catch (e) {
                 logWarn('切换主题失败:', e);
             }
+        }
+
+        if (settings && (
+            settings.unifiedPreprocessorColor !== undefined
+            || settings.theme !== undefined
+            || settings.syntaxColorsByTheme !== undefined
+            || settings.syntaxColors !== undefined
+        )) {
+            if (settings.unifiedPreprocessorColor !== undefined) {
+                this.unifiedPreprocessorColor = !!settings.unifiedPreprocessorColor;
+            }
+            const selectedTheme = settings.theme || document?.body?.getAttribute('data-theme') || 'dark';
+            const syntaxOverride = this.getThemeSyntaxOverride(selectedTheme, settings);
+            this.editors.forEach((value) => {
+                const editor = value?.getModifiedEditor ? value.getModifiedEditor() : value;
+                this.updatePreprocessorLineDecorations(
+                    editor,
+                    this.unifiedPreprocessorColor,
+                    syntaxOverride.colors.preprocessor
+                );
+            });
         }
     }
 

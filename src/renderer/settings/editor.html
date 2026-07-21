@@ -213,6 +213,13 @@
                                 <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-operator-italic"><span data-i18n="settings.italic">斜体</span></label>
                             </div>
                             <div class="syntax-color-row">
+                                <span class="syntax-color-label" data-i18n="settings.syntaxColorPunctuation">括号与分号</span>
+                                <input type="color" id="syntax-color-punctuation" class="syntax-color-input" value="#d4d4d4" title="括号与分号颜色">
+                                <input type="text" id="syntax-color-punctuation-text" class="syntax-color-text" value="#d4d4d4" maxlength="7" placeholder="#RRGGBB">
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-punctuation-bold"><span data-i18n="settings.bold">粗体</span></label>
+                                <label class="syntax-style-toggle"><input type="checkbox" id="syntax-style-punctuation-italic"><span data-i18n="settings.italic">斜体</span></label>
+                            </div>
+                            <div class="syntax-color-row">
                                 <span class="syntax-color-label" data-i18n="settings.syntaxColorPointer">指针符号</span>
                                 <input type="color" id="syntax-color-pointer" class="syntax-color-input" value="#d4d4d4" title="指针符号颜色">
                                 <input type="text" id="syntax-color-pointer-text" class="syntax-color-text" value="#d4d4d4" maxlength="7" placeholder="#RRGGBB">
@@ -230,6 +237,11 @@
                         <div class="input-group syntax-color-actions">
                             <button id="reset-syntax-colors" class="btn btn-secondary" type="button" data-i18n="settings.resetSyntaxColors">恢复默认配色</button>
                         </div>
+                        <label class="checkbox-label" style="margin-top: 10px;">
+                            <input type="checkbox" id="editor-unified-preprocessor-color">
+                            <span class="checkmark"></span>
+                            <span data-i18n="settings.unifiedPreprocessorColor">预处理指令整行使用统一颜色</span>
+                        </label>
                         <div class="syntax-preview" aria-label="语法配色实时预览">
                             <div class="syntax-preview-title" data-i18n="settings.syntaxPreview">实时预览</div>
                             <pre id="syntax-color-preview" class="syntax-preview-code"><span class="tok-preprocessor">#include</span> <span class="tok-string">&lt;iostream&gt;</span>

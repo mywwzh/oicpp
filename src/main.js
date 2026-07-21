@@ -1540,6 +1540,7 @@ function getDefaultSettings() {
         theme: 'dark',
         syntaxColorsByTheme: {},
         syntaxFontStyles: {},
+        unifiedPreprocessorColor: false,
         syntaxColors: {
             keyword: '#c586c0',
             string: '#ce9178',
@@ -6953,7 +6954,7 @@ function loadSettings() {
 
         if (fs.existsSync(settingsPath)) {
             const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'language', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'fileHistory', 'lastOpenTabs', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account', 'runAllSamples'];
+            const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'unifiedPreprocessorColor', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'language', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'lastOpen', 'recentFiles', 'fileHistory', 'lastOpenTabs', 'lastUpdateCheck', 'pendingUpdate', 'postInstallNotice', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account', 'runAllSamples'];
             let needsSaveAfterMigration = false;
 
             for (const key of validKeys) {
@@ -7056,7 +7057,7 @@ function loadSettings() {
 
 function mergeSettings(defaultSettings, userSettings) {
     const result = JSON.parse(JSON.stringify(defaultSettings));
-    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'language', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account', 'runAllSamples'];
+    const validKeys = ['compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'unifiedPreprocessorColor', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'language', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace', 'account', 'runAllSamples'];
 
     for (const key of validKeys) {
         if (userSettings[key] !== undefined) {
@@ -7083,7 +7084,7 @@ function updateSettings(settingsType, newSettings) {
 
         const validKeys = [
             'compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme',
-            'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'autoSave', 'autoSaveInterval',
+            'syntaxColorsByTheme', 'syntaxFontStyles', 'unifiedPreprocessorColor', 'syntaxColors', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'fontLigaturesEnabled', 'cppTemplate', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'autoSave', 'autoSaveInterval',
             'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'markdownMode', 'keybindings',
             'fileHistory', 'lastOpenTabs', 'autoOpenLastWorkspace', 'language', 'autoBackupSettings', 'receiveBetaUpdates',
             'runAllSamples'
@@ -7158,7 +7159,7 @@ function updateSettings(settingsType, newSettings) {
 function getResettableSettingsKeys() {
     return [
         'compilerPath', 'pythonInterpreterPath', 'compilerArgs', 'runMode', 'testlibPath',
-        'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors',
+        'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'unifiedPreprocessorColor', 'syntaxColors',
         'tabSize', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled',
         'autoSave', 'autoSaveInterval', 'language', 'autoBackupSettings', 'receiveBetaUpdates', 'markdownMode', 'cppTemplate', 'codeSnippets',
         'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'autoOpenLastWorkspace'
@@ -7222,7 +7223,7 @@ function importSettings(filePath) {
             throw new Error('无效的设置文件格式');
         }
 
-        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'language', 'autoBackupSettings', 'receiveBetaUpdates', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'runAllSamples'];
+        const validKeys = ['compilerPath', 'compilerArgs', 'testlibPath', 'font', 'fontSize', 'terminalFontSize', 'terminalStartupCommand', 'syntaxCheckEnabled', 'lineHeight', 'theme', 'syntaxColorsByTheme', 'syntaxFontStyles', 'unifiedPreprocessorColor', 'syntaxColors', 'tabSize', 'formatterIndentStyle', 'clangFormatStyle', 'clangFormatRaw', 'fontLigaturesEnabled', 'enableAutoCompletion', 'foldingEnabled', 'stickyScrollEnabled', 'autoSave', 'autoSaveInterval', 'language', 'autoBackupSettings', 'receiveBetaUpdates', 'cppTemplate', 'codeSnippets', 'windowOpacity', 'glassEffectEnabled', 'backgroundImage', 'keybindings', 'runAllSamples'];
         const defaultSettings = getDefaultSettings();
 
         for (const key of validKeys) {
