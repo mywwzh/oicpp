@@ -2345,6 +2345,7 @@ function createWindow() {
             contextIsolation: true,
             sandbox: false,
             webSecurity: false,
+            webviewTag: true,
             devTools: process.argv.includes('--dev')
         },
         icon: getUserIconPath(),
