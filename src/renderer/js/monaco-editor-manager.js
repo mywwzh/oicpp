@@ -2753,31 +2753,6 @@ class MonacoEditorManager {
                 });
             } catch (e) { logWarn('注册 F2 重命名 失败:', e); }
 
-            try {
-                editor.__forceSelDecos = [];
-                const applySelectionDecoration = () => {
-                    try {
-                        const sel = editor.getSelection();
-                        if (!sel || sel.isEmpty()) {
-                            if (editor.__forceSelDecos && editor.__forceSelDecos.length) {
-                                editor.__forceSelDecos = editor.deltaDecorations(editor.__forceSelDecos, []);
-                            }
-                            return;
-                        }
-                        const newDecos = [{
-                            range: sel,
-                            options: {
-                                inlineClassName: 'oicpp-force-sel-inline'
-                            }
-                        }];
-                        editor.__forceSelDecos = editor.deltaDecorations(editor.__forceSelDecos || [], newDecos);
-                    } catch (_) {}
-                };
-                editor.onDidChangeCursorSelection(() => applySelectionDecoration());
-                editor.onDidFocusEditorWidget(() => applySelectionDecoration());
-                editor.onDidBlurEditorWidget(() => applySelectionDecoration());
-            } catch (e) { logWarn('选区兜底装饰器注册失败:', e); }
-            
             const copyKeybinding = this.toMonacoKeybinding('copy') || (monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC);
             editor.addCommand(copyKeybinding, () => {
                 const activeEditor = this.currentEditor;
