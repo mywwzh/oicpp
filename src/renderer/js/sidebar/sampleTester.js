@@ -766,7 +766,7 @@ class SampleTester {
             el.textContent = t('tester.testGroup', { i: id }, `Test ${id}`);
         });
         document.querySelectorAll('.sample-run-btn').forEach((el) => {
-            el.textContent = t('tester.runSample', null, 'Run');
+            el.textContent = t('tester.run', null, 'Run');
             el.title = t('tester.runSample', null, 'Run Sample');
         });
         document.querySelectorAll('.sample-delete-btn').forEach((el) => el.title = t('tester.deleteSample', null, 'Delete Sample'));
@@ -1766,7 +1766,7 @@ class SampleTester {
             button.textContent = window.i18n ? window.i18n.t('tester.compileStatus') : '编译中';
             const result = await this.executeSample(sample, (status) => {
                 if (status === 'compiling') {
-                    button.textContent = '编译中';
+                    button.textContent = window.i18n ? window.i18n.t('tester.compileStatus') : '编译中';
                 } else if (status === 'cached-main') {
                     button.textContent = window.i18n ? window.i18n.t('tester.reuseCompile') : '复用编译';
                 } else if (status === 'cached-spj') {
