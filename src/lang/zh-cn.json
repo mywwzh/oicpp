@@ -119,6 +119,8 @@
     "fontLigatures": "启用字体连字 (Font Ligatures)",
     "fontLigaturesDesc": "需要字体支持 (如 Fira Code, JetBrains Mono)",
     "syntaxColors": "语法配色器",
+    "syntaxColorPunctuation": "括号与分号",
+    "unifiedPreprocessorColor": "预处理指令整行使用统一颜色",
     "syntaxColorKeyword": "关键字",
     "syntaxColorString": "字符串",
     "syntaxColorNumber": "数字",

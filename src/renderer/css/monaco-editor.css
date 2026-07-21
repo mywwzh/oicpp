@@ -847,6 +847,10 @@ body[data-theme="solarized-light"] {
     background-color: var(--editor-selection, #264f78) !important;
 }
 
+.monaco-editor .oicpp-unified-preprocessor {
+    color: var(--oicpp-preprocessor-color, #c586c0) !important;
+}
+
 .monaco-editor .findMatch,
 .monaco-editor .currentFindMatch {
     background-color: rgba(234, 92, 0, 0.33) !important;

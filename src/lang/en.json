@@ -136,6 +136,8 @@
     "fontLigatures": "Enable Font Ligatures",
     "fontLigaturesDesc": "Requires supporting font (e.g. Fira Code)",
     "syntaxColors": "Syntax Colors",
+    "syntaxColorPunctuation": "Brackets and Semicolons",
+    "unifiedPreprocessorColor": "Use one color for entire preprocessor lines",
     "syntaxColorKeyword": "Keyword",
     "syntaxColorString": "String",
     "syntaxColorNumber": "Number",
