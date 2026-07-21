@@ -189,6 +189,7 @@
     "resetClangFormat": "Reset to Default",
     "keybindingsDesc": "Only editor and compile/debug keybindings are configurable.",
     "resetKeybindings": "Reset All Keybindings",
+    "resetKeybinding": "Reset",
     "save": "Save Settings",
     "cancel": "Cancel",
     "reset": "Reset to Default",
