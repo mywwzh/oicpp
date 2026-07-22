@@ -35,7 +35,7 @@ class SampleTester {
                         if (!workspacePath) {
                             logWarn('[样例测试器] 未打开工作区，无法创建题目文件');
                             try { window.sidebarManager?.showPanel?.('files'); } catch (_) { }
-                            window.alert?.(window.i18n ? window.i18n.t('dialog.loginFirst') + ' ' + window.i18n.t('dialog.loginFirst') : '请先打开工作区：然后重新发送题目。');
+                            window.alert?.(window.i18n ? window.i18n.t('tester.openWorkspaceFirst') : '请先打开工作区，然后重新发送题目。');
                             return;
                         }
                         const nameRaw = (data.problemName || '').trim();
