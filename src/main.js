@@ -22,7 +22,7 @@ const IntegratedTerminalManager = require('./terminal-manager');
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
-const APP_VERSION = '1.5.0-beta1';
+const APP_VERSION = '1.5.0-beta2';
 const SAVE_ALL_TIMEOUT = 4000;
 const EXTERNAL_OPEN_DEDUP_WINDOW_MS = 800;
 const recentExternalOpens = new Map();
@@ -2263,7 +2263,7 @@ ipcMain.handle('get-build-info', () => {
     } catch (error) {
         logger.logwarn('读取构建信息失败:', error);
     }
-    return { version: '1.5.0-beta1 (v43)', buildTime: '未知', author: 'mywwzh' };
+    return { version: '1.5.0-beta2 (v44)', buildTime: '未知', author: 'mywwzh' };
 });
 
 function requestSaveAllAndClose(context = '关闭窗口') {
@@ -7197,7 +7197,7 @@ function resetSettings(settingsType = null) {
 function exportSettings(filePath) {
     try {
         const exportData = {
-            version: '1.5.0-beta1 (v43)',
+            version: '1.5.0-beta2 (v44)',
             timestamp: new Date().toISOString(),
             settings: settings
         };
