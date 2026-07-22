@@ -8807,10 +8807,15 @@ async function backupSettingsToCloud(options = {}) {
             saveSettings();
         }
 
-        const content = fs.readFileSync(settingsPath, 'utf8');
-        if (!content) {
+        const settingsContent = fs.readFileSync(settingsPath, 'utf8');
+        if (!settingsContent) {
             return { success: false, error: 'NO_SETTINGS' };
         }
+
+        const backupPayload = JSON.parse(settingsContent);
+        // 登录凭据只属于当前设备，不应进入云端设置备份。
+        delete backupPayload.account;
+        const content = JSON.stringify(backupPayload, null, 2);
 
         const listResult = await listSettingsBackupFiles();
         if (!listResult.success) {
@@ -8969,7 +8974,11 @@ async function syncSettingsFromCloud() {
     suppressAutoBackup = true;
     try {
         const defaults = getDefaultSettings();
+        const currentAccount = settings?.account || null;
         settings = mergeSettings(defaults, parsed);
+        // 云端备份可能没有 account，或包含其他设备的旧凭据；始终保留本机登录态。
+        settings.account = currentAccount;
+        normalizeSettingsRuntimeShape(settings);
         saveSettings();
         if (mainWindow && !mainWindow.isDestroyed() && typeof settings.windowOpacity === 'number') {
             mainWindow.setOpacity(settings.windowOpacity);
