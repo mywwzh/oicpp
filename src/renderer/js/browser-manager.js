@@ -74,6 +74,14 @@ class BrowserManager {
 
         const webview = document.createElement('webview');
         webview.className = 'browser-webview';
+        // Electron 37 创建的 webview 内部 iframe 没有高度样式，会保留
+        // HTML iframe 默认的 150px 高度。必须在首次导航前修正，否则
+        // guest surface 即使外层之后变高，仍只渲染顶部 150px。
+        const shadowFrame = webview.shadowRoot?.querySelector('iframe');
+        if (shadowFrame) {
+            shadowFrame.style.width = '100%';
+            shadowFrame.style.height = '100%';
+        }
         webview.setAttribute('partition', 'persist:oicpp-browser');
         const browserUserAgent = navigator.userAgent
             .replace(/\sElectron\/\S+/i, '')
@@ -91,6 +99,7 @@ class BrowserManager {
         const state = {
             webview,
             iframe: webview,
+            frameWrapper,
             container,
             navBar,
             urlInput: navBar.querySelector('.browser-url-input'),
@@ -102,6 +111,23 @@ class BrowserManager {
             history: []
         };
         this.browserTabs.set(uniqueKey, state);
+
+        const syncWebviewSize = () => {
+            const width = frameWrapper.clientWidth;
+            const height = frameWrapper.clientHeight;
+            if (width > 0) webview.style.width = `${width}px`;
+            if (height > 0) webview.style.height = `${height}px`;
+            const internalFrame = webview.shadowRoot?.querySelector('iframe');
+            if (internalFrame) {
+                internalFrame.style.width = '100%';
+                internalFrame.style.height = '100%';
+            }
+        };
+        state.syncWebviewSize = syncWebviewSize;
+        if (typeof ResizeObserver === 'function') {
+            state.resizeObserver = new ResizeObserver(syncWebviewSize);
+            state.resizeObserver.observe(frameWrapper);
+        }
 
         this._bindWebviewEvents(uniqueKey, state);
 
@@ -152,7 +178,7 @@ class BrowserManager {
         urlInput.type = 'text';
         urlInput.className = 'browser-url-input';
         urlInput.setAttribute('placeholder', window.i18n ? window.i18n.t('browser.urlPlaceholder') : '输入网址或搜索...');
-        urlInput.value = initialUrl || '';
+        urlInput.value = initialUrl?.startsWith('data:text/html') ? '' : (initialUrl || '');
         urlInput.setAttribute('spellcheck', 'false');
         urlInput.setAttribute('autocomplete', 'off');
         navBar.appendChild(urlInput);
@@ -410,6 +436,10 @@ class BrowserManager {
                 try { state.webview.stop(); } catch (_) {}
                 state.webview.parentNode.removeChild(state.webview);
             }
+            if (state.resizeObserver) {
+                try { state.resizeObserver.disconnect(); } catch (_) {}
+                state.resizeObserver = null;
+            }
             // 清理导航栏
             if (state.navBar && state.navBar.parentNode) {
                 state.navBar.parentNode.removeChild(state.navBar);
@@ -461,8 +491,9 @@ class BrowserManager {
         state.container.classList.add('active');
         state.container.style.display = '';
         if (state.webview) {
-            state.webview.style.width = '100%';
-            state.webview.style.height = '100%';
+            // webview 在 display:none 的容器中初始化时会保留 Chromium 默认的
+            // 300x150 guest 尺寸；显示后必须用实际像素尺寸触发 guest 重排。
+            requestAnimationFrame(() => state.syncWebviewSize?.());
             try { state.webview.focus(); } catch (_) {}
 
             // 如果是因为 DOM 搬移需要恢复内容，或有内容丢失迹象，则重新加载
@@ -470,7 +501,13 @@ class BrowserManager {
             state._needsContentRestore = false;
 
             let shouldReload = needsRestore;
-            try { shouldReload = shouldReload || !state.webview.getURL(); } catch (_) {}
+            try {
+                shouldReload = shouldReload || !state.webview.getURL();
+            } catch (_) {
+                // webview 刚挂载到 DOM 时 guest 实例可能尚未就绪。
+                // 此时必须在下一帧主动加载，否则只会显示编辑器背景。
+                shouldReload = true;
+            }
 
             if (shouldReload) {
                 const url = state.currentUrl || this._newTabPage || 'about:blank';
@@ -478,7 +515,10 @@ class BrowserManager {
                 requestAnimationFrame(() => {
                     try {
                         if (state.webview.getURL() !== url) {
-                            state.webview.loadURL(url).catch(() => {});
+                            const loadResult = state.webview.loadURL(url);
+                            if (loadResult && typeof loadResult.catch === 'function') {
+                                loadResult.catch(() => {});
+                            }
                         }
                     } catch (_) {
                         state.webview.setAttribute('src', url);
