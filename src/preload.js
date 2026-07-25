@@ -621,7 +621,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // === 内置浏览器 API ===
     browserResolveUrl: (url) => ipcRenderer.invoke('browser-resolve-url', url),
-    browserGetPageTitle: (url) => ipcRenderer.invoke('browser-get-page-title', url)
+    browserGetPageTitle: (url) => ipcRenderer.invoke('browser-get-page-title', url),
+    onBrowserOpenNewTab: (callback) => {
+        if (typeof callback !== 'function') return () => {};
+        const listener = (_event, payload) => callback(payload);
+        ipcRenderer.on('browser-open-new-tab', listener);
+        return () => ipcRenderer.removeListener('browser-open-new-tab', listener);
+    }
 });
 
 contextBridge.exposeInMainWorld('electronIPC', {
