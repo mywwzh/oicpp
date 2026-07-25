@@ -8080,9 +8080,26 @@ app.on('before-quit', () => {
 
 app.on('web-contents-created', (event, contents) => {
     if (typeof contents.setWindowOpenHandler === 'function') {
-        contents.setWindowOpenHandler(({ url }) => {
+        contents.setWindowOpenHandler(({ url, disposition }) => {
             try {
                 const parsedUrl = new URL(url);
+
+                // Links opened from the built-in browser (target="_blank",
+                // window.open, middle click, etc.) belong in another built-in
+                // browser tab rather than the operating system's browser.
+                if (contents.getType() === 'webview'
+                    && (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:')) {
+                    const hostContents = contents.hostWebContents;
+                    if (hostContents && !hostContents.isDestroyed()) {
+                        hostContents.send('browser-open-new-tab', {
+                            url: parsedUrl.href,
+                            disposition: disposition || 'default',
+                            sourceWebContentsId: contents.id
+                        });
+                    }
+                    return { action: 'deny' };
+                }
+
                 if (parsedUrl.origin !== 'file://') {
                     void openExternalOnce(url);
                     return { action: 'deny' };

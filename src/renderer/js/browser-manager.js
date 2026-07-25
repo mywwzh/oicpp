@@ -41,6 +41,12 @@ class BrowserManager {
         this._currentFocusKey = null;
         this._pendingNav = new Map(); // uniqueKey -> url
         this._newTabPage = NEW_TAB_PAGE_HTML;
+
+        if (window.electronAPI?.onBrowserOpenNewTab) {
+            this._removeOpenNewTabListener = window.electronAPI.onBrowserOpenNewTab((request) => {
+                this._handleOpenNewTabRequest(request);
+            });
+        }
     }
 
     /**
@@ -282,11 +288,38 @@ class BrowserManager {
     /**
      * 在新标签页中打开 URL
      */
-    _openInNewTab(url) {
+    _openInNewTab(url, groupId) {
         if (!url || !window.tabManager) return;
         const resolvedUrl = url;
         // 使用 tabManager 打开新的浏览器标签
-        window.tabManager.openBrowserTab({ url: resolvedUrl, groupId: window.tabManager.activeGroupId });
+        window.tabManager.openBrowserTab({
+            url: resolvedUrl,
+            groupId: groupId || window.tabManager.activeGroupId
+        });
+    }
+
+    /**
+     * 处理网页中的 target="_blank"、window.open 和中键点击。
+     * 主进程会拦截原生弹窗，并把目标地址送回这里创建 IDE 浏览器标签。
+     */
+    _handleOpenNewTabRequest(request) {
+        const url = typeof request?.url === 'string' ? request.url : '';
+        if (!url || !/^https?:\/\//i.test(url)) return;
+
+        let sourceGroupId = '';
+        const sourceWebContentsId = Number(request?.sourceWebContentsId);
+        if (Number.isInteger(sourceWebContentsId)) {
+            for (const state of this.browserTabs.values()) {
+                try {
+                    if (state.webview?.getWebContentsId?.() === sourceWebContentsId) {
+                        sourceGroupId = state.container?.dataset?.groupId || '';
+                        break;
+                    }
+                } catch (_) {}
+            }
+        }
+
+        this._openInNewTab(url, sourceGroupId);
     }
 
     /**
