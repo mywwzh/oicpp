@@ -22,6 +22,7 @@ class SampleTester {
             freopenOutputFile: '',
             defaultTimeLimit: 1000
         };
+        this.globalSettingsPanelHeight = this.loadGlobalSettingsPanelHeight();
 
         this.setupEventListeners();
 
@@ -330,6 +331,89 @@ class SampleTester {
                 this.toggleStatusFilter(status);
             });
         }
+
+        this.setupGlobalSettingsResizer();
+    }
+
+    loadGlobalSettingsPanelHeight() {
+        try {
+            const height = Number(window.localStorage?.getItem('oicpp.sampleTester.globalSettingsHeight'));
+            return Number.isFinite(height) && height > 0 ? height : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    saveGlobalSettingsPanelHeight(height) {
+        try {
+            window.localStorage?.setItem('oicpp.sampleTester.globalSettingsHeight', String(Math.round(height)));
+        } catch (_) {}
+    }
+
+    getGlobalSettingsHeightBounds() {
+        const panel = document.getElementById('samples-panel');
+        const settings = document.getElementById('global-settings');
+        const resizer = document.getElementById('global-settings-resizer');
+        if (!panel || !settings || !resizer) return null;
+
+        const panelRect = panel.getBoundingClientRect();
+        const settingsRect = settings.getBoundingClientRect();
+        const minHeight = 80;
+        const maxHeight = Math.max(minHeight, panelRect.bottom - settingsRect.top - resizer.offsetHeight - 120);
+        return { minHeight, maxHeight };
+    }
+
+    applyGlobalSettingsPanelHeight(height) {
+        const settings = document.getElementById('global-settings');
+        const bounds = this.getGlobalSettingsHeightBounds();
+        if (!settings || !bounds || !Number.isFinite(height)) return;
+        const clampedHeight = Math.max(bounds.minHeight, Math.min(height, bounds.maxHeight));
+        settings.style.height = `${Math.round(clampedHeight)}px`;
+        this.globalSettingsPanelHeight = clampedHeight;
+    }
+
+    setupGlobalSettingsResizer() {
+        const resizer = document.getElementById('global-settings-resizer');
+        const settings = document.getElementById('global-settings');
+        if (!resizer || !settings || resizer.__oicppResizeBound) return;
+        resizer.__oicppResizeBound = true;
+
+        let dragState = null;
+        const finishDrag = () => {
+            if (!dragState) return;
+            this.saveGlobalSettingsPanelHeight(this.globalSettingsPanelHeight);
+            dragState = null;
+            resizer.classList.remove('is-dragging');
+            document.body.style.removeProperty('cursor');
+            document.body.style.removeProperty('user-select');
+        };
+
+        resizer.addEventListener('pointerdown', (event) => {
+            if (event.button !== 0) return;
+            const bounds = this.getGlobalSettingsHeightBounds();
+            if (!bounds) return;
+            event.preventDefault();
+            dragState = {
+                startY: event.clientY,
+                startHeight: settings.getBoundingClientRect().height
+            };
+            resizer.setPointerCapture?.(event.pointerId);
+            resizer.classList.add('is-dragging');
+            document.body.style.cursor = 'row-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        resizer.addEventListener('pointermove', (event) => {
+            if (!dragState) return;
+            this.applyGlobalSettingsPanelHeight(dragState.startHeight + event.clientY - dragState.startY);
+        });
+        resizer.addEventListener('pointerup', finishDrag);
+        resizer.addEventListener('pointercancel', finishDrag);
+        window.addEventListener('resize', () => {
+            if (this.globalSettingsPanelHeight) {
+                this.applyGlobalSettingsPanelHeight(this.globalSettingsPanelHeight);
+            }
+        });
     }
 
     async updateCurrentFile() {
@@ -620,12 +704,14 @@ class SampleTester {
         const addBtn = document.getElementById('add-sample-btn');
         const runAllBtn = document.getElementById('run-all-samples-btn');
         const globalSettings = document.getElementById('global-settings');
+        const globalSettingsResizer = document.getElementById('global-settings-resizer');
 
         if (!this.currentFile) {
             noFileMessage.style.display = 'flex';
             noSamplesMessage.style.display = 'none';
             samplesList.style.display = 'none';
             globalSettings.style.display = 'none';
+            if (globalSettingsResizer) globalSettingsResizer.style.display = 'none';
             addBtn.disabled = true;
             runAllBtn.disabled = true;
             this.updateSummary();
@@ -633,7 +719,11 @@ class SampleTester {
         }
 
         noFileMessage.style.display = 'none';
-        globalSettings.style.display = 'block';
+        globalSettings.style.display = 'flex';
+        if (globalSettingsResizer) globalSettingsResizer.style.display = 'block';
+        if (this.globalSettingsPanelHeight) {
+            this.applyGlobalSettingsPanelHeight(this.globalSettingsPanelHeight);
+        }
         addBtn.disabled = false;
         runAllBtn.disabled = this.samples.length === 0;
 
