@@ -2688,7 +2688,12 @@ class MonacoEditorManager {
                 wordWrap: 'off',
                 tabSize,
                 insertSpaces: false,
-                trimAutoWhitespace: false,
+                // Do not keep indentation or other whitespace that Monaco
+                // inserted automatically after the cursor leaves a line.
+                trimAutoWhitespace: true,
+                // Square selection edges make the selected range end at the
+                // final character cell instead of looking like an extra blank.
+                roundedSelection: false,
                 renderWhitespace: 'none',
                 renderControlCharacters: false,
                 selectionHighlight: true,
@@ -4737,6 +4742,10 @@ class MonacoEditorManager {
             } else {
                 formattedContent = content;
             }
+
+            // Formatting must never introduce invisible trailing blanks. They
+            // are especially confusing when a line is selected or copied.
+            formattedContent = formattedContent.replace(/[\t ]+(?=\r?\n|$)/g, '');
             
             if (formattedContent !== content) {
                 const range = model.getFullModelRange();
