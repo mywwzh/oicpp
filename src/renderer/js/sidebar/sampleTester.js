@@ -2145,6 +2145,7 @@ class SampleTester {
                 status: status,
                 output: this.truncateOutput(actualOutput),
                 rawOutput: actualOutput,
+                expectedOutput,
                 stderr: runResult.stderr || '',
                 outputSizeBytes: this.getOutputSizeBytes(actualOutput),
                 outputExpanded: false,
@@ -2304,6 +2305,7 @@ class SampleTester {
                 status: status,
                 output: this.truncateOutput(actualOutput),
                 rawOutput: actualOutput,
+                expectedOutput,
                 stderr: runResult.stderr || '',
                 outputSizeBytes: this.getOutputSizeBytes(actualOutput),
                 outputExpanded: false,
@@ -2731,14 +2733,16 @@ class SampleTester {
                     sample = this.samples.find(s => s.id === id);
                 }
                 if (sample) {
-                    let expectedOutput = '';
-                    if (sample.outputType === 'file') {
-                        expectedOutput = sample.output || '';
-                    } else {
-                        expectedOutput = sample.output || '';
-                    }
+                    // For file-backed samples, sample.output is the file path rather
+                    // than the expected text.  Use the exact content read during the
+                    // test run so the rendered first-difference location matches the
+                    // comparison result.
+                    const expectedOutput = Object.prototype.hasOwnProperty.call(result, 'expectedOutput')
+                        ? result.expectedOutput
+                        : (sample.output || '');
+                    const actualOutput = result.rawOutput || result.output || '';
 
-                    const diffPosition = this.getDifferenceInfo(result.output || '', expectedOutput);
+                    const diffPosition = this.getDifferenceInfo(actualOutput, expectedOutput);
                     if (diffPosition && diffInfo) {
                         diffInfo.textContent = window.i18n ? window.i18n.t('compare.diffPosition', {line: diffPosition.line, char: diffPosition.char}) : `(第 ${diffPosition.line} 行第 ${diffPosition.char} 字符有差异)`;
                         diffInfo.style.display = 'inline';
