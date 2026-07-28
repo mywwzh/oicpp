@@ -239,7 +239,7 @@ class CompilerManager {
 
             if (!this.settings.compilerPath) {
                 logInfo('编译器路径为空，显示设置提示');
-                this.showMessage('请先设置编译器路径', 'error');
+                this.showMessage(this.t('message.setCompilerFirst', null, 'Please configure the compiler first'), 'error');
                 this.openCompilerSettings();
                 return;
             }
@@ -248,7 +248,7 @@ class CompilerManager {
 
             const currentEditor = window.editorManager?.getCurrentEditor();
             if (!currentEditor) {
-                this.showMessage('没有打开的文件', 'error');
+                this.showMessage(this.t('message.noOpenFile', null, 'No file is open'), 'error');
                 return;
             }
 
@@ -260,7 +260,7 @@ class CompilerManager {
             logInfo('[编译管理器] currentEditor.filePath:', currentEditor.filePath);
             if (!filePath || filePath === 'null' || filePath === 'undefined' || filePath.toString().startsWith('untitled')) {
                 logInfo('[编译管理器] 文件路径无效，提示保存文件');
-                this.showMessage('请先保存文件', 'error');
+                this.showMessage(this.t('message.saveFileFirst', null, 'Please save the file first'), 'error');
                 return;
             }
 
@@ -317,17 +317,14 @@ class CompilerManager {
             if (typeof require !== 'undefined') {
                 try {
                     const { ipcRenderer } = require('electron');
-                    ipcRenderer.invoke('compile-file', {
+                    const result = await ipcRenderer.invoke('compile-file', {
                         inputFile,
                         outputFile,
                         compilerPath: this.settings.compilerPath,
                         compilerArgs: compilerArgs,
                         workingDirectory: this.getWorkingDirectory(filePath)
-                    }).then(result => {
-                        this.handleCompileResult(result);
-                    }).catch(error => {
-                        this.handleCompileError(error.message || error);
                     });
+                    this.handleCompileResult(result);
                 } catch (error) {
                     this.handleCompileError('IPC 调用失败: ' + error.message);
                 }
@@ -344,24 +341,24 @@ class CompilerManager {
     async cloudCompileCurrentFile() {
         try {
             if (!this.isWindowsPlatform()) {
-                this.showMessage('云编译功能目前仅在 Windows 版本提供', 'warning');
+                this.showMessage(this.t('message.cloudCompileWindowsOnly', null, 'Cloud compilation is currently available only on Windows'), 'warning');
                 return;
             }
 
             const currentEditor = window.editorManager?.getCurrentEditor();
             if (!currentEditor) {
-                this.showMessage('没有打开的文件', 'error');
+                this.showMessage(this.t('message.noOpenFile', null, 'No file is open'), 'error');
                 return;
             }
 
             const filePath = currentEditor.filePath || (currentEditor.getFilePath && currentEditor.getFilePath());
             if (!filePath || filePath === 'null' || filePath === 'undefined' || filePath.toString().startsWith('untitled')) {
-                this.showMessage('请先保存文件', 'error');
+                this.showMessage(this.t('message.saveFileFirst', null, 'Please save the file first'), 'error');
                 return;
             }
 
             if (!/\.cpp$/i.test(filePath)) {
-                this.showMessage('云编译目前仅支持 .cpp 文件', 'error');
+                this.showMessage(this.t('message.cloudCompileCppOnly', null, 'Cloud compilation currently supports only .cpp files'), 'error');
                 return;
             }
 
@@ -496,13 +493,13 @@ class CompilerManager {
 
             const currentEditor = window.editorManager?.getCurrentEditor();
             if (!currentEditor) {
-                this.showMessage('没有打开的文件', 'error');
+                this.showMessage(this.t('message.noOpenFile', null, 'No file is open'), 'error');
                 return;
             }
 
             const filePath = currentEditor.filePath || (currentEditor.getFilePath && currentEditor.getFilePath());
             if (!filePath || filePath.startsWith('untitled')) {
-                this.showMessage('请先保存文件', 'error');
+                this.showMessage(this.t('message.saveFileFirst', null, 'Please save the file first'), 'error');
                 return;
             }
 
@@ -513,7 +510,7 @@ class CompilerManager {
             logInfo(`可执行文件存在性检查结果: ${exists}`);
             
             if (!exists) {
-                this.showMessage(`请先编译程序 (未找到: ${executablePath})`, 'error');
+                this.showMessage(this.t('message.compileBeforeRun', { file: executablePath }, `Please compile the program first (not found: ${executablePath})`), 'error');
                 return;
             }
 
@@ -524,7 +521,7 @@ class CompilerManager {
 
         } catch (error) {
             logError('运行失败:', error);
-            this.showMessage(`运行失败: ${error.message}`, 'error');
+            this.showMessage(this.t('message.runFailed', { error: error.message }, `Failed to run: ${error.message}`), 'error');
         }
     }
 
@@ -616,7 +613,7 @@ class CompilerManager {
             this.setStatus('云编译超时');
             this.setCloudProgressMessage('云编译等待超时，请稍后再试。', 'error');
             this.appendOutput('云编译等待超时，请稍后重试。', 'error');
-            this.showMessage('云编译等待超时，请稍后重试', 'error');
+            this.showMessage(this.t('message.cloudCompileTimeout', null, 'Cloud compilation timed out. Please try again later.'), 'error');
             this.resetCloudCompileState();
             return;
         }
@@ -660,7 +657,7 @@ class CompilerManager {
                 this.setStatus('云编译失败');
                 this.setCloudProgressMessage('云编译状态查询失败，请稍后再试。', 'error');
                 this.appendOutput(message, 'error');
-                this.showMessage('云编译状态查询失败，请稍后再试', 'error');
+                this.showMessage(this.t('message.cloudCompileStatusFailed', null, 'Failed to retrieve cloud compilation status. Please try again later.'), 'error');
                 this.resetCloudCompileState();
                 return;
             }
@@ -1323,7 +1320,7 @@ class CompilerManager {
     handleRunError(error) {
         this.isRunning = false;
         this.appendOutput(`运行错误: ${error}\n`, 'error');
-        this.showMessage(`运行错误: ${error}`, 'error');
+        this.showMessage(this.t('message.runError', { error }, `Run error: ${error}`), 'error');
     }
 
     showOutput() {
