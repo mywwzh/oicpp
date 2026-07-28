@@ -7376,8 +7376,17 @@ async function compileFile(options) {
 
     try {
         if (process.platform === 'win32') {
-            if (outputFile) { await killByExePathWindows(outputFile); await killConsolePauserForTargetWindows(outputFile); }
-            await killImageWindows('gdb.exe');
+            // These checks spawn PowerShell processes.  Run the two target-specific
+            // cleanups together so recompiling after a program run does not pay for
+            // two sequential process-table scans.  Do not kill every gdb.exe here:
+            // it is unrelated to a normal build and made every compilation wait for
+            // an additional process launch.
+            if (outputFile) {
+                await Promise.all([
+                    killByExePathWindows(outputFile),
+                    killConsolePauserForTargetWindows(outputFile)
+                ]);
+            }
             try {
                 await ensureConsolePauserExecutable(compilerPath);
             } catch (ensureErr) {

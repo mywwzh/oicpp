@@ -404,7 +404,7 @@
 
     async startIdeLogin() {
         if (!window.electronAPI || typeof window.electronAPI.startIdeLogin !== 'function') {
-            this.showMessage('登录功能不可用', 'error');
+            this.showMessage(this.t('message.loginUnavailable', null, 'Login is unavailable'), 'error');
             return;
         }
         try {
@@ -412,16 +412,16 @@
             if (result && result.ok === false && result.message) {
                 this.showMessage(result.message, 'warning');
             } else {
-                this.showMessage('已打开浏览器，请完成登录', 'info');
+                this.showMessage(this.t('message.browserOpenedForLogin', null, 'Browser opened. Please complete sign-in.'), 'info');
             }
         } catch (error) {
-            this.showMessage('启动登录失败: ' + (error?.message || error), 'error');
+            this.showMessage(this.t('message.loginStartFailed', { error: error?.message || error }, `Failed to start login: ${error?.message || error}`), 'error');
         }
     }
 
     openIdeAccount() {
         if (!this.accountLoggedIn) {
-            this.showMessage('请先登录账户', 'warning');
+            this.showMessage(this.t('message.loginRequired', null, 'Please log in first'), 'warning');
             return;
         }
         if (window.electronAPI && typeof window.electronAPI.openExternal === 'function') {
@@ -431,16 +431,16 @@
 
     async logoutIdeAccount() {
         if (!window.electronAPI || typeof window.electronAPI.logoutIdeAccount !== 'function') {
-            this.showMessage('退出登录不可用', 'error');
+            this.showMessage(this.t('message.logoutUnavailable', null, 'Logout is unavailable'), 'error');
             return;
         }
         try {
             const result = await window.electronAPI.logoutIdeAccount();
             if (result && result.ok) {
-                this.showMessage('已退出登录', 'success');
+                this.showMessage(this.t('message.logoutSuccess', null, 'Logged out'), 'success');
             }
         } catch (error) {
-            this.showMessage('退出登录失败: ' + (error?.message || error), 'error');
+            this.showMessage(this.t('message.logoutFailed', { error: error?.message || error }, `Failed to log out: ${error?.message || error}`), 'error');
         } finally {
             if (window.electronAPI && typeof window.electronAPI.openExternal === 'function') {
                 try { window.electronAPI.openExternal('https://auth.mywwzh.top/logout'); } catch (_) { }
@@ -482,24 +482,27 @@
         const progress = Number.isFinite(Number(state?.progress))
             ? Math.max(0, Math.min(100, Math.round(Number(state.progress))))
             : 0;
+        const version = state?.version ? ` (${state.version})` : '';
 
         if (pendingInstall) {
-            labelNode.textContent = '等待安装更新';
+            labelNode.textContent = this.t('menu.updatePendingInstall', null, 'Update ready to install');
         } else if (autoChecking) {
-            labelNode.textContent = '自动检查更新中...';
+            labelNode.textContent = this.t('menu.updateAutoChecking', null, 'Checking for updates...');
         } else {
-            labelNode.textContent = downloading ? `下载更新中 ${progress}%` : '检查更新';
+            labelNode.textContent = downloading
+                ? this.t('menu.updateDownloading', { progress }, `Downloading update ${progress}%`)
+                : this.t('menu.checkUpdate', null, 'Check for Updates');
         }
 
         if (autoChecking || downloading || pendingInstall) {
             menuItem.classList.add('disabled');
             menuItem.setAttribute('aria-disabled', 'true');
             if (pendingInstall) {
-                menuItem.setAttribute('title', '已有更新等待安装，请先退出 OICPP 完成安装');
+                menuItem.setAttribute('title', this.t('message.updatePendingInstall', null, 'An update is ready to install. Quit OICPP to finish installation.'));
             } else if (autoChecking) {
-                menuItem.setAttribute('title', '启动自动检查更新中');
+                menuItem.setAttribute('title', this.t('message.updateAutoChecking', null, 'The startup update check is in progress.'));
             } else {
-                menuItem.setAttribute('title', `后台下载更新中 ${progress}%`);
+                menuItem.setAttribute('title', this.t('message.updateDownloading', { version, progress }, `Downloading update${version}, ${progress}%`));
             }
         } else {
             menuItem.classList.remove('disabled');
@@ -635,7 +638,7 @@
             window.electronAPI.onFileSaved((filePath, error) => {
                 try { logInfo('[渲染进程] 收到 file-saved:', { filePath, error }); } catch (_) {}
                 if (error) {
-                    this.showMessage(`保存失败: ${error}`, 'error');
+                    this.showMessage(this.t('message.saveFailed', { error }, `Save failed: ${error}`), 'error');
                 }
                 this.onFileSaved(filePath);
             });
@@ -1864,7 +1867,7 @@
 
     async createNewTempFile() {
         if (!window.electronAPI?.saveTempFile) {
-            this.showMessage('临时文件功能不可用', 'error');
+            this.showMessage(this.t('message.tempFileUnavailable', null, 'Temporary files are unavailable'), 'error');
             return;
         }
 
@@ -1894,10 +1897,10 @@
                 this.editorManager.openFile(fileName, content);
             }
 
-            this.showMessage('已新建临时文件（退出 IDE 后自动清理）', 'success');
+            this.showMessage(this.t('message.tempFileCreated', null, 'Temporary file created. It will be deleted when the IDE exits.'), 'success');
         } catch (error) {
             logError('新建临时文件失败:', error);
-            this.showMessage(`新建临时文件失败: ${error?.message || error}`, 'error');
+            this.showMessage(this.t('message.tempFileCreateFailed', { error: error?.message || error }, `Failed to create temporary file: ${error?.message || error}`), 'error');
         }
     }
 
@@ -1993,7 +1996,7 @@
     ensureLocalFileForFeature(featureLabel = '该功能') {
         const filePath = this.getActiveFilePath();
         if (this.isCloudFilePath(filePath)) {
-            this.showMessage(`云文件仅支持基础编辑与手动保存，请先下载到本地再使用${featureLabel}。`, 'warning');
+            this.showMessage(this.t('message.cloudFileLocalOnly', { feature: featureLabel }, `Cloud files support only basic editing and manual saving. Download the file locally before using ${featureLabel}.`), 'warning');
             return false;
         }
         return true;
@@ -2001,7 +2004,7 @@
 
     async openIntegratedTerminal(options = {}) {
         if (!this.terminalPanel) {
-            this.showMessage('内置终端组件未初始化', 'error');
+            this.showMessage(this.t('message.terminalUninitialized', null, 'The integrated terminal is not initialized'), 'error');
             return;
         }
         return await this.terminalPanel.open({
@@ -2337,17 +2340,17 @@
         try {
             const cloudPanel = window.sidebarManager?.getPanelManager?.('cloud') || window.cloudSyncPanel;
             if (!cloudPanel || typeof cloudPanel.saveCloudFile !== 'function') {
-                this.showMessage('云同步面板未就绪', 'error');
+                this.showMessage(this.t('message.cloudSyncNotReady', null, 'Cloud sync panel is not ready'), 'error');
                 return false;
             }
             const cloudPath = String(filePath).replace(/^cloud:\/\//, '/').replace(/^cloud:/i, '/');
             const ok = await cloudPanel.saveCloudFile(cloudPath, content || '');
             if (ok) {
-                this.showMessage('云端保存成功', 'success');
+                this.showMessage(this.t('message.cloudSaveSuccess', null, 'Saved to cloud'), 'success');
             }
             return ok;
         } catch (error) {
-            this.showMessage('云端保存失败: ' + (error?.message || error), 'error');
+            this.showMessage(this.t('message.cloudSaveFailed', { error: error?.message || error }, `Failed to save to cloud: ${error?.message || error}`), 'error');
             return false;
         }
     }
@@ -2543,7 +2546,7 @@
         logInfo('开始调试会话');
         
         try {
-            this.showMessage('检查调试环境...', 'info');
+            this.showMessage(this.t('debug.checkingEnvironment', null, 'Checking debug environment...'), 'info');
             const gdbStatus = await this.checkGDBAvailability();
             
             if (!gdbStatus.available) {
@@ -2555,7 +2558,7 @@
             logInfo('调试环境检查通过:', gdbStatus.message);
         } catch (error) {
             logError('调试环境检查失败:', error);
-            this.showMessage('无法检查调试环境。请确保调试器已正确安装。', 'error');
+            this.showMessage(this.t('debug.environmentCheckFailed', null, 'Unable to check the debug environment. Make sure the debugger is installed correctly.'), 'error');
             return;
         }
         
@@ -2563,20 +2566,20 @@
         logInfo('当前文件路径:', currentFile);
         
         if (!currentFile) {
-            this.showMessage('没有打开的文件可以调试。请先打开一个C++源文件。', 'warning');
+            this.showMessage(this.t('debug.noDebugFile', null, 'No file is open for debugging. Open a C++ source file first.'), 'warning');
             return;
         }
 
         if (!currentFile.match(/\.(cpp|cc|cxx|c)$/i)) {
-            this.showMessage('请打开一个C++源文件进行调试。当前文件不是C++源文件。', 'warning');
+            this.showMessage(this.t('debug.debugCppOnly', null, 'Open a C++ source file to debug. The current file is not a C++ source file.'), 'warning');
             return;
         }
 
-        this.showMessage('正在编译代码，准备调试...', 'info');
+        this.showMessage(this.t('debug.compilingForDebug', null, 'Compiling code for debugging...'), 'info');
         
         try {
             if (!this.compilerManager) {
-                this.showMessage('编译器未初始化，无法进行调试', 'error');
+                this.showMessage(this.t('debug.compilerUnavailable', null, 'The compiler is not initialized and cannot be used for debugging'), 'error');
                 return;
             }
 
@@ -2652,7 +2655,7 @@
         } catch (error) {
             this.unbindDebugTerminalBridge();
             logError('启动调试准备失败:', error);
-            this.showMessage(`启动调试失败：${this.stringifyError(error)}`, 'warning');
+            this.showMessage(`${this.t('debug.startFailed', null, 'Failed to start debugging')}: ${this.stringifyError(error)}`, 'warning');
         }
     }
 
@@ -2710,7 +2713,7 @@
                     } catch (_) {}
                 }
                 if (!this.settings.compilerPath) {
-                    this.showMessage('请先设置编译器路径', 'warning');
+                    this.showMessage(this.t('message.setCompilerFirst', null, 'Please configure the compiler first'), 'warning');
                     try { require('electron').ipcRenderer.send('menu-open-settings'); } catch(_) {}
                     reject(new Error('请先设置编译器路径'));
                     return;
@@ -2789,15 +2792,16 @@
                 });
                 
                 this.updateDebugControlsState(true);
-                this.showMessage('正在启动调试会话...', 'info');
-                this.updateDebugStatus('正在启动调试会话...');
+                const startingMessage = this.t('debug.startingSession', null, 'Starting debug session...');
+                this.showMessage(startingMessage, 'info');
+                this.updateDebugStatus(startingMessage);
             } catch (error) {
                 logError('启动调试失败:', error);
-                this.showMessage('启动调试失败: ' + this.stringifyError(error), 'error');
+                this.showMessage(`${this.t('debug.startFailed', null, 'Failed to start debugging')}: ${this.stringifyError(error)}`, 'error');
             }
         } else {
             logError('require函数不可用，无法调用IPC');
-            this.showMessage('调试功能初始化失败：无法访问系统API', 'error');
+            this.showMessage(this.t('debug.apiUnavailable', null, 'Debugging could not be initialized because the system API is unavailable'), 'error');
         }
     }
 
@@ -3037,7 +3041,7 @@ ${data.message || '程序已加载，等待开始执行'}
         }
         this.unbindDebugTerminalBridge();
         logError('调试错误:', error);
-        this.showMessage('调试错误: ' + msg, 'error');
+        this.showMessage(this.t('debug.error', { error: msg }, `Debug error: ${msg}`), 'error');
         this.updateDebugControlsState(false);
     }
 
@@ -3358,7 +3362,7 @@ ${data.message || '程序已加载，等待开始执行'}
             if (typeof require !== 'undefined') {
                 const { ipcRenderer } = require('electron');
                 ipcRenderer.send('debug-add-watch', variableName.trim());
-                this.showMessage(`已添加监视变量: ${variableName.trim()}`, 'info');
+                this.showMessage(this.t('debug.watchAdded', { name: variableName.trim() }, `Watch added: ${variableName.trim()}`), 'info');
             }
         }
     }
@@ -4305,7 +4309,7 @@ ${data.message || '程序已加载，等待开始执行'}
 
     async openFileHistory() {
         if (!window.electronAPI || typeof window.electronAPI.getFileHistory !== 'function') {
-            this.showMessage('文件历史功能不可用', 'error');
+            this.showMessage(this.t('message.fileHistoryUnavailable', null, 'File history is unavailable'), 'error');
             return;
         }
         try {
@@ -4313,7 +4317,7 @@ ${data.message || '程序已加载，等待开始执行'}
             this.showFileHistoryDialog(Array.isArray(history) ? history : []);
         } catch (error) {
             logError('获取文件历史失败:', error);
-            this.showMessage('获取文件历史失败', 'error');
+            this.showMessage(this.t('message.fileHistoryLoadFailed', null, 'Failed to load file history'), 'error');
         }
     }
 
@@ -4426,7 +4430,7 @@ ${data.message || '程序已加载，等待开始执行'}
                 }
                 await window.electronAPI.clearFileHistory();
                 overlay.remove();
-                this.showMessage('文件历史已清除', 'success');
+                this.showMessage(this.t('message.fileHistoryCleared', null, 'File history cleared'), 'success');
             });
 
             footer.appendChild(clearBtn);
