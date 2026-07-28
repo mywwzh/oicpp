@@ -1777,6 +1777,9 @@ function showPostInstallNoticeIfNeeded() {
         } catch (_) { }
     }, 1200);
 
+    // 安装程序在升级后会被删除。若本次启动的版本已匹配，必须同时撤销
+    // 启动阶段可能已注册的旧安装包启动任务，避免下次退出时再次尝试运行它。
+    pendingInstallerLaunch = null;
     delete settings.postInstallNotice;
     if (settings.pendingUpdate && String(settings.pendingUpdate.version || '') === String(APP_VERSION)) {
         delete settings.pendingUpdate;
@@ -2431,8 +2434,10 @@ function createWindow() {
             }
         })();
 
-        checkPendingUpdate();
+        // 先处理已完成更新：它会清除旧的 pendingUpdate。否则 checkPendingUpdate()
+        // 会把旧安装包注册到 will-quit，导致下一次退出再次启动已被安装器删除的文件。
         showPostInstallNoticeIfNeeded();
+        checkPendingUpdate();
 
         setAutoUpdateCheckInProgress(true);
         checkDailyUpdate()
