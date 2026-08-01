@@ -604,6 +604,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
 
+    listPlugins: () => ipcRenderer.invoke('plugins-list'),
+    getRuntimePlugins: () => ipcRenderer.invoke('plugins-get-runtime'),
+    setPluginEnabled: (pluginId, enabled) => ipcRenderer.invoke('plugins-set-enabled', pluginId, enabled),
+    openPluginsDirectory: () => ipcRenderer.invoke('plugins-open-directory'),
+
     clipboardWriteText: (text) => ipcRenderer.invoke('clipboard-write-text', text),
     clipboardReadText: () => ipcRenderer.invoke('clipboard-read-text'),
 

@@ -1,0 +1,180 @@
+.plugin-command-item .menu-shortcut {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.plugin-status-item {
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.plugin-manager-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 12000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.plugin-manager-dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(680px, 100%);
+    max-height: min(680px, calc(100vh - 48px));
+    overflow: hidden;
+    color: var(--text-color, #cccccc);
+    background: var(--card-bg, #252526);
+    border: 1px solid var(--border-color, #464647);
+    border-radius: 6px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+.plugin-manager-header,
+.plugin-manager-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 18px;
+}
+
+.plugin-manager-header {
+    border-bottom: 1px solid var(--border-color, #464647);
+}
+
+.plugin-manager-header h2 {
+    margin: 0 0 4px;
+    font-size: 18px;
+    letter-spacing: 0;
+}
+
+.plugin-manager-header p,
+.plugin-manager-details p,
+.plugin-manager-empty {
+    margin: 0;
+    color: var(--text-secondary, #999999);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.plugin-manager-close {
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    color: inherit;
+    font-size: 24px;
+    line-height: 30px;
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.plugin-manager-close:hover {
+    background: var(--hover-bg, rgba(255, 255, 255, 0.1));
+}
+
+.plugin-manager-list {
+    min-height: 180px;
+    overflow: auto;
+    padding: 4px 18px;
+}
+
+.plugin-manager-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 72px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-color, #3f3f46);
+}
+
+.plugin-manager-row:last-child {
+    border-bottom: 0;
+}
+
+.plugin-manager-row.invalid {
+    opacity: 0.75;
+}
+
+.plugin-manager-details {
+    min-width: 0;
+    flex: 1;
+}
+
+.plugin-manager-title-line {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 5px;
+}
+
+.plugin-manager-title-line strong {
+    font-size: 14px;
+}
+
+.plugin-manager-title-line > span:not(.plugin-manager-badge) {
+    color: var(--text-secondary, #999999);
+    font-size: 12px;
+}
+
+.plugin-manager-badge {
+    padding: 2px 6px;
+    color: var(--text-color, #cccccc);
+    font-size: 11px;
+    background: var(--hover-bg, rgba(255, 255, 255, 0.1));
+    border-radius: 3px;
+}
+
+.plugin-manager-toggle {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary-color, #0e639c);
+}
+
+.plugin-manager-empty {
+    padding: 36px 0;
+    text-align: center;
+}
+
+.plugin-manager-footer {
+    justify-content: flex-end;
+    border-top: 1px solid var(--border-color, #464647);
+}
+
+.plugin-manager-footer button {
+    min-height: 32px;
+    padding: 6px 12px;
+    color: var(--text-color, #cccccc);
+    background: var(--button-bg, #3a3d41);
+    border: 1px solid var(--border-color, #555555);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.plugin-manager-footer button.primary {
+    color: #ffffff;
+    background: var(--primary-color, #0e639c);
+    border-color: transparent;
+}
+
+.plugin-manager-footer button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+@media (max-width: 800px) {
+    .plugin-status-item {
+        max-width: 160px;
+    }
+}

@@ -18,9 +18,12 @@ try {
 const logger = require('./utils/logger');
 const CONSOLE_PAUSER_SOURCE = require('./utils/consolepauser-source');
 const IntegratedTerminalManager = require('./terminal-manager');
+const PluginManager = require('./plugin-manager');
 
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
+
+let pluginManager = null;
 
 const APP_VERSION = '1.5.0';
 const SAVE_ALL_TIMEOUT = 4000;
@@ -3098,6 +3101,27 @@ function setupWindowControls() {
 }
 
 function setupIPC() {
+    ipcMain.handle('plugins-list', () => {
+        return pluginManager ? pluginManager.list() : [];
+    });
+
+    ipcMain.handle('plugins-get-runtime', () => {
+        return pluginManager ? pluginManager.getRuntimePlugins() : [];
+    });
+
+    ipcMain.handle('plugins-set-enabled', (_event, pluginId, enabled) => {
+        if (!pluginManager) throw new Error('Plugin manager is not initialized');
+        return pluginManager.setEnabled(String(pluginId || ''), !!enabled);
+    });
+
+    ipcMain.handle('plugins-open-directory', async () => {
+        if (!pluginManager) throw new Error('Plugin manager is not initialized');
+        pluginManager.ensureUserRoot();
+        const error = await shell.openPath(pluginManager.userRoot);
+        if (error) throw new Error(error);
+        return true;
+    });
+
     ipcMain.handle('get-app-path', () => {
         return app.getAppPath();
     });
@@ -8039,6 +8063,15 @@ function compareVersions(currentVersion, latestVersion, allowBetaUpdates = false
 
 app.whenReady().then(() => {
     app.commandLine.appendSwitch('charset', 'utf-8');
+    pluginManager = new PluginManager({
+        appVersion: APP_VERSION,
+        userRoot: path.join(os.homedir(), '.oicpp', 'plugins'),
+        bundledRoot: path.join(app.getAppPath(), 'plugins'),
+        statePath: path.join(os.homedir(), '.oicpp', 'plugin-state.json'),
+        logger: {
+            warn: (...args) => logger.logwarn(...args)
+        }
+    });
     try {
         const clangdStatus = ensureClangdUserBundle();
         if (clangdStatus.ok) {
