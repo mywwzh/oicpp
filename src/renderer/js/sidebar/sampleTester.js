@@ -2129,6 +2129,8 @@ class SampleTester {
                         observedBytes: runResult.observedOutputBytes
                     });
                 } catch (_) { }
+            } else if (runResult.memoryLimitExceeded) {
+                status = 'MLE';
             } else if (runResult.timeout) {
                 status = 'TLE';
                 try { logInfo('[样例测试器][TLE]', { sampleId: sample.id, durationMs: runResult.time, limitMs: sample.timeLimit }); } catch (_) { }
@@ -2285,8 +2287,6 @@ class SampleTester {
                             observedBytes: runResult.observedOutputBytes
                         });
                     } catch (_) { }
-                } else if (runResult.memoryLimitExceeded) {
-                    status = 'MLE';
                 } else if (runResult.memoryLimitExceeded) {
                     status = 'MLE';
                 } else if (runResult.timeout) {
