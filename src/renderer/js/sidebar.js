@@ -41,10 +41,20 @@ class SidebarManager {
         logInfo('setupEventListeners: 找到', sidebarIcons.length, '个侧边栏图标');
         sidebarIcons.forEach((icon, index) => {
             logInfo('绑定事件监听器到图标', index, '面板名:', icon.dataset.panel);
+            icon.tabIndex = 0;
+            icon.setAttribute('role', 'button');
             icon.addEventListener('click', (e) => {
+                e.preventDefault();
+                icon.focus({ preventScroll: true });
                 const panelName = e.currentTarget.dataset.panel;
                 logInfo('图标被点击，面板名:', panelName);
                 this.showPanel(panelName);
+            });
+            icon.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                e.stopPropagation();
+                this.showPanel(icon.dataset.panel);
             });
         });
 
