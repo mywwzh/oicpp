@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 34547)
-Total output lines: 3231
-
 class SampleTester {
     constructor() {
         this.samples = [];
@@ -983,6 +980,12 @@ class SampleTester {
                         <span class="setting-unit">ms</span>
                     </div>
                     <div class="setting-group">
+                        <span class="setting-label"><span data-i18n="tester.memoryLimit">内存限制:</span></span>
+                        <input type="number" min="1" class="setting-input" value="${sample.memoryLimit || 256}"
+                               onchange="sampleTester.updateSampleSetting(${sample.id}, 'memoryLimit', this.value)">
+                        <span class="setting-unit">MB</span>
+                    </div>
+                    <div class="setting-group">
                         <span class="setting-label"><span data-i18n="tester.inputFile">输入文件:</span></span>
                         <input type="text" class="setting-input setting-input-wide" value="${sample.freopenInputFile || ''}"
                                data-i18n-placeholder="tester.freopenInputPlaceholder" placeholder="如 sample.in"
@@ -1003,7 +1006,7 @@ class SampleTester {
 
     getSampleStatusKey(sample) {
         const status = sample?.result?.status;
-        const knownStatuses = ['AC', 'WA', 'TLE', 'RE', 'CE', 'OLE'];
+        const knownStatuses = ['AC', 'WA', 'TLE', 'MLE', 'RE', 'CE', 'OLE'];
         if (status && knownStatuses.includes(status)) {
             return status;
         }
@@ -1333,7 +1336,507 @@ class SampleTester {
             }
 
             const importPlan = this.pairSamplesFromZipFiles(zipReadResult.files || []);
-            const pairs = …4547 tokens truncated… window.electronAPI.getPathInfo(sample.input);
+            const pairs = importPlan.pairs || [];
+            if (pairs.length === 0) {
+                logWarn('[样例测试器] 压缩包中未识别到可配对的样例输入输出文件');
+                return;
+            }
+
+            const thresholdBytes = this.getZipLargeSampleThresholdBytes();
+            const largePairCount = pairs.filter((pair) => {
+                const totalBytes = this.getZipEntrySizeBytes(pair?.input) + this.getZipEntrySizeBytes(pair?.output);
+                return totalBytes > thresholdBytes;
+            }).length;
+
+            const previewMessage = `识别到 ${pairs.length} 组可导入样例。<br>识别文件数：${importPlan.recognizedCount}，未配对文件：${importPlan.unmatchedCount}。<br>大样例组（>${Math.floor(thresholdBytes / 1024)}KB）：${largePairCount}。<br><br>是否继续导入？`;
+            let shouldImport = true;
+            if (window.dialogManager?.showActionDialog) {
+                const action = await window.dialogManager.showActionDialog((window.i18n ? window.i18n.t('dialog.importPreview') : '导入样例预览'), previewMessage, [
+                    { id: 'cancel', label: '取消', className: 'dialog-btn-cancel' },
+                    { id: 'import', label: '继续导入', className: 'dialog-btn-confirm' }
+                ]);
+                shouldImport = action === 'import';
+            } else if (window.dialogManager?.showConfirmDialog) {
+                shouldImport = await window.dialogManager.showConfirmDialog('导入样例预览', `识别到 ${pairs.length} 组可导入样例。识别文件数：${importPlan.recognizedCount}，未配对文件：${importPlan.unmatchedCount}。是否继续导入？`);
+            }
+            if (!shouldImport) {
+                return;
+            }
+
+            const freopenOptions = await this.askFreopenOptionsForZipImport();
+            if (freopenOptions?.canceled) {
+                return;
+            }
+
+            let largeSamplesDir = null;
+            let maxId = this.samples.length > 0 ? Math.max(...this.samples.map(s => s.id)) : 0;
+            for (const pair of pairs) {
+                maxId += 1;
+                const inputBytes = this.getZipEntrySizeBytes(pair?.input);
+                const outputBytes = this.getZipEntrySizeBytes(pair?.output);
+                const shouldUseFileMode = (inputBytes + outputBytes) > thresholdBytes;
+
+                if (shouldUseFileMode) {
+                    if (!largeSamplesDir) {
+                        largeSamplesDir = await this.prepareZipLargeSampleImportDir(zipPath);
+                    }
+
+                    const inputFilePath = await this.writeZipEntryToWorkspace(pair.input, largeSamplesDir, `sample_${maxId}.in`);
+                    const outputFilePath = await this.writeZipEntryToWorkspace(pair.output, largeSamplesDir, `sample_${maxId}.out`);
+
+                    this.samples.push({
+                        id: maxId,
+                        inputType: 'file',
+                        outputType: 'file',
+                        input: inputFilePath,
+                        output: outputFilePath,
+                        timeLimit: 1000,
+                        freopenInputFile: freopenOptions.freopenInputFile || '',
+                        freopenOutputFile: freopenOptions.freopenOutputFile || '',
+                        useTestlib: false,
+                        spjPath: '',
+                        result: null
+                    });
+                } else {
+                    this.samples.push({
+                        id: maxId,
+                        inputType: 'userinput',
+                        outputType: 'userinput',
+                        input: pair.input?.content || '',
+                        output: pair.output?.content || '',
+                        timeLimit: 1000,
+                        freopenInputFile: freopenOptions.freopenInputFile || '',
+                        freopenOutputFile: freopenOptions.freopenOutputFile || '',
+                        useTestlib: false,
+                        spjPath: '',
+                        result: null
+                    });
+                }
+            }
+
+            this.nextId = maxId + 1;
+            await this.saveSamples();
+            this.statusFilter = null;
+            this.updateUI();
+            setTimeout(() => this.expandAllSamples(), 100);
+
+            logInfo(`[样例测试器] 从压缩包导入样例成功，共 ${pairs.length} 组，其中大样例组 ${largePairCount} 组`);
+        } catch (error) {
+            logError('[样例测试器] 导入压缩包样例失败:', error);
+        }
+    }
+
+    async addSample() {
+        if (!this.currentFile) return;
+
+        this.isOperating = true;
+        try {
+            const maxId = this.samples.length > 0 ? Math.max(...this.samples.map(s => s.id)) : 0;
+            const newId = maxId + 1;
+
+            const newSample = {
+                id: newId,
+                inputType: 'userinput',
+                outputType: 'userinput',
+                input: '',
+                output: '',
+                timeLimit: this.sanitizeTimeLimit(this.globalSettings.defaultTimeLimit, 1000),
+                freopenInputFile: this.normalizeFreopenFileName(this.globalSettings.freopenInputFile || ''),
+                freopenOutputFile: this.normalizeFreopenFileName(this.globalSettings.freopenOutputFile || ''),
+                useTestlib: false,
+                spjPath: '',
+                result: null
+            };
+
+            this.samples.push(newSample);
+
+            this.nextId = newId + 1;
+            await this.saveSamples();
+            this.updateUI();
+
+            setTimeout(() => {
+                const element = document.querySelector(`[data-sample-id="${newSample.id}"]`);
+                if (element && !element.classList.contains('expanded')) {
+                    element.classList.add('expanded');
+                }
+            }, 100);
+        } finally {
+            this.isOperating = false;
+        }
+    }
+
+    async deleteSample(id) {
+        this.isOperating = true;
+
+        try {
+
+            const sampleIndex = this.samples.findIndex(s => s.id === id);
+            if (sampleIndex === -1) {
+                logWarn('[样例测试器] 未找到要删除的样例:', id);
+                return;
+            }
+
+            this.samples.splice(sampleIndex, 1);
+
+            this.samples.forEach((sample, index) => {
+                sample.id = index + 1;
+            });
+
+            const maxId = this.samples.length > 0 ? Math.max(...this.samples.map(s => s.id)) : 0;
+            this.nextId = maxId + 1;
+            await this.saveSamples();
+            this.updateUI();
+            logInfo('[样例测试器] 删除操作完成');
+        } finally {
+            this.isOperating = false;
+        }
+    }
+
+    toggleSample(id) {
+        const element = document.querySelector(`[data-sample-id="${id}"]`);
+        if (element) {
+            element.classList.toggle('expanded');
+        }
+    }
+
+    expandAllSamples() {
+        const sampleElements = document.querySelectorAll('.sample-group');
+        sampleElements.forEach(element => {
+            element.classList.add('expanded');
+        });
+    }
+
+    updateSampleContent(id, type, value) {
+        const sample = this.samples.find(s => s.id === id);
+        if (sample) {
+            sample[type] = value;
+            this.saveSamples();
+        }
+    }
+
+    updateSampleSetting(id, setting, value) {
+        const sample = this.samples.find(s => s.id === id);
+        if (sample) {
+            if (setting === 'timeLimit') {
+                sample[setting] = this.sanitizeTimeLimit(value, sample.timeLimit || this.globalSettings.defaultTimeLimit || 1000);
+            } else if (setting === 'memoryLimit') {
+                sample[setting] = this.sanitizeMemoryLimit(value, sample.memoryLimit || 256);
+            } else if (setting === 'freopenInputFile' || setting === 'freopenOutputFile') {
+                sample[setting] = this.normalizeFreopenFileName(value);
+            } else if (setting === 'useTestlib') {
+                sample[setting] = value;
+            } else {
+                sample[setting] = value;
+            }
+            this.saveSamples();
+        }
+    }
+
+    sanitizeTimeLimit(value, fallback = 1000) {
+        const parsed = parseInt(value, 10);
+        const safeFallback = Number.isFinite(fallback) && fallback > 0 ? Math.floor(fallback) : 1000;
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            return safeFallback;
+        }
+        return Math.floor(parsed);
+    }
+
+    sanitizeMemoryLimit(value, fallback = 256) {
+        const parsed = parseInt(value, 10);
+        const safeFallback = Number.isFinite(fallback) && fallback > 0 ? Math.floor(fallback) : 256;
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            return safeFallback;
+        }
+        return Math.min(Math.floor(parsed), 10240);
+    }
+
+    applyFreopenToAllSamples() {
+        if (this.samples.length === 0) return;
+
+        const expandedSampleIds = this.getExpandedSampleIds();
+
+        const inputName = this.normalizeFreopenFileName(this.globalSettings.freopenInputFile || '');
+        const outputName = this.normalizeFreopenFileName(this.globalSettings.freopenOutputFile || '');
+
+        this.globalSettings.freopenInputFile = inputName;
+        this.globalSettings.freopenOutputFile = outputName;
+
+        this.samples.forEach(sample => {
+            sample.freopenInputFile = inputName;
+            sample.freopenOutputFile = outputName;
+        });
+
+        this.saveSamples();
+        this.updateUI();
+        this.restoreExpandedSampleIds(expandedSampleIds);
+    }
+
+    applyTimeLimitToAllSamples() {
+        if (this.samples.length === 0) return;
+
+        const expandedSampleIds = this.getExpandedSampleIds();
+
+        const timeLimit = this.sanitizeTimeLimit(this.globalSettings.defaultTimeLimit, 1000);
+        this.globalSettings.defaultTimeLimit = timeLimit;
+
+        this.samples.forEach(sample => {
+            sample.timeLimit = timeLimit;
+        });
+
+        this.saveSamples();
+        this.updateUI();
+        this.restoreExpandedSampleIds(expandedSampleIds);
+    }
+
+    getExpandedSampleIds() {
+        const expandedElements = document.querySelectorAll('.sample-group.expanded');
+        const ids = [];
+        expandedElements.forEach(element => {
+            const sampleId = parseInt(element.dataset.sampleId, 10);
+            if (Number.isFinite(sampleId)) {
+                ids.push(sampleId);
+            }
+        });
+        return ids;
+    }
+
+    restoreExpandedSampleIds(ids) {
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return;
+        }
+
+        setTimeout(() => {
+            ids.forEach(id => {
+                const element = document.querySelector(`[data-sample-id="${id}"]`);
+                if (element) {
+                    element.classList.add('expanded');
+                }
+            });
+        }, 0);
+    }
+
+    normalizeFreopenFileName(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        const normalized = raw.replace(/[\\/]/g, '').replace(/[<>:"|?*]/g, '').trim();
+        return normalized;
+    }
+
+    async prepareFreopenContext(sample, inputData) {
+        const inputFileName = this.normalizeFreopenFileName(sample?.freopenInputFile);
+        const outputFileName = this.normalizeFreopenFileName(sample?.freopenOutputFile);
+
+        if (!inputFileName && !outputFileName) {
+            return {
+                runInput: inputData,
+                workingDirectory: null,
+                outputFilePath: null,
+                cleanupFiles: []
+            };
+        }
+
+        const userHome = await window.electronAPI.getUserHome();
+        const baseDir = await window.electronAPI.pathJoin(userHome, '.oicpp', 'sampleTester', 'freopen_runs');
+        const runDirName = `sample_${sample?.id || 'x'}`;
+        const runDir = await window.electronAPI.pathJoin(baseDir, runDirName);
+
+        await window.electronAPI.ensureDirectory(baseDir);
+        await window.electronAPI.ensureDirectory(runDir);
+
+        const cleanupFiles = [];
+        let outputFilePath = null;
+
+        if (inputFileName) {
+            const inputFilePath = await window.electronAPI.pathJoin(runDir, inputFileName);
+            await window.electronAPI.writeFile(inputFilePath, inputData || '');
+            cleanupFiles.push(inputFilePath);
+        }
+
+        if (outputFileName) {
+            outputFilePath = await window.electronAPI.pathJoin(runDir, outputFileName);
+            cleanupFiles.push(outputFilePath);
+        }
+
+        return {
+            runInput: inputFileName ? '' : inputData,
+            workingDirectory: runDir,
+            outputFilePath,
+            cleanupFiles
+        };
+    }
+
+    async cleanupFreopenContext(context) {
+        if (!context || !Array.isArray(context.cleanupFiles)) return;
+        for (const filePath of context.cleanupFiles) {
+            try {
+                const exists = await window.electronAPI.checkFileExists(filePath);
+                if (exists) {
+                    await window.electronAPI.deleteFile(filePath);
+                }
+            } catch (_) { }
+        }
+    }
+
+    async resolveProgramOutput(runResult, freopenContext) {
+        if (!freopenContext?.outputFilePath) {
+            return runResult.output || '';
+        }
+
+        try {
+            const exists = await window.electronAPI.checkFileExists(freopenContext.outputFilePath);
+            if (!exists) {
+                return runResult.output || '';
+            }
+            return await window.electronAPI.readFileContent(freopenContext.outputFilePath);
+        } catch (error) {
+            try { logWarn('[样例测试器] 读取freopen输出文件失败:', error); } catch (_) { }
+            return runResult.output || '';
+        }
+    }
+
+    updateSampleDisplay(id) {
+        const sample = this.samples.find(s => s.id === id);
+        if (!sample) return;
+
+        const element = document.querySelector(`[data-sample-id="${id}"]`);
+        if (!element) return;
+
+        const isExpanded = element.classList.contains('expanded');
+
+        const newElement = this.createSampleElement(sample);
+
+        if (isExpanded) {
+            newElement.classList.add('expanded');
+        }
+
+        element.parentNode.replaceChild(newElement, element);
+
+        setTimeout(() => {
+            const textareas = newElement.querySelectorAll('.sample-textarea');
+            textareas.forEach(textarea => {
+                this.autoResizeTextarea(textarea);
+            });
+
+            const programOutput = newElement.querySelector('.program-output');
+            if (programOutput) {
+                this.autoResizeProgramOutput(programOutput);
+            }
+        }, 0);
+    }
+
+    expandTextarea(textarea) {
+        textarea.classList.add('expanded');
+        textarea.classList.remove('auto-height');
+    }
+
+    collapseTextarea(textarea) {
+        textarea.classList.remove('expanded');
+        this.autoResizeTextarea(textarea);
+    }
+
+    autoResizeTextarea(textarea) {
+        if (textarea.classList.contains('expanded')) return;
+
+        const content = textarea.value;
+        const lines = content.split('\n').length;
+        const isEmpty = !content.trim();
+
+        if (isEmpty || lines === 1) {
+            textarea.classList.add('auto-height');
+            textarea.style.height = 'auto';
+        } else {
+            textarea.classList.remove('auto-height');
+            const lineHeight = 16.8;
+            const padding = 16;
+            const minHeight = Math.min(lines * lineHeight + padding, 200);
+            textarea.style.height = `${minHeight}px`;
+        }
+    }
+
+    autoResizeProgramOutput(textarea) {
+        const content = textarea.value;
+        const lines = content.split('\n').length;
+        const isEmpty = !content.trim();
+
+        if (isEmpty) {
+            textarea.style.height = '60px';
+        } else {
+            const lineHeight = 16.8;
+            const padding = 16;
+            const calculatedHeight = lines * lineHeight + padding;
+            const minHeight = Math.max(60, Math.min(calculatedHeight, 200));
+            textarea.style.height = `${minHeight}px`;
+        }
+    }
+
+    switchToManualInput(id) {
+        const sample = this.samples.find(s => s.id === id);
+        if (sample) {
+            sample.inputType = 'userinput';
+            sample.input = '';
+            this.saveSamples();
+            this.updateSampleDisplay(id);
+        }
+    }
+
+    switchToManualOutput(id) {
+        const sample = this.samples.find(s => s.id === id);
+        if (sample) {
+            sample.outputType = 'userinput';
+            sample.output = '';
+            this.saveSamples();
+            this.updateSampleDisplay(id);
+        }
+    }
+
+    async selectInputFile(id) {
+        const result = await window.electronAPI.showOpenDialog({
+            title: window.i18n ? window.i18n.t('tester.selectInputFile') : '选择输入文件',
+            filters: [
+                { name: window.i18n ? window.i18n.t('tester.textFileFilter') : '文本文件', extensions: ['txt', 'in'] },
+                { name: '所有文件', extensions: ['*'] }
+            ],
+            properties: ['openFile']
+        });
+
+        if (!result.canceled && result.filePaths.length > 0) {
+            const sample = this.samples.find(s => s.id === id);
+            if (sample) {
+                sample.inputType = 'file';
+                sample.input = result.filePaths[0];
+                await this.tryAutoMatchOutputFile(sample);
+                this.saveSamples();
+                this.updateSampleDisplay(id);
+            }
+        }
+    }
+
+    async selectOutputFile(id) {
+        const result = await window.electronAPI.showOpenDialog({
+            title: window.i18n ? window.i18n.t('tester.selectOutputFile') : '选择输出文件',
+            filters: [
+                { name: window.i18n ? window.i18n.t('tester.textFileFilter') : '文本文件', extensions: ['txt', 'out', 'ans'] },
+                { name: '所有文件', extensions: ['*'] }
+            ],
+            properties: ['openFile']
+        });
+
+        if (!result.canceled && result.filePaths.length > 0) {
+            const sample = this.samples.find(s => s.id === id);
+            if (sample) {
+                sample.outputType = 'file';
+                sample.output = result.filePaths[0];
+                this.saveSamples();
+                this.updateSampleDisplay(id);
+            }
+        }
+    }
+
+    async tryAutoMatchOutputFile(sample) {
+        if (!sample || !sample.input) return false;
+
+        try {
+            const pathInfo = await window.electronAPI.getPathInfo(sample.input);
             if (!pathInfo || !pathInfo.dirname || !pathInfo.basenameWithoutExt) return false;
 
             const candidates = [`${pathInfo.basenameWithoutExt}.ans`, `${pathInfo.basenameWithoutExt}.out`];
@@ -1606,7 +2109,7 @@ class SampleTester {
                 const runOptions = freopenContext.workingDirectory
                     ? { executablePath, workingDirectory: freopenContext.workingDirectory }
                     : executablePath;
-                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit);
+                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit, sample.memoryLimit);
                 actualOutput = await this.resolveProgramOutput(runResult, freopenContext);
             } finally {
                 await this.cleanupFreopenContext(freopenContext);
@@ -1761,7 +2264,7 @@ class SampleTester {
                 const runOptions = freopenContext.workingDirectory
                     ? { executablePath, workingDirectory: freopenContext.workingDirectory }
                     : executablePath;
-                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit);
+                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit, sample.memoryLimit);
                 actualOutput = await this.resolveProgramOutput(runResult, freopenContext);
             } finally {
                 await this.cleanupFreopenContext(freopenContext);
@@ -1782,6 +2285,10 @@ class SampleTester {
                             observedBytes: runResult.observedOutputBytes
                         });
                     } catch (_) { }
+                } else if (runResult.memoryLimitExceeded) {
+                    status = 'MLE';
+                } else if (runResult.memoryLimitExceeded) {
+                    status = 'MLE';
                 } else if (runResult.timeout) {
                     status = 'TLE';
                     try { logInfo('[样例测试器][TLE]', { sampleId: sample.id, durationMs: runResult.time, limitMs: sample.timeLimit }); } catch (_) { }
@@ -2023,10 +2530,10 @@ class SampleTester {
         return result;
     }
 
-    async runProgram(executablePath, input, timeLimit) {
+    async runProgram(executablePath, input, timeLimit, memoryLimit = 256) {
         const execOptions = typeof executablePath === 'object'
-            ? { ...executablePath, skipPreKill: true }
-            : { executablePath, skipPreKill: true };
+            ? { ...executablePath, skipPreKill: true, memoryLimitMb: this.sanitizeMemoryLimit(memoryLimit, 256) }
+            : { executablePath, skipPreKill: true, memoryLimitMb: this.sanitizeMemoryLimit(memoryLimit, 256) };
         return await window.electronAPI.runProgram(execOptions, input, timeLimit);
     }
 
@@ -2226,6 +2733,9 @@ class SampleTester {
 
         if (result.time !== undefined) {
             statusBadge += `<span style="color: #858585; font-size: 11px; margin-left: 8px;">${result.time}ms</span>`;
+        }
+        if (Number.isFinite(result.memoryBytes)) {
+            statusBadge += `<span style="color: #858585; font-size: 11px; margin-left: 8px;">${(result.memoryBytes / (1024 * 1024)).toFixed(1)}MB</span>`;
         }
 
         statusContainer.innerHTML = statusBadge;

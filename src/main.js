@@ -4535,13 +4535,14 @@ function setupIPC() {
     ipcMain.handle('run-program', async (event, executablePathOrOptions, input, timeLimit) => {
         const { spawn } = require('child_process');
 
-        let executablePath, args = [], workingDirectory = null;
+        let executablePath, args = [], workingDirectory = null, memoryLimitMb = 0;
         let skipPreKill = false;
         if (typeof executablePathOrOptions === 'object' && executablePathOrOptions && executablePathOrOptions.executablePath) {
             executablePath = executablePathOrOptions.executablePath;
             args = executablePathOrOptions.args || [];
             workingDirectory = executablePathOrOptions.workingDirectory;
             skipPreKill = !!executablePathOrOptions.skipPreKill;
+            memoryLimitMb = Math.max(0, Math.floor(Number(executablePathOrOptions.memoryLimitMb) || 0));
         } else {
             executablePath = executablePathOrOptions;
         }
@@ -4638,8 +4639,49 @@ function setupIPC() {
             let observedOutputBytes = 0;
             let outputLimitExceeded = false;
             let outputLimitTriggered = false;
+            let memoryLimitExceeded = false;
+            let peakMemoryBytes = 0;
+            let memoryTimer = null;
             let timeout = false;
             let startTime = null;
+
+            const readMemoryBytes = () => new Promise((resolve) => {
+                const pid = childProcess?.pid;
+                if (!pid) return resolve(0);
+                if (process.platform === 'linux') {
+                    fs.readFile(`/proc/${pid}/status`, 'utf8', (error, content) => {
+                        if (error) return resolve(0);
+                        const match = content.match(/^VmRSS:\s+(\d+)\s+kB$/m);
+                        resolve(match ? Number(match[1]) * 1024 : 0);
+                    });
+                    return;
+                }
+                if (process.platform === 'win32') {
+                    const tasklist = spawn('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { windowsHide: true });
+                    let output = '';
+                    tasklist.stdout.on('data', chunk => { output += chunk.toString(); });
+                    tasklist.on('close', () => {
+                        const match = output.match(/"([\d,.]+)\s*K"/i);
+                        resolve(match ? Number(match[1].replace(/[^\d]/g, '')) * 1024 : 0);
+                    });
+                    tasklist.on('error', () => resolve(0));
+                    return;
+                }
+                const ps = spawn('ps', ['-o', 'rss=', '-p', String(pid)]);
+                let output = '';
+                ps.stdout.on('data', chunk => { output += chunk.toString(); });
+                ps.on('close', () => resolve((Number(output.trim()) || 0) * 1024));
+                ps.on('error', () => resolve(0));
+            });
+
+            const sampleMemory = async () => {
+                const bytes = await readMemoryBytes();
+                peakMemoryBytes = Math.max(peakMemoryBytes, bytes);
+                if (memoryLimitMb > 0 && bytes > memoryLimitMb * 1024 * 1024) {
+                    memoryLimitExceeded = true;
+                    try { childProcess?.kill('SIGKILL'); } catch (_) { }
+                }
+            };
 
             let effectiveTimeLimit = Number(timeLimit);
             const useTimeouts = Number.isFinite(effectiveTimeLimit) && effectiveTimeLimit > 0;
@@ -4716,6 +4758,8 @@ function setupIPC() {
 
             childProcess.on('spawn', () => {
                 startTime = performance.now();
+                sampleMemory();
+                memoryTimer = setInterval(sampleMemory, 200);
                 try { logInfo('[运行程序][启动] 子进程已启动'); } catch (_) { }
             });
 
@@ -4730,6 +4774,7 @@ function setupIPC() {
             childProcess.on('close', (code) => {
                 if (tleTimer) clearTimeout(tleTimer);
                 if (killTimer) clearTimeout(killTimer);
+                if (memoryTimer) clearInterval(memoryTimer);
 
                 const endTime = performance.now();
 
@@ -4761,8 +4806,12 @@ function setupIPC() {
                         finalOutput = notice;
                     }
                 }
+                if (memoryLimitExceeded) {
+                    const notice = `内存超过限制 (${memoryLimitMb} MB)，程序已被终止。`;
+                    finalOutput = finalOutput ? `${finalOutput}\n${notice}` : notice;
+                }
 
-                const effectiveExitCode = outputLimitExceeded ? (code ?? -3) : code;
+                const effectiveExitCode = outputLimitExceeded ? (code ?? -3) : (memoryLimitExceeded ? (code ?? -4) : code);
                 const measuredTime = useTimeouts ? Math.max(0, Math.min(executionTime, effectiveTimeLimit + 100)) : Math.max(0, executionTime);
                 const timedOut = outputLimitExceeded ? false : (useTimeouts ? timeout : false);
 
@@ -4774,6 +4823,9 @@ function setupIPC() {
                     stdout: output,
                     stderr: errorOutput,
                     outputLimitExceeded,
+                    memoryLimitExceeded,
+                    memoryBytes: peakMemoryBytes,
+                    memoryLimitMb,
                     outputLimitBytes: OUTPUT_LIMIT_BYTES,
                     capturedOutputBytes: combinedOutputBytes,
                     observedOutputBytes
