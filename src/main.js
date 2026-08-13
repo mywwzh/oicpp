@@ -4540,14 +4540,13 @@ function setupIPC() {
     ipcMain.handle('run-program', async (event, executablePathOrOptions, input, timeLimit) => {
         const { spawn } = require('child_process');
 
-        let executablePath, args = [], workingDirectory = null, memoryLimitMb = 0;
+        let executablePath, args = [], workingDirectory = null;
         let skipPreKill = false;
         if (typeof executablePathOrOptions === 'object' && executablePathOrOptions && executablePathOrOptions.executablePath) {
             executablePath = executablePathOrOptions.executablePath;
             args = executablePathOrOptions.args || [];
             workingDirectory = executablePathOrOptions.workingDirectory;
             skipPreKill = !!executablePathOrOptions.skipPreKill;
-            memoryLimitMb = Math.max(0, Math.floor(Number(executablePathOrOptions.memoryLimitMb) || 0));
         } else {
             executablePath = executablePathOrOptions;
         }
@@ -4644,9 +4643,9 @@ function setupIPC() {
             let observedOutputBytes = 0;
             let outputLimitExceeded = false;
             let outputLimitTriggered = false;
-            let memoryLimitExceeded = false;
             let peakMemoryBytes = 0;
             let memoryTimer = null;
+            let memorySamplePromise = null;
             let timeout = false;
             let startTime = null;
 
@@ -4679,13 +4678,18 @@ function setupIPC() {
                 ps.on('error', () => resolve(0));
             });
 
-            const sampleMemory = async () => {
-                const bytes = await readMemoryBytes();
-                peakMemoryBytes = Math.max(peakMemoryBytes, bytes);
-                if (memoryLimitMb > 0 && bytes > memoryLimitMb * 1024 * 1024) {
-                    memoryLimitExceeded = true;
-                    try { childProcess?.kill('SIGKILL'); } catch (_) { }
+            const sampleMemory = () => {
+                if (memorySamplePromise) {
+                    return memorySamplePromise;
                 }
+                memorySamplePromise = readMemoryBytes()
+                    .then((bytes) => {
+                        peakMemoryBytes = Math.max(peakMemoryBytes, bytes);
+                    })
+                    .finally(() => {
+                        memorySamplePromise = null;
+                    });
+                return memorySamplePromise;
             };
 
             let effectiveTimeLimit = Number(timeLimit);
@@ -4776,11 +4780,13 @@ function setupIPC() {
                 pushChunkWithLimit(data, stderrChunks, 'stderr');
             });
 
-            childProcess.on('close', (code) => {
+            childProcess.on('close', async (code) => {
                 if (tleTimer) clearTimeout(tleTimer);
                 if (killTimer) clearTimeout(killTimer);
                 if (memoryTimer) clearInterval(memoryTimer);
-
+                if (memorySamplePromise) {
+                    try { await memorySamplePromise; } catch (_) { }
+                }
                 const endTime = performance.now();
 
                 let executionTime = 0;
@@ -4811,12 +4817,7 @@ function setupIPC() {
                         finalOutput = notice;
                     }
                 }
-                if (memoryLimitExceeded) {
-                    const notice = `内存超过限制 (${memoryLimitMb} MB)，程序已被终止。`;
-                    finalOutput = finalOutput ? `${finalOutput}\n${notice}` : notice;
-                }
-
-                const effectiveExitCode = outputLimitExceeded ? (code ?? -3) : (memoryLimitExceeded ? (code ?? -4) : code);
+                const effectiveExitCode = outputLimitExceeded ? (code ?? -3) : code;
                 const measuredTime = useTimeouts ? Math.max(0, Math.min(executionTime, effectiveTimeLimit + 100)) : Math.max(0, executionTime);
                 const timedOut = outputLimitExceeded ? false : (useTimeouts ? timeout : false);
 
@@ -4828,9 +4829,7 @@ function setupIPC() {
                     stdout: output,
                     stderr: errorOutput,
                     outputLimitExceeded,
-                    memoryLimitExceeded,
                     memoryBytes: peakMemoryBytes,
-                    memoryLimitMb,
                     outputLimitBytes: OUTPUT_LIMIT_BYTES,
                     capturedOutputBytes: combinedOutputBytes,
                     observedOutputBytes
