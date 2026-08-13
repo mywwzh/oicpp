@@ -21,6 +21,7 @@
     flex-direction: column;
     flex: 1 1 0;
     min-width: 160px;
+    overflow: hidden;
     position: relative;
 }
 
@@ -62,12 +63,16 @@
     align-items: center;
     background-color: var(--tab-bg, var(--card-bg, #2d2d30));
     border-bottom: 1px solid var(--tab-border-color, var(--border-color, #464647));
+    width: 100%;
+    min-width: 0;
     min-height: 35px;
     overflow-x: auto;
+    overflow-y: hidden;
 }
 
 .tab {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
     padding: 0 12px;
     height: 35px;

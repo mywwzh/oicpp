@@ -637,7 +637,6 @@ class SampleTester {
                     if (sample.hasOwnProperty('spjPath')) {
                         delete sample.spjPath;
                     }
-
                     if (sample.result && typeof sample.result === 'object') {
                         if (typeof sample.result.outputExpanded !== 'boolean') {
                             sample.result.outputExpanded = false;
@@ -980,12 +979,6 @@ class SampleTester {
                         <span class="setting-unit">ms</span>
                     </div>
                     <div class="setting-group">
-                        <span class="setting-label"><span data-i18n="tester.memoryLimit">内存限制:</span></span>
-                        <input type="number" min="1" class="setting-input" value="${sample.memoryLimit || 256}"
-                               onchange="sampleTester.updateSampleSetting(${sample.id}, 'memoryLimit', this.value)">
-                        <span class="setting-unit">MB</span>
-                    </div>
-                    <div class="setting-group">
                         <span class="setting-label"><span data-i18n="tester.inputFile">输入文件:</span></span>
                         <input type="text" class="setting-input setting-input-wide" value="${sample.freopenInputFile || ''}"
                                data-i18n-placeholder="tester.freopenInputPlaceholder" placeholder="如 sample.in"
@@ -1006,7 +999,7 @@ class SampleTester {
 
     getSampleStatusKey(sample) {
         const status = sample?.result?.status;
-        const knownStatuses = ['AC', 'WA', 'TLE', 'MLE', 'RE', 'CE', 'OLE'];
+        const knownStatuses = ['AC', 'WA', 'TLE', 'RE', 'CE', 'OLE'];
         if (status && knownStatuses.includes(status)) {
             return status;
         }
@@ -1519,8 +1512,6 @@ class SampleTester {
         if (sample) {
             if (setting === 'timeLimit') {
                 sample[setting] = this.sanitizeTimeLimit(value, sample.timeLimit || this.globalSettings.defaultTimeLimit || 1000);
-            } else if (setting === 'memoryLimit') {
-                sample[setting] = this.sanitizeMemoryLimit(value, sample.memoryLimit || 256);
             } else if (setting === 'freopenInputFile' || setting === 'freopenOutputFile') {
                 sample[setting] = this.normalizeFreopenFileName(value);
             } else if (setting === 'useTestlib') {
@@ -1539,15 +1530,6 @@ class SampleTester {
             return safeFallback;
         }
         return Math.floor(parsed);
-    }
-
-    sanitizeMemoryLimit(value, fallback = 256) {
-        const parsed = parseInt(value, 10);
-        const safeFallback = Number.isFinite(fallback) && fallback > 0 ? Math.floor(fallback) : 256;
-        if (!Number.isFinite(parsed) || parsed <= 0) {
-            return safeFallback;
-        }
-        return Math.min(Math.floor(parsed), 10240);
     }
 
     applyFreopenToAllSamples() {
@@ -2109,7 +2091,7 @@ class SampleTester {
                 const runOptions = freopenContext.workingDirectory
                     ? { executablePath, workingDirectory: freopenContext.workingDirectory }
                     : executablePath;
-                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit, sample.memoryLimit);
+                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit);
                 actualOutput = await this.resolveProgramOutput(runResult, freopenContext);
             } finally {
                 await this.cleanupFreopenContext(freopenContext);
@@ -2129,8 +2111,6 @@ class SampleTester {
                         observedBytes: runResult.observedOutputBytes
                     });
                 } catch (_) { }
-            } else if (runResult.memoryLimitExceeded) {
-                status = 'MLE';
             } else if (runResult.timeout) {
                 status = 'TLE';
                 try { logInfo('[样例测试器][TLE]', { sampleId: sample.id, durationMs: runResult.time, limitMs: sample.timeLimit }); } catch (_) { }
@@ -2175,6 +2155,7 @@ class SampleTester {
                 outputSizeBytes: this.getOutputSizeBytes(actualOutput),
                 outputExpanded: false,
                 time: runResult.time,
+                memoryBytes: runResult.memoryBytes,
                 usedSpj: spjUsed
                 ,spjOutput
             };
@@ -2266,7 +2247,7 @@ class SampleTester {
                 const runOptions = freopenContext.workingDirectory
                     ? { executablePath, workingDirectory: freopenContext.workingDirectory }
                     : executablePath;
-                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit, sample.memoryLimit);
+                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit);
                 actualOutput = await this.resolveProgramOutput(runResult, freopenContext);
             } finally {
                 await this.cleanupFreopenContext(freopenContext);
@@ -2287,8 +2268,6 @@ class SampleTester {
                             observedBytes: runResult.observedOutputBytes
                         });
                     } catch (_) { }
-                } else if (runResult.memoryLimitExceeded) {
-                    status = 'MLE';
                 } else if (runResult.timeout) {
                     status = 'TLE';
                     try { logInfo('[样例测试器][TLE]', { sampleId: sample.id, durationMs: runResult.time, limitMs: sample.timeLimit }); } catch (_) { }
@@ -2337,6 +2316,7 @@ class SampleTester {
                 outputSizeBytes: this.getOutputSizeBytes(actualOutput),
                 outputExpanded: false,
                 time: runResult.time,
+                memoryBytes: runResult.memoryBytes,
                 usedSpj: spjUsed
                 ,spjOutput
             };
@@ -2530,10 +2510,10 @@ class SampleTester {
         return result;
     }
 
-    async runProgram(executablePath, input, timeLimit, memoryLimit = 256) {
+    async runProgram(executablePath, input, timeLimit) {
         const execOptions = typeof executablePath === 'object'
-            ? { ...executablePath, skipPreKill: true, memoryLimitMb: this.sanitizeMemoryLimit(memoryLimit, 256) }
-            : { executablePath, skipPreKill: true, memoryLimitMb: this.sanitizeMemoryLimit(memoryLimit, 256) };
+            ? { ...executablePath, skipPreKill: true }
+            : { executablePath, skipPreKill: true };
         return await window.electronAPI.runProgram(execOptions, input, timeLimit);
     }
 
