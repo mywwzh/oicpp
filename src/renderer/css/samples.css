@@ -173,6 +173,12 @@
     border: 1px solid var(--warning-border, transparent);
 }
 
+.status-mle {
+    background-color: var(--warning-bg, #ffc107);
+    color: var(--warning-fg, #212529);
+    border: 1px solid var(--warning-border, transparent);
+}
+
 .status-ce {
     background-color: var(--ce-bg, #6f42c1);
     color: var(--ce-fg, white);
