@@ -12,6 +12,9 @@ class SampleTester {
             key: null,
             executablePath: null
         };
+        this.spjTempFiles = new Set();
+        this.spjTempSequence = 0;
+        this.deferSpjTempCleanup = false;
         this.isOperating = false;
         this.editorChangeInterval = null;
         this.statusFilter = null;
@@ -977,6 +980,12 @@ class SampleTester {
                         <span class="setting-unit">ms</span>
                     </div>
                     <div class="setting-group">
+                        <span class="setting-label"><span data-i18n="tester.memoryLimit">内存限制:</span></span>
+                        <input type="number" min="1" class="setting-input" value="${sample.memoryLimit || 256}"
+                               onchange="sampleTester.updateSampleSetting(${sample.id}, 'memoryLimit', this.value)">
+                        <span class="setting-unit">MB</span>
+                    </div>
+                    <div class="setting-group">
                         <span class="setting-label"><span data-i18n="tester.inputFile">输入文件:</span></span>
                         <input type="text" class="setting-input setting-input-wide" value="${sample.freopenInputFile || ''}"
                                data-i18n-placeholder="tester.freopenInputPlaceholder" placeholder="如 sample.in"
@@ -997,7 +1006,7 @@ class SampleTester {
 
     getSampleStatusKey(sample) {
         const status = sample?.result?.status;
-        const knownStatuses = ['AC', 'WA', 'TLE', 'RE', 'CE', 'OLE'];
+        const knownStatuses = ['AC', 'WA', 'TLE', 'MLE', 'RE', 'CE', 'OLE'];
         if (status && knownStatuses.includes(status)) {
             return status;
         }
@@ -1510,6 +1519,8 @@ class SampleTester {
         if (sample) {
             if (setting === 'timeLimit') {
                 sample[setting] = this.sanitizeTimeLimit(value, sample.timeLimit || this.globalSettings.defaultTimeLimit || 1000);
+            } else if (setting === 'memoryLimit') {
+                sample[setting] = this.sanitizeMemoryLimit(value, sample.memoryLimit || 256);
             } else if (setting === 'freopenInputFile' || setting === 'freopenOutputFile') {
                 sample[setting] = this.normalizeFreopenFileName(value);
             } else if (setting === 'useTestlib') {
@@ -1528,6 +1539,15 @@ class SampleTester {
             return safeFallback;
         }
         return Math.floor(parsed);
+    }
+
+    sanitizeMemoryLimit(value, fallback = 256) {
+        const parsed = parseInt(value, 10);
+        const safeFallback = Number.isFinite(fallback) && fallback > 0 ? Math.floor(fallback) : 256;
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            return safeFallback;
+        }
+        return Math.min(Math.floor(parsed), 10240);
     }
 
     applyFreopenToAllSamples() {
@@ -1915,6 +1935,7 @@ class SampleTester {
 
         let executablePath = null;
         let spjExecutablePath = null;
+        this.deferSpjTempCleanup = true;
 
         try {
             const useTestlib = this.globalSettings.useTestlib;
@@ -2033,6 +2054,8 @@ class SampleTester {
             await this.saveSamplesToPath(runSamplesFilePath, samplesToPersist, this.globalSettings);
 
         } finally {
+            this.deferSpjTempCleanup = false;
+            await this.cleanupSpjTempFiles();
             // 主程序编译结果会被缓存复用，这里不删除可执行文件。
             // SPJ 编译结果同样会被缓存复用，这里不删除可执行文件。
 
@@ -2086,7 +2109,7 @@ class SampleTester {
                 const runOptions = freopenContext.workingDirectory
                     ? { executablePath, workingDirectory: freopenContext.workingDirectory }
                     : executablePath;
-                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit);
+                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit, sample.memoryLimit);
                 actualOutput = await this.resolveProgramOutput(runResult, freopenContext);
             } finally {
                 await this.cleanupFreopenContext(freopenContext);
@@ -2106,6 +2129,8 @@ class SampleTester {
                         observedBytes: runResult.observedOutputBytes
                     });
                 } catch (_) { }
+            } else if (runResult.memoryLimitExceeded) {
+                status = 'MLE';
             } else if (runResult.timeout) {
                 status = 'TLE';
                 try { logInfo('[样例测试器][TLE]', { sampleId: sample.id, durationMs: runResult.time, limitMs: sample.timeLimit }); } catch (_) { }
@@ -2241,7 +2266,7 @@ class SampleTester {
                 const runOptions = freopenContext.workingDirectory
                     ? { executablePath, workingDirectory: freopenContext.workingDirectory }
                     : executablePath;
-                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit);
+                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit, sample.memoryLimit);
                 actualOutput = await this.resolveProgramOutput(runResult, freopenContext);
             } finally {
                 await this.cleanupFreopenContext(freopenContext);
@@ -2262,6 +2287,8 @@ class SampleTester {
                             observedBytes: runResult.observedOutputBytes
                         });
                     } catch (_) { }
+                } else if (runResult.memoryLimitExceeded) {
+                    status = 'MLE';
                 } else if (runResult.timeout) {
                     status = 'TLE';
                     try { logInfo('[样例测试器][TLE]', { sampleId: sample.id, durationMs: runResult.time, limitMs: sample.timeLimit }); } catch (_) { }
@@ -2503,16 +2530,16 @@ class SampleTester {
         return result;
     }
 
-    async runProgram(executablePath, input, timeLimit) {
+    async runProgram(executablePath, input, timeLimit, memoryLimit = 256) {
         const execOptions = typeof executablePath === 'object'
-            ? { ...executablePath, skipPreKill: true }
-            : { executablePath, skipPreKill: true };
+            ? { ...executablePath, skipPreKill: true, memoryLimitMb: this.sanitizeMemoryLimit(memoryLimit, 256) }
+            : { executablePath, skipPreKill: true, memoryLimitMb: this.sanitizeMemoryLimit(memoryLimit, 256) };
         return await window.electronAPI.runProgram(execOptions, input, timeLimit);
     }
 
     compareOutput(actual, expected) {
         const normalize = (str) => {
-            return str.split('\n')
+            return String(str || '').replace(/\r\n?/g, '\n').split('\n')
                 .map(line => line.trimEnd())
                 .join('\n')
                 .replace(/\n+$/, '');
@@ -2706,6 +2733,9 @@ class SampleTester {
 
         if (result.time !== undefined) {
             statusBadge += `<span style="color: #858585; font-size: 11px; margin-left: 8px;">${result.time}ms</span>`;
+        }
+        if (Number.isFinite(result.memoryBytes)) {
+            statusBadge += `<span style="color: #858585; font-size: 11px; margin-left: 8px;">${(result.memoryBytes / (1024 * 1024)).toFixed(1)}MB</span>`;
         }
 
         statusContainer.innerHTML = statusBadge;
@@ -3034,10 +3064,12 @@ class SampleTester {
 
     async judgeWithSpj(spjExecutablePath, inputData, actualOutput, expectedOutput) {
         try {
-            const timestamp = Date.now();
-            const inputFile = await window.electronAPI.saveTempFile(`spj_input_${timestamp}.txt`, inputData);
-            const actualFile = await window.electronAPI.saveTempFile(`spj_actual_${timestamp}.txt`, actualOutput);
-            const expectedFile = await window.electronAPI.saveTempFile(`spj_expected_${timestamp}.txt`, expectedOutput);
+            const suffix = `${Date.now()}_${++this.spjTempSequence}`;
+            const inputFile = await window.electronAPI.saveTempFile(`spj_input_${suffix}.txt`, inputData);
+            const actualFile = await window.electronAPI.saveTempFile(`spj_actual_${suffix}.txt`, actualOutput);
+            const expectedFile = await window.electronAPI.saveTempFile(`spj_expected_${suffix}.txt`, expectedOutput);
+            const tempFiles = [inputFile, actualFile, expectedFile];
+            tempFiles.forEach(file => this.spjTempFiles.add(file));
 
             try {
                 const workingDir = await window.electronAPI.pathDirname(spjExecutablePath);
@@ -3062,14 +3094,24 @@ class SampleTester {
                     return { status: 'WA', output };
                 }
             } finally {
-                await window.electronAPI.deleteTempFile(inputFile);
-                await window.electronAPI.deleteTempFile(actualFile);
-                await window.electronAPI.deleteTempFile(expectedFile);
+                if (!this.deferSpjTempCleanup) {
+                    await this.cleanupSpjTempFiles(tempFiles);
+                }
             }
         } catch (error) {
             logError('SPJ判题失败:', error);
             return { status: 'Error', output: error?.message || String(error) };
         }
+    }
+
+    async cleanupSpjTempFiles(files = null) {
+        const targets = files || Array.from(this.spjTempFiles);
+        await Promise.all(targets.map(async (file) => {
+            try {
+                await window.electronAPI.deleteTempFile(file);
+            } catch (_) { }
+            this.spjTempFiles.delete(file);
+        }));
     }
 
     showCompileOutputForResult(title, result) {

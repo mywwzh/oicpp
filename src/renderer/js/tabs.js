@@ -1016,6 +1016,8 @@ class TabManager {
             return;
         }
 
+        const wasActiveGroup = this.activeGroupId === groupId;
+
         if (group.element && group.element.parentNode === this.editorGroupsElement) {
             this.editorGroupsElement.removeChild(group.element);
         }
@@ -1026,11 +1028,12 @@ class TabManager {
             this.monacoEditorManager.unregisterGroup(groupId);
         }
 
-        if (this.activeGroupId === groupId) {
+        if (wasActiveGroup) {
             this.activeGroupId = this.groupOrder[0] || null;
             const firstGroup = this.groups.get(this.activeGroupId);
             if (firstGroup && firstGroup.activeTabKey) {
                 this.activeTabKey = firstGroup.activeTabKey;
+                this.activeTab = this.tabs.get(firstGroup.activeTabKey)?.fileName || null;
             }
         }
 
@@ -1044,6 +1047,11 @@ class TabManager {
 
         this.updateGroupLayout();
         this.refreshGroupResizers();
+
+        if (wasActiveGroup && this.activeTabKey) {
+            this.activateTabByUniqueKey(this.activeTabKey).catch(logError);
+        }
+        window.requestAnimationFrame?.(() => window.dispatchEvent(new Event('resize')));
     }
 
     refreshGroupResizers() {
@@ -2415,6 +2423,10 @@ class TabManager {
             tabData.element.parentNode.removeChild(tabData.element);
         }
 
+        if (uniqueKey) {
+            this.tabs.delete(uniqueKey);
+        }
+
         if (groupId && uniqueKey) {
             relatedGroup?.tabs?.delete(uniqueKey);
             this.syncGroupTabs(groupId);
@@ -2423,10 +2435,6 @@ class TabManager {
                 triggerEditor: shouldTriggerFallback
             });
             this.handleGroupBecameEmpty(groupId);
-        }
-
-        if (uniqueKey) {
-            this.tabs.delete(uniqueKey);
         }
 
         if (this.activeTab === fileName) {
