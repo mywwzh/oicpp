@@ -29,6 +29,13 @@ class CompilerManager {
         this.tabButtons = [];
         this.analysisHint = null;
         this.analysisAvailable = false;
+
+        if (window.i18n?.onChange) {
+            window.i18n.onChange(() => {
+                if (!this.compileOutput) return;
+                this.updateAnalysisVisibility();
+            });
+        }
     }
 
     init() {
@@ -822,7 +829,7 @@ class CompilerManager {
         if (!this.compileOutput) this.createCompileOutputWindow();
         if (!this.compileOutput) return;
         let target = pane === 'analysis' ? 'analysis' : 'raw';
-        if (target === 'analysis' && !this.analysisAvailable) {
+        if (target === 'analysis' && (!this.analysisAvailable || !this.isSmartAnalysisEnabled())) {
             target = 'raw';
         }
         this.activePane = target;
@@ -850,17 +857,28 @@ class CompilerManager {
     }
 
     updateAnalysisVisibility() {
+        const analysisEnabled = this.isSmartAnalysisEnabled();
+        const shouldShowAnalysis = analysisEnabled && this.analysisAvailable;
+        const toolbar = this.compileOutput?.querySelector('.compile-output-toolbar');
+        if (toolbar) {
+            toolbar.style.display = analysisEnabled ? '' : 'none';
+        }
         const analysisBtn = this.tabButtons.find((btn) => btn.dataset.pane === 'analysis');
         if (analysisBtn) {
-            analysisBtn.style.display = this.analysisAvailable ? '' : 'none';
+            analysisBtn.style.display = shouldShowAnalysis ? '' : 'none';
         }
         if (this.analysisHint) {
-            this.analysisHint.style.display = this.analysisAvailable ? '' : 'none';
+            this.analysisHint.style.display = shouldShowAnalysis ? '' : 'none';
         }
 
-        if (!this.analysisAvailable && this.activePane === 'analysis') {
+        if (!shouldShowAnalysis && this.activePane === 'analysis') {
             this.switchOutputPane('raw');
         }
+    }
+
+    isSmartAnalysisEnabled() {
+        const language = window.i18n?.getCurrentLanguage?.() || document.documentElement.lang || 'zh-cn';
+        return String(language).toLowerCase().startsWith('zh');
     }
 
     setAnalysisEmptyState(isEmpty) {
@@ -878,6 +896,12 @@ class CompilerManager {
     renderSmartAnalysis(payload = {}) {
         if (!this.analysisList) this.createCompileOutputWindow();
         if (!this.analysisList) return false;
+
+        if (!this.isSmartAnalysisEnabled()) {
+            this.analysisList.innerHTML = '';
+            this.setAnalysisEmptyState(true);
+            return false;
+        }
 
         this.analysisList.innerHTML = '';
         const items = this.buildAnalysisItems(payload);
@@ -965,9 +989,9 @@ class CompilerManager {
                 this.createCompileOutputWindow();
             }
             this.showOutput();
-            this.analysisAvailable = true;
+            this.analysisAvailable = rendered;
             this.updateAnalysisVisibility();
-            this.switchOutputPane('analysis');
+            this.switchOutputPane(rendered ? 'analysis' : 'raw');
 
             return rendered;
         } catch (err) {
