@@ -63,7 +63,7 @@ class CompilerManager {
             </div>
             <div class="compile-output-content">
                 <div class="compile-output-toolbar">
-                    <div class="compile-output-tabs" role="tablist" data-i18n="panel.compileOutputView" aria-label="Toggle compile output view">
+                    <div class="compile-output-tabs" role="tablist" aria-label="${this.t('panel.compileOutputView', null, 'Toggle compile output view')}">
                         <button class="compile-tab-btn active" data-pane="raw" role="tab" aria-selected="true"><span data-i18n="panel.rawOutput">原始输出</span></button>
                         <button class="compile-tab-btn" data-pane="analysis" role="tab" aria-selected="false"><span data-i18n="panel.errorParsing">报错解析</span></button>
                     </div>
