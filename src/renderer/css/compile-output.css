@@ -4,6 +4,7 @@
     left: 0;
     right: 0;
     height: 300px;
+    max-height: calc(100% - 48px);
     background-color: var(--bg-color, #1e1e1e);
     border-top: 1px solid var(--border-color, #464647);
     z-index: 1000;

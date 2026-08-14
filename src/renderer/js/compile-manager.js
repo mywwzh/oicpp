@@ -112,7 +112,7 @@ class CompilerManager {
 
         try {
             const savedH = localStorage.getItem('oicpp.compileOutput.height');
-            if (savedH) this.compileOutput.style.height = savedH + 'px';
+            this.setCompileOutputHeight(savedH || 300, Boolean(savedH));
         } catch {}
 
         const resizer = this.compileOutput.querySelector('.compile-output-resizer');
@@ -121,18 +121,14 @@ class CompilerManager {
             let startH = 0;
             const onMove = (e) => {
                 const dy = (e.touches ? e.touches[0].clientY : e.clientY) - startY;
-                const newH = Math.max(120, startH - dy);
-                this.compileOutput.style.height = newH + 'px';
+                this.setCompileOutputHeight(startH - dy);
             };
             const onUp = () => {
                 window.removeEventListener('mousemove', onMove);
                 window.removeEventListener('mouseup', onUp);
                 window.removeEventListener('touchmove', onMove);
                 window.removeEventListener('touchend', onUp);
-                try {
-                    const h = parseInt(this.compileOutput.style.height || '300', 10);
-                    localStorage.setItem('oicpp.compileOutput.height', String(h));
-                } catch {}
+                this.persistCompileOutputHeight();
             };
             const onDown = (e) => {
                 startY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -146,8 +142,52 @@ class CompilerManager {
             resizer.addEventListener('touchstart', onDown);
         }
 
+        window.addEventListener('resize', () => {
+            if (!this.compileOutput) return;
+            const currentHeight = Number.parseFloat(this.compileOutput.style.height) || 300;
+            this.setCompileOutputHeight(currentHeight, true);
+        });
+
         this.switchOutputPane(this.activePane || 'raw');
         this.updateAnalysisVisibility();
+    }
+
+    getCompileOutputHeightBounds() {
+        const hostHeight = this.compileOutput?.parentElement?.clientHeight || window.innerHeight || 300;
+        const maxHeight = Math.max(1, Math.floor(hostHeight - 48));
+        return {
+            minHeight: Math.min(120, maxHeight),
+            maxHeight
+        };
+    }
+
+    setCompileOutputHeight(height, persist = false) {
+        if (!this.compileOutput) return;
+
+        const { minHeight, maxHeight } = this.getCompileOutputHeightBounds();
+        const requestedHeight = Number.parseFloat(height);
+        const fallbackHeight = Math.min(300, maxHeight);
+        const nextHeight = Math.max(
+            minHeight,
+            Math.min(maxHeight, Number.isFinite(requestedHeight) ? Math.round(requestedHeight) : fallbackHeight)
+        );
+        this.compileOutput.style.height = `${nextHeight}px`;
+
+        if (persist) this.persistCompileOutputHeight();
+    }
+
+    persistCompileOutputHeight() {
+        if (!this.compileOutput) return;
+
+        try {
+            const inlineHeight = Number.parseFloat(this.compileOutput.style.height);
+            const height = Math.round(
+                Number.isFinite(inlineHeight)
+                    ? inlineHeight
+                    : this.compileOutput.getBoundingClientRect().height
+            );
+            localStorage.setItem('oicpp.compileOutput.height', String(height));
+        } catch {}
     }
 
     setupEventListeners() {
