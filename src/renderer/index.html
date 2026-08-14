@@ -26,6 +26,7 @@
     <link rel="stylesheet" href="../../node_modules/xterm/css/xterm.css">
     <link rel="stylesheet" href="css/markdown.css">
     <link rel="stylesheet" href="css/browser.css">
+    <link rel="stylesheet" href="css/plugins.css">
 </head>
 <body>
     <div class="titlebar">
@@ -127,6 +128,25 @@
                         <div class="menu-dropdown-item" data-action="debug">
                             <span data-i18n="menu.debug">调试</span>
                             <span class="menu-shortcut">F5</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="menu-item" data-menu="plugins">
+                    <span class="menu-label" data-i18n="menu.plugins">插件</span>
+                    <div class="menu-dropdown">
+                        <div id="plugin-command-items"></div>
+                        <div class="menu-dropdown-item disabled" id="plugin-command-empty">
+                            <span data-i18n="menu.noPluginCommands">暂无插件命令</span>
+                        </div>
+                        <div class="menu-separator"></div>
+                        <div class="menu-dropdown-item" data-action="plugin-manager">
+                            <span data-i18n="menu.managePlugins">插件管理器</span>
+                        </div>
+                        <div class="menu-dropdown-item" data-action="plugin-open-folder">
+                            <span data-i18n="menu.openPluginsFolder">打开插件目录</span>
+                        </div>
+                        <div class="menu-dropdown-item" data-action="plugin-reload">
+                            <span data-i18n="menu.reloadPlugins">重新加载插件</span>
                         </div>
                     </div>
                 </div>
@@ -700,6 +720,7 @@
     <script src="js/main.js"></script>
     <script src="js/quick-open.js"></script>
     <script src="js/i18n.js"></script>
+    <script src="js/plugin-host.js"></script>
     <script src="js/init.js"></script>
 </body>
 </html>

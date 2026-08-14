@@ -74,6 +74,10 @@ async function initializeApp() {
         window.oicppApp = new OICPPApp();
         logInfo('OICPPApp 实例已创建');
         await window.oicppApp.init();
+
+        if (window.oicppPluginHost?.init) {
+            await window.oicppPluginHost.init();
+        }
    
         setupDefaultContent();
         

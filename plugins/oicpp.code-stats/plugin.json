@@ -1,0 +1,27 @@
+{
+  "id": "oicpp.code-stats",
+  "name": "Code Statistics",
+  "version": "1.0.0",
+  "description": "Counts lines, words and characters in the active editor.",
+  "author": "OICPP",
+  "main": "index.js",
+  "engines": {
+    "oicpp": ">=1.5.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "oicpp.code-stats.count",
+        "title": "Count Active Document"
+      }
+    ],
+    "menus": {
+      "plugins": [
+        {
+          "command": "oicpp.code-stats.count",
+          "group": "editor"
+        }
+      ]
+    }
+  }
+}

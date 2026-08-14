@@ -15,7 +15,8 @@
     "prebuild:icons": "node scripts/generate-icons.js",
     "prebuild:buildinfo": "node scripts/generate-build-info.js",
     "prebuild:clangd": "node scripts/download-clangd.js",
-    "build": "npm run prebuild:buildinfo && npm run prebuild:icons && npm run prebuild:clangd && electron-builder"
+    "build": "npm run prebuild:buildinfo && npm run prebuild:icons && npm run prebuild:clangd && electron-builder",
+    "test": "node --test tests/*.test.js"
   },
   "devDependencies": {
     "electron": "^37.2.0",
@@ -59,6 +60,7 @@
     "files": [
       "src/**/*",
       "src/lang/**/*",
+      "plugins/**/*",
       "node_modules/**/*",
       "oicpp.ico"
     ],

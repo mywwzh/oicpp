@@ -306,6 +306,16 @@
             case 'open-browser':
                 this.openBuiltinBrowser();
                 break;
+            case 'plugin-manager':
+                await window.oicppPluginHost?.showManager?.();
+                break;
+            case 'plugin-open-folder':
+                await window.electronAPI?.openPluginsDirectory?.();
+                break;
+            case 'plugin-reload':
+                await window.oicppPluginHost?.reload?.();
+                this.showMessage(window.i18n?.t?.('plugins.reloaded') || 'Plugins reloaded', 'success');
+                break;
             case 'ide-login':
                 await this.startIdeLogin();
                 break;

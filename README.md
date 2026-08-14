@@ -56,6 +56,10 @@
 
 点击查看 [`LICENSE`](LICENSE) 文件
 
+## 插件开发
+
+项目现已支持本地 JavaScript 插件。插件目录结构、清单格式、API 和调试方法请参阅 [插件制作文档](docs/PLUGIN_DEVELOPMENT.md)。
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=mywwzh/oicpp&type=Date)](https://star-history.com/#mywwzh/oicpp&Date)
