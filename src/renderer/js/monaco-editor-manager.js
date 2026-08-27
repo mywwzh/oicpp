@@ -26,6 +26,7 @@ class MonacoEditorManager {
         this.diffEditors = new Map();
         this.markerOwner = 'oicpp-compiler';
         this.lspMarkerOwner = 'oicpp-lsp';
+        this._compilerErrorDecorations = new Map();
         this.breakpoints = new Map();
         this._execHighlights = new Map();
         this.completionProviders = new Map();
@@ -3467,7 +3468,12 @@ class MonacoEditorManager {
     applyDiagnostics(diagnostics = []) {
         try {
             if (typeof monaco === 'undefined') return;
+            const editor = this.getCurrentEditor();
+            const model = editor?.getModel ? editor.getModel() : null;
+            this.clearCompilerErrorDecorations();
             const markers = [];
+            const errorLines = new Set();
+            const lineCount = model?.getLineCount?.() || Number.MAX_SAFE_INTEGER;
 
             if (!Array.isArray(diagnostics)) diagnostics = [];
 
@@ -3476,8 +3482,13 @@ class MonacoEditorManager {
                 const severity = sev === 'warning'
                     ? monaco.MarkerSeverity.Warning
                     : (sev === 'note' ? monaco.MarkerSeverity.Info : monaco.MarkerSeverity.Error);
-                const line = Math.max(1, parseInt(d?.line || 1, 10));
-                const col = Math.max(1, parseInt(d?.column || 1, 10));
+                const parsedLine = parseInt(d?.line || 1, 10);
+                const line = Math.min(lineCount, Math.max(1, Number.isFinite(parsedLine) ? parsedLine : 1));
+                const parsedColumn = parseInt(d?.column || 1, 10);
+                const col = Math.max(1, Number.isFinite(parsedColumn) ? parsedColumn : 1);
+                if (severity === monaco.MarkerSeverity.Error) {
+                    errorLines.add(line);
+                }
                 markers.push({
                     severity,
                     message: d?.message || d?.raw || '',
@@ -3488,19 +3499,45 @@ class MonacoEditorManager {
                 });
             }
 
-            const editor = this.getCurrentEditor();
-            const model = editor?.getModel ? editor.getModel() : null;
             if (model) {
                 monaco.editor.setModelMarkers(model, this.markerOwner, markers);
+                if (editor?.deltaDecorations && errorLines.size > 0) {
+                    const decorations = Array.from(errorLines, (line) => ({
+                        range: new monaco.Range(line, 1, line, 1),
+                        options: {
+                            isWholeLine: true,
+                            className: 'compiler-error-line'
+                        }
+                    }));
+                    const ids = editor.deltaDecorations([], decorations);
+                    if (Array.isArray(ids) && ids.length > 0) {
+                        this._compilerErrorDecorations.set(editor, ids);
+                    }
+                }
             }
         } catch (err) {
             logWarn('applyDiagnostics 失败:', err);
         }
     }
 
+    clearCompilerErrorDecorations() {
+        if (!(this._compilerErrorDecorations instanceof Map)) return;
+        for (const [editor, decorationIds] of this._compilerErrorDecorations) {
+            try {
+                if (editor?.deltaDecorations && Array.isArray(decorationIds) && decorationIds.length > 0) {
+                    editor.deltaDecorations(decorationIds, []);
+                }
+            } catch (err) {
+                logWarn('清理编译错误行装饰失败:', err);
+            }
+        }
+        this._compilerErrorDecorations.clear();
+    }
+
     clearDiagnostics() {
         try {
             if (typeof monaco === 'undefined') return;
+            this.clearCompilerErrorDecorations();
             const editor = this.getCurrentEditor();
             const model = editor?.getModel ? editor.getModel() : null;
             if (model) {
