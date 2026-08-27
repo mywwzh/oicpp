@@ -721,6 +721,11 @@ body[data-theme="solarized-light"] {
     border-left: 3px solid #ffd700 !important;
 }
 
+.monaco-editor .compiler-error-line {
+    background-color: rgba(244, 71, 71, 0.16) !important;
+    border-left: 3px solid var(--editor-error) !important;
+}
+
 .monaco-editor .whitespace {
     color: var(--border-color);
 }
