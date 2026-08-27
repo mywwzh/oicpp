@@ -7,7 +7,14 @@ class FileExplorer {
         this.hasWorkspace = false;
         this.clipboard = null;
         this.expandedFolders = new Set();
-        this.directoryReadHandlers = {};
+        this._directoryReadRequests = new Map();
+        this._treeItemsByPath = new Map();
+        this._draggingItems = new Set();
+        this._dragOverItem = null;
+        this._pendingDragOverTarget = null;
+        this._pendingDragOverRoot = false;
+        this._dragHoverFrame = null;
+        this.isDragging = false;
 
         this.setupKeyboardShortcuts();
     }
@@ -99,16 +106,7 @@ class FileExplorer {
         try {
             const anchor = this.getPrimarySelection();
             if (anchor?.path) {
-                const escapePath = (value) => {
-                    try {
-                        if (window.CSS?.escape) {
-                            return CSS.escape(value);
-                        }
-                    } catch (_) { }
-                    return String(value).replace(/["\\]/g, (match) => `\\${match}`);
-                };
-                const selector = `.tree-item[data-path="${escapePath(anchor.path)}"]`;
-                const item = document.querySelector(selector) || Array.from(document.querySelectorAll('.tree-item')).find(node => node.dataset?.path === anchor.path) || null;
+                const item = this._queryItemByPath(anchor.path, document);
                 if (item) {
                     item.setAttribute('tabindex', '0');
                     item.focus();
@@ -340,6 +338,9 @@ class FileExplorer {
     showEmptyState() {
         const fileTree = document.querySelector('.file-tree');
         if (!fileTree) return;
+        this._treeItemsByPath.clear();
+        this._clearDragState(fileTree);
+        this.setupFileTreeEvents(fileTree);
 
         fileTree.innerHTML = `
             <div class="empty-state">
@@ -357,31 +358,80 @@ class FileExplorer {
         }
     }
 
+    _readDirectory(dirPath) {
+        if (!dirPath) return Promise.resolve([]);
+        const existing = this._directoryReadRequests.get(dirPath);
+        if (existing) return existing;
+
+        let request;
+        if (window.electronAPI?.readDirectory) {
+            request = Promise.resolve().then(() => window.electronAPI.readDirectory(dirPath));
+        } else if (window.electronIPC) {
+            request = new Promise((resolve, reject) => {
+                let settled = false;
+                const cleanup = () => {
+                    window.electronIPC.ipcRenderer?.removeListener?.('directory-read', onRead);
+                    window.electronIPC.ipcRenderer?.removeListener?.('directory-read-error', onError);
+                };
+                const onRead = (_event, returnedPath, files) => {
+                    if (settled || returnedPath !== dirPath) return;
+                    settled = true;
+                    cleanup();
+                    resolve(Array.isArray(files) ? files : []);
+                };
+                const onError = (_event, returnedPath, error) => {
+                    if (settled || returnedPath !== dirPath) return;
+                    settled = true;
+                    cleanup();
+                    reject(new Error(error || '读取目录失败'));
+                };
+                window.electronIPC.on('directory-read', onRead);
+                window.electronIPC.on('directory-read-error', onError);
+                try {
+                    window.electronIPC.send('read-directory', dirPath);
+                } catch (error) {
+                    settled = true;
+                    cleanup();
+                    reject(error);
+                }
+            });
+        } else {
+            request = Promise.reject(new Error('Electron IPC 不可用'));
+        }
+
+        const tracked = Promise.resolve(request)
+            .then(files => Array.isArray(files) ? files : [])
+            .finally(() => {
+                if (this._directoryReadRequests.get(dirPath) === tracked) {
+                    this._directoryReadRequests.delete(dirPath);
+                }
+            });
+        this._directoryReadRequests.set(dirPath, tracked);
+        return tracked;
+    }
+
     loadWorkspaceFiles() {
         logInfo('加载工作区文件:', this.currentPath);
 
         if (!this.currentPath) {
+
             this.showEmptyState();
             return;
         }
 
-        if (window.electronIPC) {
-            window.electronIPC.send('read-directory', this.currentPath);
-
-            const handleDirectoryRead = (event, dirPath, files) => {
-                if (dirPath === this.currentPath) {
-                    this.files = files;
-                    this.renderFileTree();
-                    window.electronIPC.ipcRenderer.removeListener('directory-read', handleDirectoryRead);
+        const requestedPath = this.currentPath;
+        return this._readDirectory(requestedPath)
+            .then(files => {
+                if (!this.hasWorkspace || this.currentPath !== requestedPath) return;
+                this.files = files;
+                this.renderFileTree();
+            })
+            .catch(error => {
+                if (this.currentPath === requestedPath) {
+                    logWarn('读取工作区文件失败:', error?.message || error);
                 }
-            };
-
-            window.electronIPC.on('directory-read', handleDirectoryRead);
-        } else {
-            logWarn('Electron IPC 不可用，无法读取文件夹');
-        }
+            });
     }
-
     setWorkspace(path) {
         this.currentPath = path;
         this.workspacePath = path;
@@ -419,12 +469,14 @@ class FileExplorer {
             return;
         }
 
+        this._clearDragState(fileTree);
         fileTree.innerHTML = '';
-
+        this._treeItemsByPath.clear();
+        const fragment = document.createDocumentFragment();
         this.files.forEach(file => {
-            const item = this.createFileTreeItem(file);
-            fileTree.appendChild(item);
+            fragment.appendChild(this.createFileTreeItem(file));
         });
+        fileTree.appendChild(fragment);
 
         this.setupFileTreeEvents(fileTree);
 
@@ -439,33 +491,23 @@ class FileExplorer {
     }
 
     async expandFolderSilent(item, folder) {
-        return new Promise(resolve => {
-            if (!item) return resolve();
-            const arrow = item.querySelector('.tree-item-arrow');
-            if (arrow) arrow.textContent = '▼';
-            let next = item.nextElementSibling;
-            while (next) {
-                const p = next.dataset?.path;
-                if (p && (p.startsWith(folder.path + '/') || p.startsWith(folder.path + '\\'))) return resolve();
-                if (!(p && p.startsWith(folder.path))) break;
-                next = next.nextElementSibling;
-            }
-            if (window.electronIPC) {
-                const timeoutId = setTimeout(() => { resolve(); }, 3000);
-                const handle = (event, dirPath, files) => {
-                    if (dirPath === folder.path) {
-                        try { this.insertChildItems(item, files, folder.path); } catch (_) { }
-                        window.electronIPC.ipcRenderer.removeListener('directory-read', handle);
-                        clearTimeout(timeoutId);
-                        resolve();
-                    }
-                };
-                window.electronIPC.on('directory-read', handle);
-                window.electronIPC.send('read-directory', folder.path);
-            } else {
-                resolve();
-            }
-        });
+        if (!item || !folder?.path) return;
+        const arrow = item.querySelector('.tree-item-arrow');
+        if (arrow) arrow.textContent = '▼';
+        let next = item.nextElementSibling;
+        while (next) {
+            const p = next.dataset?.path;
+            if (p && (p.startsWith(folder.path + '/') || p.startsWith(folder.path + '\\'))) return;
+            if (!(p && p.startsWith(folder.path))) break;
+            next = next.nextElementSibling;
+        }
+        try {
+            const files = await this._readDirectory(folder.path);
+            if (!item.isConnected || !this.expandedFolders.has(folder.path)) return;
+            this.insertChildItems(item, files, folder.path);
+        } catch (error) {
+            logWarn('恢复展开目录失败:', folder.path, error?.message || error);
+        }
     }
 
     async _restoreExpandedFolders() {
@@ -489,12 +531,24 @@ class FileExplorer {
 
     _queryItemByPath(path, root) {
         try {
-            if (!root) return null;
+            if (!root || !path) return null;
+            const cached = this._treeItemsByPath.get(path);
+            if (cached) {
+                const isInRoot = root === cached || root.contains?.(cached);
+                const isConnected = cached.isConnected === undefined ? isInRoot : cached.isConnected;
+                if (isConnected && isInRoot) return cached;
+                this._treeItemsByPath.delete(path);
+            }
             const esc = (s) => { if (window.CSS?.escape) return CSS.escape(s); return s.replace(/["\\]/g, m => '\\' + m); };
             const selector = `.tree-item[data-path="${esc(path)}"]`;
-            const el = root.querySelector(selector);
-            if (el) return el;
-            return Array.from(root.querySelectorAll('.tree-item')).find(n => n.dataset.path === path) || null;
+            const el = root.querySelector?.(selector);
+            if (el) {
+                this._treeItemsByPath.set(path, el);
+                return el;
+            }
+            const fallback = Array.from(root.querySelectorAll('.tree-item')).find(n => n.dataset.path === path) || null;
+            if (fallback) this._treeItemsByPath.set(path, fallback);
+            return fallback;
         } catch (_) { return null; }
     }
 
@@ -532,7 +586,9 @@ class FileExplorer {
     applySelectionStyles() {
         try {
             const selectedPaths = new Set(this.selectedFiles.keys());
-            document.querySelectorAll('.tree-item').forEach(item => {
+            const fileTree = document.querySelector('.file-tree');
+            if (!fileTree) return;
+            fileTree.querySelectorAll('.tree-item').forEach(item => {
                 const isSelected = selectedPaths.has(item.dataset?.path);
                 item.classList.toggle('selected', isSelected);
             });
@@ -547,31 +603,68 @@ class FileExplorer {
             const fileTree = document.querySelector('.file-tree');
             const item = this._queryItemByPath(path, fileTree);
             if (!item) return;
-            if (!window.electronIPC) return;
-            const handle = (event, dirPath, files) => {
-                if (dirPath === path) {
-                    try { this.removeChildItems(item, path); this.insertChildItems(item, files, path); } catch (_) { }
-                    window.electronIPC.ipcRenderer.removeListener('directory-read', handle);
-                }
-            };
-            window.electronIPC.on('directory-read', handle);
-            window.electronIPC.send('read-directory', path);
+            const files = await this._readDirectory(path);
+            if (!item.isConnected || !this.expandedFolders.has(path)) return;
+            this.removeChildItems(item, path);
+            this.insertChildItems(item, files, path);
         } catch (e) { logWarn('refreshFolder 失败', e); }
     }
 
     setupFileTreeEvents(fileTree) {
-        fileTree.addEventListener('click', (e) => {
-            if (e.target === fileTree) {
-                this.clearSelection();
+        if (!fileTree || fileTree.__oicppFileTreeEventsBound) return;
+        fileTree.__oicppFileTreeEventsBound = true;
+
+        const getItem = (event) => {
+            const item = event.target?.closest?.('.tree-item');
+            return item && fileTree.contains(item) ? item : null;
+        };
+        const activate = (event, doubleClick = false) => {
+            const item = getItem(event);
+            if (!item) {
+                if (!doubleClick && event.target === fileTree) this.clearSelection();
+                return;
             }
+            const file = item.__oicppFile;
+            if (!file) return;
+            event.stopPropagation();
+            if (doubleClick && (event.ctrlKey || event.metaKey)) return;
+            const toggle = !doubleClick && (event.ctrlKey || event.metaKey);
+            this.selectFile(file, { toggle });
+            if (toggle) return;
+
+            if (file.type === 'folder') {
+                this.toggleFolder(item, file);
+            } else if (file.type === 'file') {
+                this.openFile(file);
+                setTimeout(() => this.refocusSelectedFile(), 10);
+            }
+        };
+
+        fileTree.addEventListener('click', activate);
+        fileTree.addEventListener('dblclick', (event) => activate(event, true));
+
+        fileTree.addEventListener('contextmenu', (event) => {
+            const item = getItem(event);
+            if (!item) {
+                if (event.target === fileTree) {
+                    event.preventDefault();
+                    this.clearSelection();
+                    this.showEmptyAreaContextMenu(event);
+                }
+                return;
+            }
+            const file = item.__oicppFile;
+            if (!file) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (!this.isFileSelected(file.path)) this.selectFile(file);
+            this.showContextMenu(event, file);
         });
 
-        fileTree.addEventListener('contextmenu', (e) => {
-            if (e.target === fileTree) {
-                e.preventDefault();
-                this.clearSelection();
-                this.showEmptyAreaContextMenu(e);
-            }
+        fileTree.addEventListener('dragstart', (event) => {
+            const item = getItem(event);
+            const file = item?.__oicppFile;
+            if (file) this.handleDragStart(event, file);
         });
 
         this.setupDragAndDrop(fileTree);
@@ -581,6 +674,8 @@ class FileExplorer {
         const item = document.createElement('div');
         item.className = 'tree-item';
         item.dataset.path = file.path;
+        item.__oicppFile = file;
+        this._treeItemsByPath.set(file.path, item);
         if (file.type === 'folder') {
             item.dataset.type = 'folder';
         } else {
@@ -615,8 +710,8 @@ class FileExplorer {
         content.appendChild(icon);
         content.appendChild(label);
         item.appendChild(content);
+        content.draggable = true;
 
-        this.addFileTreeItemListeners(item, file);
 
         return item;
     }
@@ -655,66 +750,6 @@ class FileExplorer {
         }
     }
 
-    addFileTreeItemListeners(item, file) {
-        const content = item.querySelector('.tree-item-content');
-
-        content.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const useToggle = e.ctrlKey || e.metaKey;
-            this.selectFile(file, { toggle: useToggle });
-
-            if (useToggle) {
-                return; // Ctrl/Meta 点击只负责多选，不触发打开或展开
-            }
-
-            if (file.type === 'folder') {
-                this.toggleFolder(item, file);
-            } else if (file.type === 'file') {
-                this.openFile(file);
-                setTimeout(() => {
-                    try {
-                        this.refocusSelectedFile();
-                    } catch (error) {
-                        logWarn('单击文件后恢复焦点失败', error);
-                    }
-                }, 10);
-            }
-        });
-
-        content.addEventListener('dblclick', (e) => {
-            e.stopPropagation();
-            if (e.ctrlKey || e.metaKey) {
-                return;
-            }
-            this.selectFile(file);
-            if (file.type === 'file') {
-                this.openFile(file);
-                setTimeout(() => {
-                    try {
-                        this.refocusSelectedFile();
-                    } catch (error) {
-                        logWarn('双击文件后恢复焦点失败', error);
-                    }
-                }, 10);
-            } else if (file.type === 'folder') {
-                this.toggleFolder(item, file);
-            }
-        });
-
-        content.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            const alreadySelected = this.isFileSelected(file.path);
-            if (!alreadySelected) {
-                this.selectFile(file);
-            }
-            this.showContextMenu(e, file);
-        });
-
-        content.draggable = true;
-        content.addEventListener('dragstart', (e) => {
-            this.handleDragStart(e, file);
-        });
-    }
 
     async toggleFolder(item, folder) {
         const arrow = item.querySelector('.tree-item-arrow');
@@ -723,46 +758,29 @@ class FileExplorer {
         if (isExpanded) {
             arrow.textContent = '▶';
             this.expandedFolders.delete(folder.path);
-
             this.removeChildItems(item, folder.path);
         } else {
             arrow.textContent = '▼';
             this.expandedFolders.add(folder.path);
-
-            if (window.electronIPC) {
-                if (this.directoryReadHandlers && this.directoryReadHandlers[folder.path]) {
-                    window.electronIPC.ipcRenderer.removeListener('directory-read', this.directoryReadHandlers[folder.path]);
-                }
-
-                if (!this.directoryReadHandlers) {
-                    this.directoryReadHandlers = {};
-                }
-
-                const handleSubDirectoryRead = (event, dirPath, files) => {
-                    if (dirPath === folder.path) {
-                        this.insertChildItems(item, files, folder.path);
-                        window.electronIPC.ipcRenderer.removeListener('directory-read', handleSubDirectoryRead);
-                        delete this.directoryReadHandlers[folder.path];
-                    }
-                };
-
-                this.directoryReadHandlers[folder.path] = handleSubDirectoryRead;
-
-                window.electronIPC.on('directory-read', handleSubDirectoryRead);
-
-                window.electronIPC.send('read-directory', folder.path);
+            try {
+                const files = await this._readDirectory(folder.path);
+                if (!item.isConnected || !this.expandedFolders.has(folder.path)) return;
+                this.insertChildItems(item, files, folder.path);
+            } catch (error) {
+                logWarn('展开目录失败:', folder.path, error?.message || error);
             }
         }
-    }
 
+    }
     removeChildItems(parentItem, parentPath) {
         let nextSibling = parentItem.nextElementSibling;
         const toRemove = [];
 
         while (nextSibling) {
             const itemPath = nextSibling.dataset.path;
-            if (itemPath && itemPath.startsWith(parentPath + '/') || itemPath && itemPath.startsWith(parentPath + '\\')) {
+            if (itemPath && (itemPath.startsWith(parentPath + '/') || itemPath.startsWith(parentPath + '\\'))) {
                 toRemove.push(nextSibling);
+                this._treeItemsByPath.delete(itemPath);
                 if (nextSibling.dataset.type === 'folder') {
                     this.expandedFolders.delete(itemPath);
                 }
@@ -777,7 +795,6 @@ class FileExplorer {
 
     insertChildItems(parentItem, files, parentPath) {
         const currentLevel = this.getItemLevel(parentItem);
-        let insertPosition = parentItem;
 
         const existingChildren = [];
         let nextSibling = parentItem.nextElementSibling;
@@ -796,11 +813,12 @@ class FileExplorer {
             return;
         }
 
+        const fragment = document.createDocumentFragment();
         files.forEach(subFile => {
             const subItem = this.createFileTreeItem(subFile, currentLevel + 1);
-            insertPosition.insertAdjacentElement('afterend', subItem);
-            insertPosition = subItem;
+            fragment.appendChild(subItem);
         });
+        parentItem.parentNode?.insertBefore(fragment, parentItem.nextElementSibling);
     }
 
     getItemLevel(item) {
@@ -1233,48 +1251,81 @@ class FileExplorer {
         event.dataTransfer.effectAllowed = 'move';
 
         dragData.files.forEach((f) => {
-            const dragItem = this._queryItemByPath(f.path, document) || document.querySelector(`[data-path="${f.path}"]`);
+            const dragItem = this._queryItemByPath(f.path, document);
             if (dragItem) {
                 dragItem.classList.add('dragging');
+                this._draggingItems.add(dragItem);
             }
         });
 
         logInfo('开始拖拽:', dragData.files.map(f => f.name));
     }
 
-    setupDragAndDrop(fileTree) {
+    _clearDraggingItems() {
+        for (const item of this._draggingItems) {
+            item?.classList.remove('dragging');
+        }
+        this._draggingItems.clear();
+    }
+
+    _applyDragHover(fileTree) {
+        const target = this._pendingDragOverTarget;
+        const nextItem = target?.dataset?.type === 'folder' && fileTree.contains(target) ? target : null;
+        if (this._dragOverItem !== nextItem) {
+            this._dragOverItem?.classList.remove('drag-over');
+            nextItem?.classList.add('drag-over');
+            this._dragOverItem = nextItem;
+        }
+        fileTree.classList.toggle('drag-over-root', this._pendingDragOverRoot && !nextItem);
+    }
+
+    _scheduleDragHover(fileTree, targetItem) {
+        this._pendingDragOverTarget = targetItem;
+        this._pendingDragOverRoot = !targetItem;
+        if (this._dragHoverFrame !== null) return;
+        const requestFrame = typeof window.requestAnimationFrame === 'function'
+            ? window.requestAnimationFrame.bind(window)
+            : (callback) => setTimeout(callback, 0);
+        this._dragHoverFrame = requestFrame(() => {
+            this._dragHoverFrame = null;
+            this._applyDragHover(fileTree);
+        });
+    }
+
+    _clearDragIndicators(fileTree) {
+        if (this._dragHoverFrame !== null) {
+            if (typeof window.cancelAnimationFrame === 'function') {
+                window.cancelAnimationFrame(this._dragHoverFrame);
+            } else {
+                clearTimeout(this._dragHoverFrame);
+            }
+            this._dragHoverFrame = null;
+        }
+        this._dragOverItem?.classList.remove('drag-over');
+        this._dragOverItem = null;
+        this._pendingDragOverTarget = null;
+        this._pendingDragOverRoot = false;
+        fileTree?.classList.remove('drag-over-root');
+    }
+
+    _clearDragState(fileTree) {
+        this._clearDragIndicators(fileTree);
+        this._clearDraggingItems();
         this.isDragging = false;
+    }
+    setupDragAndDrop(fileTree) {
+        if (!fileTree || fileTree.__oicppDragAndDropBound) return;
+        fileTree.__oicppDragAndDropBound = true;
 
         fileTree.addEventListener('dragover', (e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
-
-            const targetItem = e.target.closest('.tree-item');
-            if (targetItem) {
-                const targetType = targetItem.dataset.type;
-
-                document.querySelectorAll('.drag-over').forEach(el => {
-                    el.classList.remove('drag-over');
-                });
-
-                if (targetType === 'folder') {
-                    targetItem.classList.add('drag-over');
-                }
-            } else {
-                document.querySelectorAll('.drag-over').forEach(el => {
-                    el.classList.remove('drag-over');
-                });
-                fileTree.classList.add('drag-over-root');
-            }
+            const targetItem = e.target?.closest?.('.tree-item');
+            this._scheduleDragHover(fileTree, targetItem && fileTree.contains(targetItem) ? targetItem : null);
         });
 
         fileTree.addEventListener('dragleave', (e) => {
-            if (!fileTree.contains(e.relatedTarget)) {
-                document.querySelectorAll('.drag-over').forEach(el => {
-                    el.classList.remove('drag-over');
-                });
-                fileTree.classList.remove('drag-over-root');
-            }
+            if (!fileTree.contains(e.relatedTarget)) this._clearDragIndicators(fileTree);
         });
 
         fileTree.addEventListener('drop', (e) => {
@@ -1288,13 +1339,8 @@ class FileExplorer {
 
             this.isDragging = true;
 
-            document.querySelectorAll('.dragging').forEach(el => {
-                el.classList.remove('dragging');
-            });
-            document.querySelectorAll('.drag-over').forEach(el => {
-                el.classList.remove('drag-over');
-            });
-            fileTree.classList.remove('drag-over-root');
+            this._clearDragIndicators(fileTree);
+            this._clearDraggingItems();
 
             try {
                 const dragData = JSON.parse(e.dataTransfer.getData('text/plain'));
@@ -1325,14 +1371,7 @@ class FileExplorer {
         });
 
         fileTree.addEventListener('dragend', (e) => {
-            document.querySelectorAll('.dragging').forEach(el => {
-                el.classList.remove('dragging');
-            });
-            document.querySelectorAll('.drag-over').forEach(el => {
-                el.classList.remove('drag-over');
-            });
-            fileTree.classList.remove('drag-over-root');
-            this.isDragging = false;
+            this._clearDragState(fileTree);
         });
     }
 
@@ -1432,7 +1471,7 @@ class FileExplorer {
             this.clearSelection();
         }
 
-        const item = this._queryItemByPath(file.path, document) || document.querySelector(`[data-path="${file.path}"]`);
+        const item = this._queryItemByPath(file.path, document);
         const alreadySelected = this.selectedFiles.has(file.path);
 
         if (toggle && alreadySelected) {
@@ -1459,7 +1498,8 @@ class FileExplorer {
 
 
     clearSelection() {
-        const selected = document.querySelectorAll('.tree-item.selected');
+        const fileTree = document.querySelector('.file-tree');
+        const selected = fileTree?.querySelectorAll('.tree-item.selected') || [];
         selected.forEach(item => item.classList.remove('selected'));
         this.selectedFiles.clear();
         this.selectedFile = null;
