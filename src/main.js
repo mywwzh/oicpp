@@ -7370,20 +7370,6 @@ async function compileFile(options) {
 
     const { inputFile, outputFile, compilerPath, compilerArgs, workingDirectory } = options;
 
-    // If the executable is at least as new as its source, compilation has
-    // already succeeded for the current file contents.
-    try {
-        if (inputFile && outputFile && fs.existsSync(inputFile) && fs.existsSync(outputFile)) {
-            const inputMtime = fs.statSync(inputFile).mtimeMs;
-            const outputMtime = fs.statSync(outputFile).mtimeMs;
-            if (outputMtime >= inputMtime) {
-                logInfo('[编译缓存] 源文件未变更，跳过编译:', inputFile);
-                return { success: true, cached: true, exitCode: 0, stdout: '', stderr: '', warnings: [], errors: [], diagnostics: [] };
-            }
-        }
-    } catch (cacheError) {
-        logWarn('[编译缓存] mtime 检查失败，将正常编译:', cacheError?.message || cacheError);
-    }
 
     function parseArgsPreservingQuotes(argString) {
         if (!argString || typeof argString !== 'string') return [];
@@ -7494,6 +7480,52 @@ async function compileFile(options) {
             }
         } catch (_) { }
         const parsedUserArgs = parseArgsPreservingQuotes(userArgsStr).filter(a => a && a.trim());
+    const compileCacheVersion = 1;
+    const cacheMetadataPath = outputFile ? `${path.resolve(outputFile)}.oicpp-cache` : '';
+    let compileCacheRecord = null;
+
+    const createCompileCacheRecord = () => {
+        if (!inputFile || !outputFile || !compilerPath) return null;
+        const inputStats = fs.statSync(inputFile);
+        const compilerAbsolutePath = path.resolve(compilerPath);
+        const compilerStats = fs.statSync(compilerAbsolutePath);
+        const payload = {
+            cacheVersion: compileCacheVersion,
+            inputFile: path.resolve(inputFile),
+            inputSize: inputStats.size,
+            inputMtimeMs: inputStats.mtimeMs,
+            outputFile: path.resolve(outputFile),
+            compilerPath: compilerAbsolutePath,
+            compilerSize: compilerStats.size,
+            compilerMtimeMs: compilerStats.mtimeMs,
+            compilerArgs: parsedUserArgs,
+            workingDirectory: path.resolve(workingDirectory || process.cwd())
+        };
+        const signature = crypto.createHash('sha256')
+            .update(JSON.stringify(payload))
+            .digest('hex');
+        return { ...payload, signature };
+    };
+
+    try {
+        if (inputFile && outputFile && compilerPath && fs.existsSync(inputFile)
+            && fs.existsSync(compilerPath)) {
+            compileCacheRecord = createCompileCacheRecord();
+            const outputStats = fs.existsSync(outputFile) ? fs.statSync(outputFile) : null;
+            if (compileCacheRecord && outputStats && outputStats.mtimeMs >= compileCacheRecord.inputMtimeMs
+                && fs.existsSync(cacheMetadataPath)) {
+                const cached = JSON.parse(fs.readFileSync(cacheMetadataPath, 'utf8'));
+                if (cached?.cacheVersion === compileCacheVersion
+                    && cached.signature === compileCacheRecord.signature) {
+                    logInfo('[编译缓存] 编译器、参数和源文件签名均未变化，跳过编译:', inputFile);
+                    return { success: true, cached: true, exitCode: 0, stdout: '', stderr: '', warnings: [], errors: [], diagnostics: [] };
+                }
+            }
+        }
+    } catch (cacheError) {
+        logWarn('[编译缓存] 签名检查失败，将正常编译:', cacheError?.message || cacheError);
+    }
+
 
         const outputDir = path.dirname(outputFile);
         if (!fs.existsSync(outputDir)) {
@@ -7770,6 +7802,19 @@ async function compileFile(options) {
                     }
                 } catch (permErr) {
                     logWarn('[编译后] 权限处理异常:', permErr.message);
+                }
+            }
+
+            if (result.success && outputExists && compileCacheRecord && cacheMetadataPath) {
+                try {
+                    const latestRecord = createCompileCacheRecord();
+                    if (latestRecord?.signature === compileCacheRecord.signature) {
+                        fs.writeFileSync(cacheMetadataPath, JSON.stringify(latestRecord), 'utf8');
+                    } else {
+                        logWarn('[编译缓存] 编译期间源文件或编译环境发生变化，跳过写入签名');
+                    }
+                } catch (cacheError) {
+                    logWarn('[编译缓存] 写入签名失败:', cacheError?.message || cacheError);
                 }
             }
 
