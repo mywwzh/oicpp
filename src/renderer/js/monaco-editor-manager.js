@@ -58,6 +58,7 @@ class MonacoEditorManager {
         this._lspCompilerPath = undefined;
         this._lspProviders = new Map();
         this._lspProvidersReady = false;
+        this._lspGuardedModels = new WeakSet();
         this.lspClient = window.lspClient || null;
         this.setupLspIntegration();
         this._onMonacoContextMenuPasteCapture = this.handleMonacoContextMenuPasteCapture.bind(this);
@@ -338,6 +339,15 @@ class MonacoEditorManager {
 
     _initLspProactively() {
         setTimeout(() => {
+            const hasUnsafeDocument = typeof monaco !== 'undefined' && monaco.editor?.getModels?.().some((model) => {
+                const languageId = model.getLanguageId ? model.getLanguageId() : '';
+                if (languageId !== 'cpp' && languageId !== 'c') return false;
+                return !this.assessLspDocumentSafety(model.getValue ? model.getValue() : '').safe;
+            });
+            if (hasUnsafeDocument) {
+                logInfo('[LSP] 检测到超大静态数组源码，跳过主动启动；打开普通 C/C++ 文件时再启动。');
+                return;
+            }
             this.ensureLspReady().then(() => {
                 logInfo('[LSP] 主动启动完成');
             }).catch(err => {
@@ -531,8 +541,178 @@ class MonacoEditorManager {
         }
     }
 
+    assessLspDocumentSafety(text = '') {
+        const source = typeof text === 'string' ? text : String(text ?? '');
+        const maxArrayElements = 100000000;
+        const maxArrayDimension = 10000000;
+        const expressions = new Map();
+        const values = new Map();
+
+        // Keep offsets stable while ignoring comments and string literals. This
+        // prevents examples in comments/strings from enabling the guard while
+        // still allowing the line number in the warning to be useful.
+        const scanSource = source.replace(/\/\*[\s\S]*?\*\//g, (match) => ' '.repeat(match.length))
+            .replace(/\/\/[^\r\n]*/g, (match) => ' '.repeat(match.length))
+            .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, (match) => ' '.repeat(match.length));
+
+        const tokenPattern = /\s*(0[xX][0-9a-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[uUlLzZ]*|[A-Za-z_]\w*|<<|>>|[()+\-*/%])/g;
+
+        const evaluateExpression = (expression, resolving = new Set()) => {
+            if (typeof expression !== 'string' || !expression.trim()) return null;
+
+            const tokens = [];
+            let offset = 0;
+            let match;
+            tokenPattern.lastIndex = 0;
+            while ((match = tokenPattern.exec(expression))) {
+                if (match.index !== offset && expression.slice(offset, match.index).trim()) {
+                    return null;
+                }
+                tokens.push(match[1]);
+                offset = tokenPattern.lastIndex;
+            }
+            if (expression.slice(offset).trim() || tokens.length === 0) return null;
+
+            let index = 0;
+            const parsePrimary = () => {
+                const token = tokens[index];
+                if (!token) return null;
+                if (token === '(') {
+                    index++;
+                    const value = parseAdditive();
+                    if (tokens[index] !== ')') return null;
+                    index++;
+                    return value;
+                }
+                if (/^0[xX]/.test(token)) {
+                    index++;
+                    return parseInt(token, 16);
+                }
+                if (/^\d/.test(token)) {
+                    index++;
+                    return Number.parseFloat(token.replace(/[uUlLzZ]+$/g, ''));
+                }
+                if (/^[A-Za-z_]\w*$/.test(token)) {
+                    index++;
+                    return resolveConstant(token, resolving);
+                }
+                return null;
+            };
+            const parseUnary = () => {
+                if (tokens[index] === '+') {
+                    index++;
+                    return parseUnary();
+                }
+                if (tokens[index] === '-') {
+                    index++;
+                    const value = parseUnary();
+                    return value === null ? null : -value;
+                }
+                return parsePrimary();
+            };
+            const parseMultiplicative = () => {
+                let value = parseUnary();
+                while (value !== null && ['*', '/', '%'].includes(tokens[index])) {
+                    const operator = tokens[index++];
+                    const right = parseUnary();
+                    if (right === null || (operator !== '*' && right === 0)) return null;
+                    if (operator === '*') value *= right;
+                    else if (operator === '/') value = Math.trunc(value / right);
+                    else value %= right;
+                    if (!Number.isFinite(value)) return null;
+                }
+                return value;
+            };
+            const parseAdditive = () => {
+                let value = parseMultiplicative();
+                while (value !== null && ['+', '-'].includes(tokens[index])) {
+                    const operator = tokens[index++];
+                    const right = parseMultiplicative();
+                    if (right === null) return null;
+                    value = operator === '+' ? value + right : value - right;
+                }
+                return value;
+            };
+
+            const value = parseAdditive();
+            return index === tokens.length && Number.isFinite(value) ? value : null;
+        };
+
+        const constantPattern = /(?:#\s*define\s+([A-Za-z_]\w*)\s+([^\r\n]+)|\b(?:constexpr|const)\b[^;=\r\n]*?\b([A-Za-z_]\w*)\s*=\s*([^;\r\n]+))/g;
+        let constantMatch;
+        while ((constantMatch = constantPattern.exec(scanSource))) {
+            const name = constantMatch[1] || constantMatch[3];
+            const expression = constantMatch[2] || constantMatch[4];
+            if (name && expression) expressions.set(name, expression.trim());
+        }
+
+        const resolveConstant = (name, resolving = new Set()) => {
+            if (values.has(name)) return values.get(name);
+            if (!expressions.has(name) || resolving.has(name)) return null;
+            const nextResolving = new Set(resolving);
+            nextResolving.add(name);
+            const value = evaluateExpression(expressions.get(name), nextResolving);
+            if (value !== null && Number.isFinite(value)) values.set(name, value);
+            return value;
+        };
+
+        const arrayPattern = /\[([^\[\]\r\n]*)\]/g;
+        let arrayMatch;
+        let previousEnd = -1;
+        let product = 1;
+        let dimensionCount = 0;
+        while ((arrayMatch = arrayPattern.exec(scanSource))) {
+            const between = previousEnd >= 0 ? scanSource.slice(previousEnd, arrayMatch.index) : '';
+            if (previousEnd < 0 || between.trim()) {
+                product = 1;
+                dimensionCount = 0;
+            }
+            previousEnd = arrayPattern.lastIndex;
+
+            const dimension = evaluateExpression(arrayMatch[1]);
+            if (dimension === null || !Number.isFinite(dimension) || dimension <= 0) {
+                product = 1;
+                dimensionCount = 0;
+                continue;
+            }
+
+            dimensionCount++;
+            product = Math.min(maxArrayElements + 1, product * dimension);
+            if (dimension >= maxArrayDimension || product > maxArrayElements) {
+                const line = scanSource.slice(0, arrayMatch.index).split(/\r?\n/).length;
+                return {
+                    safe: false,
+                    reason: `检测到潜在超大静态数组（约 ${dimensionCount} 维，元素数量超过安全阈值）`,
+                    line
+                };
+            }
+        }
+
+        return { safe: true };
+    }
+
+    _bindLspModelLifecycle(model) {
+        if (!model) return;
+        if (!model.__oicppLspContentListener && typeof model.onDidChangeContent === 'function') {
+            model.__oicppLspContentListener = model.onDidChangeContent(() => {
+                this.queueLspDidChange(model);
+            });
+        }
+        if (!model.__oicppLspDisposeListener && typeof model.onWillDispose === 'function') {
+            model.__oicppLspDisposeListener = model.onWillDispose(() => {
+                this.closeLspDocument(model);
+            });
+        }
+    }
+
     async _ensureLspDocumentReady(model) {
+
         if (!model || !this.lspClient) return false;
+        const safety = this.assessLspDocumentSafety(model.getValue ? model.getValue() : '');
+        if (!safety.safe) {
+            await this.openLspDocument(model);
+            return false;
+        }
         await this.ensureLspReady();
         if (this._lspDocuments.has(model)) return true;
         try {
@@ -657,7 +837,10 @@ class MonacoEditorManager {
                     return { suggestions: [] };
                 }
                 try {
-                    await this._ensureLspDocumentReady(model);
+                    const lspReady = await this._ensureLspDocumentReady(model);
+                    if (!lspReady) {
+                        return { suggestions: [] };
+                    }
                     if (!this.lspClient) {
                         return { suggestions: [] };
                     }
@@ -797,7 +980,8 @@ class MonacoEditorManager {
                 signatureHelpRetriggerCharacters: [','],
                 provideSignatureHelp: async (model, position) => {
                     try {
-                        await this._ensureLspDocumentReady(model);
+                        const lspReady = await this._ensureLspDocumentReady(model);
+                        if (!lspReady) return createSignatureHelpResult(emptySignatureHelp);
                         if (!this.lspClient) return createSignatureHelpResult(emptySignatureHelp);
                         const uri = await this.getDocumentUriForModel(model);
                         if (!uri) return createSignatureHelpResult(emptySignatureHelp);
@@ -848,7 +1032,8 @@ class MonacoEditorManager {
             const disposable = monaco.languages.registerHoverProvider(language, {
                 provideHover: async (model, position) => {
                     try {
-                        await this._ensureLspDocumentReady(model);
+                        const lspReady = await this._ensureLspDocumentReady(model);
+                        if (!lspReady) return null;
                         if (!this.lspClient) return null;
                         const uri = await this.getDocumentUriForModel(model);
                         if (!uri) return null;
@@ -905,7 +1090,8 @@ class MonacoEditorManager {
                         if (!model || (typeof model.isDisposed === 'function' && model.isDisposed())) {
                             return null;
                         }
-                        await this._ensureLspDocumentReady(model);
+                        const lspReady = await this._ensureLspDocumentReady(model);
+                        if (!lspReady) return null;
                         if (!this.lspClient) return null;
                         const uri = await this.getDocumentUriForModel(model);
                         if (!uri) return null;
@@ -970,7 +1156,8 @@ class MonacoEditorManager {
             const disposable = monaco.languages.registerDocumentSymbolProvider(language, {
                 provideDocumentSymbols: async (model) => {
                     try {
-                        await this._ensureLspDocumentReady(model);
+                        const lspReady = await this._ensureLspDocumentReady(model);
+                        if (!lspReady) return [];
                         if (!this.lspClient) return [];
                         const uri = await this.getDocumentUriForModel(model);
                         if (!uri) return [];
@@ -1102,18 +1289,33 @@ class MonacoEditorManager {
     async openLspDocument(model, filePathHint = null, fileNameHint = null) {
         try {
             if (!this.lspClient || !model) return;
-            await this.ensureLspReady();
-
-            if (this._lspDocuments.has(model)) {
-                return;
-            }
-            const uri = await this.getDocumentUriForModel(model, filePathHint, fileNameHint);
-            if (!uri) return;
 
             const languageId = model.getLanguageId ? model.getLanguageId() : 'cpp';
             if (languageId !== 'cpp' && languageId !== 'c') {
                 return;
             }
+
+            const text = model.getValue ? model.getValue() : '';
+            const safety = this.assessLspDocumentSafety(text);
+            if (!safety.safe) {
+                if (this._lspDocuments.has(model)) {
+                    await this.closeLspDocument(model);
+                }
+                this._bindLspModelLifecycle(model);
+                if (!this._lspGuardedModels.has(model)) {
+                    this._lspGuardedModels.add(model);
+                    logWarn('[LSP] 已跳过潜在超大静态数组源码:', fileNameHint || model.__oicppFilePath || 'untitled', safety.reason, '行:', safety.line || '?');
+                }
+                return;
+            }
+            this._lspGuardedModels.delete(model);
+
+            await this.ensureLspReady();
+            if (this._lspDocuments.has(model)) {
+                return;
+            }
+            const uri = await this.getDocumentUriForModel(model, filePathHint, fileNameHint);
+            if (!uri) return;
             const fileName = fileNameHint || (filePathHint ? filePathHint.split(/[\\/]/).pop() : 'untitled');
 
             const { compilerPath } = await this.getCompilerSettingsSnapshot();
@@ -1128,11 +1330,11 @@ class MonacoEditorManager {
 
             logInfo('[LSP] 打开文档:', fileName, 'uri:', uri.replace(/^file:\/\//, ''));
             const version = 1;
-            const text = model.getValue ? model.getValue() : '';
+            const currentText = model.getValue ? model.getValue() : '';
             this._lspDocuments.set(model, { uri, version, languageId });
 
             const didOpenResult = await this.lspClient.notify('textDocument/didOpen', {
-                textDocument: { uri, languageId, version, text }
+                textDocument: { uri, languageId, version, text: currentText }
             });
 
             if (didOpenResult && didOpenResult.ok === false) {
@@ -1148,16 +1350,7 @@ class MonacoEditorManager {
                 });
             } catch (_) {}
 
-            if (!model.__oicppLspContentListener && typeof model.onDidChangeContent === 'function') {
-                model.__oicppLspContentListener = model.onDidChangeContent(() => {
-                    this.queueLspDidChange(model);
-                });
-            }
-            if (!model.__oicppLspDisposeListener && typeof model.onWillDispose === 'function') {
-                model.__oicppLspDisposeListener = model.onWillDispose(() => {
-                    this.closeLspDocument(model);
-                });
-            }
+            this._bindLspModelLifecycle(model);
         } catch (err) {
             logWarn('[LSP] 打开文档失败:', err?.message || err);
         }
@@ -1176,8 +1369,22 @@ class MonacoEditorManager {
         const delay = contentLength >= 100000 || lineCount >= 1000
             ? 700
             : (contentLength >= 15000 || lineCount >= 150 ? 350 : 150);
-        const timer = setTimeout(() => {
+        const timer = setTimeout(async () => {
             this._lspChangeTimers.delete(model);
+            if (model.isDisposed?.()) return;
+
+            const safety = this.assessLspDocumentSafety(model.getValue ? model.getValue() : '');
+            if (!safety.safe) {
+                if (this._lspDocuments.has(model)) {
+                    await this.closeLspDocument(model);
+                }
+                return;
+            }
+
+            if (!this._lspDocuments.has(model)) {
+                await this.openLspDocument(model);
+                return;
+            }
             this.sendLspDidChange(model);
         }, delay);
         this._lspChangeTimers.set(model, timer);
@@ -1185,6 +1392,14 @@ class MonacoEditorManager {
 
     async sendLspDidChange(model) {
         if (!model || model.isDisposed?.()) return;
+        const safety = this.assessLspDocumentSafety(model.getValue ? model.getValue() : '');
+        if (!safety.safe) {
+            this._lspChangePending.delete(model);
+            if (this._lspDocuments.has(model)) {
+                await this.closeLspDocument(model);
+            }
+            return;
+        }
         if (this._lspChangeInFlight.has(model)) {
             this._lspChangePending.add(model);
             return;
@@ -1928,8 +2143,8 @@ class MonacoEditorManager {
                         if (!model || model.isDisposed?.() || cancellationToken?.isCancellationRequested) {
                             return null;
                         }
-                        await this._ensureLspDocumentReady(model);
-                        if (!this.lspClient || model.isDisposed?.() || cancellationToken?.isCancellationRequested) {
+                        const lspReady = await this._ensureLspDocumentReady(model);
+                        if (!lspReady || !this.lspClient || model.isDisposed?.() || cancellationToken?.isCancellationRequested) {
                             return null;
                         }
                         const uri = await this.getDocumentUriForModel(model);
@@ -2579,9 +2794,17 @@ class MonacoEditorManager {
             if (typeof monaco === 'undefined') {
                 await this.waitForMonaco();
             }
-            await this.ensureLspReady();
-            this.registerCppSemanticHighlightingProviders();
+            const editorLanguage = this.getLanguageFromFileName(fileName);
+            const lspDocumentSafety = (editorLanguage === 'cpp' || editorLanguage === 'c')
+                ? this.assessLspDocumentSafety(content)
+                : { safe: true };
+            if (lspDocumentSafety.safe) {
+                await this.ensureLspReady();
+                this.registerCppSemanticHighlightingProviders();
+            } else {
+                logWarn('[LSP] 当前文件包含潜在超大静态数组，跳过主动初始化:', fileName, lspDocumentSafety.reason, '行:', lspDocumentSafety.line || '?');
             
+            }
 
 
 
