@@ -1519,6 +1519,10 @@ let rendererReadyForExternalOpens = false;
 let processingExternalOpenQueue = false;
 let skipAutoOpenWorkspace = false;
 let pendingStartupWorkspaceToOpen = null;
+// Tracks the currently open workspace (folder) as reported by the renderer.
+// Used to avoid forcibly changing the workspace when an external file is opened
+// while a workspace is already open (e.g. double-clicking a .cpp file in Explorer).
+let currentExternalWorkspacePath = null;
 
 function getDefaultSettings() {
     let compilerArgs = '-std=c++14 -O2 -static';
@@ -2430,6 +2434,7 @@ function createWindow() {
             }
             if (target) {
                 pendingStartupWorkspaceToOpen = target;
+                currentExternalWorkspacePath = target;
                 logInfo('[启动] 已准备自动恢复工作区:', target);
             }
         })();
@@ -3133,6 +3138,15 @@ function setupIPC() {
         pendingStartupWorkspaceToOpen = null;
         logInfo('[启动] 渲染进程请求自动恢复工作区:', target);
         return target;
+    });
+
+    // The renderer reports the currently open workspace (folder) via this channel.
+    // It is the source of truth for clearing / updating the workspace (e.g. when
+    // the user closes the workspace or restores it from startup).
+    ipcMain.on('workspace-path-report', (_event, folderPath) => {
+        currentExternalWorkspacePath = (typeof folderPath === 'string' && folderPath.trim())
+            ? folderPath
+            : null;
     });
 
     ipcMain.on('logger-log', (event, payload) => {
@@ -6257,6 +6271,8 @@ async function openFolder() {
 
             saveSettings();
 
+            currentExternalWorkspacePath = selectedPath;
+
             mainWindow.webContents.send('folder-opened', selectedPath);
         }
     }
@@ -8562,14 +8578,24 @@ async function openFileFromExternalQueue(filePath) {
         }
 
         const folderPath = path.dirname(filePath);
-        if (folderPath && fs.existsSync(folderPath)) {
+        // Only establish the file's folder as the workspace when there is no
+        // workspace currently open. Opening an external file (e.g. from Explorer)
+        // while a workspace is already open should open the file in the current
+        // workspace instead of forcibly switching the workspace.
+        if (folderPath && fs.existsSync(folderPath) && !currentExternalWorkspacePath) {
             settings.lastOpen = folderPath;
             updateRecentFiles(folderPath);
             saveSettings();
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('folder-opened', folderPath);
             }
+            currentExternalWorkspacePath = folderPath;
             await delay(250);
+        } else if (folderPath && fs.existsSync(folderPath) && currentExternalWorkspacePath) {
+            logInfo('[外部打开文件] 已存在工作区，保留现有工作区并直接打开文件:', {
+                filePath,
+                workspace: currentExternalWorkspacePath
+            });
         }
 
         const content = await readFileContent(filePath);
@@ -8617,6 +8643,7 @@ async function openFolderFromExternalQueue(folderPath) {
         settings.lastOpen = folderPath;
         updateRecentFiles(folderPath);
         saveSettings();
+        currentExternalWorkspacePath = folderPath;
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('folder-opened', folderPath);
         }
@@ -9438,6 +9465,7 @@ ipcMain.handle('open-recent-file', async (event, filePath) => {
         }
         updateRecentFiles(targetPath);
         saveSettings();
+        currentExternalWorkspacePath = targetPath;
         mainWindow.webContents.send('folder-opened', targetPath);
         return true;
     } catch (err) {
