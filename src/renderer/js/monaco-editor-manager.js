@@ -60,6 +60,7 @@ class MonacoEditorManager {
         this._lspProviders = new Map();
         this._lspProvidersReady = false;
         this._lspGuardedModels = new WeakSet();
+        this._lspGuardDetails = new WeakMap();
         this.lspClient = window.lspClient || null;
         this.setupLspIntegration();
         this._onMonacoContextMenuPasteCapture = this.handleMonacoContextMenuPasteCapture.bind(this);
@@ -415,10 +416,59 @@ class MonacoEditorManager {
     }
 
     getLspStatus() {
+        if (this.getCurrentLspGuardInfo()) return 'disabled';
         if (!this.lspClient) return 'unavailable';
         if (this.lspClient._ready) return 'ready';
         if (this._lspReadyPromise) return 'starting';
         return 'idle';
+    }
+
+    getCurrentLspGuardInfo() {
+        try {
+            const model = this.getCurrentEditor()?.getModel?.();
+            return model ? (this._lspGuardDetails.get(model) || null) : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _reportLspGuardedModel(model, fileNameHint, safety) {
+        if (!model || this._lspGuardedModels.has(model)) return;
+
+        const filePath = model.__oicppFilePath || this.getModelFilePath(model) || '';
+        const fileName = fileNameHint || filePath.split(/[\\/]/).pop() || '当前文件';
+        const line = Number.isFinite(safety?.line) ? safety.line : null;
+        const translationKey = 'lsp.largeArrayDisabled';
+        const fallback = `${fileName} 包含潜在超大静态数组${line ? `（第 ${line} 行）` : ''}，已禁用 clangd LSP 以保护内存。基础语法高亮仍可用。`;
+        let message = fallback;
+        try {
+            const translated = window.i18n?.t?.(translationKey, {
+                fileName,
+                line: line || '?'
+            });
+            if (translated && translated !== translationKey) message = translated;
+        } catch (_) {}
+
+        const details = {
+            fileName,
+            line,
+            reason: safety?.reason || '检测到潜在超大静态数组',
+            message
+        };
+        this._lspGuardedModels.add(model);
+        this._lspGuardDetails.set(model, details);
+        logWarn('[LSP] 已跳过潜在超大静态数组源码:', fileName, details.reason, '行:', line || '?');
+
+        try {
+            if (window.oicppApp?.showMessage) {
+                // Keep this warning visible long enough to be noticed while the editor finishes opening.
+                window.oicppApp.showMessage(message, 'warning', 10000);
+            }
+            window.oicppApp?.updateLspStatusBar?.();
+            setTimeout(() => window.oicppApp?.updateLspStatusBar?.(), 0);
+        } catch (err) {
+            logWarn('[LSP] 无法显示超大数组保护提示:', err?.message || err);
+        }
     }
 
     getCurrentMarkerCounts() {
@@ -544,8 +594,7 @@ class MonacoEditorManager {
 
     assessLspDocumentSafety(text = '') {
         const source = typeof text === 'string' ? text : String(text ?? '');
-        const maxArrayElements = 100000000;
-        const maxArrayDimension = 10000000;
+        const maxArrayBytes = 1024 * 1024 * 1024;
         const expressions = new Map();
         const values = new Map();
 
@@ -657,16 +706,37 @@ class MonacoEditorManager {
             return value;
         };
 
+        const inferArrayElementSize = (declarationPrefix) => {
+            const declaration = declarationPrefix.replace(/\s+/g, ' ').trim().toLowerCase();
+            if (!declaration) return 8;
+            if (declaration.includes('*') || declaration.includes('&')) return 8;
+            if (/\b(?:std::)?vector\s*(?:<|[a-z_])/.test(declaration)) return 24;
+            if (/\b(?:std::)?(?:basic_string|string)\b/.test(declaration)) return 32;
+            if (/\b(?:unsigned|signed)\s+char\b/.test(declaration) || /\b(?:char|bool|int8_t|uint8_t)\b/.test(declaration)) return 1;
+            if (/\bshort\b/.test(declaration)) return 2;
+            if (/\blong\s+double\b/.test(declaration)) return 16;
+            if (/\b(?:long\s+long|unsigned\s+long\s+long|double|size_t|ptrdiff_t|intptr_t|uintptr_t)\b/.test(declaration)) return 8;
+            if (/\b(?:int|unsigned|signed|float|long|char16_t|char32_t)\b/.test(declaration)) return 4;
+            return 8;
+        };
+
         const arrayPattern = /\[([^\[\]\r\n]*)\]/g;
         let arrayMatch;
         let previousEnd = -1;
         let product = 1;
         let dimensionCount = 0;
+        let elementSize = 8;
         while ((arrayMatch = arrayPattern.exec(scanSource))) {
             const between = previousEnd >= 0 ? scanSource.slice(previousEnd, arrayMatch.index) : '';
             if (previousEnd < 0 || between.trim()) {
                 product = 1;
                 dimensionCount = 0;
+                const declarationBoundary = Math.max(
+                    scanSource.lastIndexOf(';', arrayMatch.index - 1),
+                    scanSource.lastIndexOf('{', arrayMatch.index - 1),
+                    scanSource.lastIndexOf('}', arrayMatch.index - 1)
+                );
+                elementSize = inferArrayElementSize(scanSource.slice(declarationBoundary + 1, arrayMatch.index));
             }
             previousEnd = arrayPattern.lastIndex;
 
@@ -678,13 +748,16 @@ class MonacoEditorManager {
             }
 
             dimensionCount++;
-            product = Math.min(maxArrayElements + 1, product * dimension);
-            if (dimension >= maxArrayDimension || product > maxArrayElements) {
+            product = Math.min(maxArrayBytes + 1, product * dimension);
+            const estimatedBytes = Math.min(maxArrayBytes + 1, product * elementSize);
+            if (estimatedBytes > maxArrayBytes) {
                 const line = scanSource.slice(0, arrayMatch.index).split(/\r?\n/).length;
                 return {
                     safe: false,
-                    reason: `检测到潜在超大静态数组（约 ${dimensionCount} 维，元素数量超过安全阈值）`,
-                    line
+                    reason: `检测到潜在超大静态数组（约 ${dimensionCount} 维，按 ${elementSize} 字节/元素估算占用超过 1 GiB）`,
+                    line,
+                    elementSize,
+                    estimatedBytes
                 };
             }
         }
@@ -1303,13 +1376,11 @@ class MonacoEditorManager {
                     await this.closeLspDocument(model);
                 }
                 this._bindLspModelLifecycle(model);
-                if (!this._lspGuardedModels.has(model)) {
-                    this._lspGuardedModels.add(model);
-                    logWarn('[LSP] 已跳过潜在超大静态数组源码:', fileNameHint || model.__oicppFilePath || 'untitled', safety.reason, '行:', safety.line || '?');
-                }
+                this._reportLspGuardedModel(model, fileNameHint, safety);
                 return;
             }
             this._lspGuardedModels.delete(model);
+            this._lspGuardDetails.delete(model);
 
             await this.ensureLspReady();
             if (this._lspDocuments.has(model)) {
@@ -1379,6 +1450,7 @@ class MonacoEditorManager {
                 if (this._lspDocuments.has(model)) {
                     await this.closeLspDocument(model);
                 }
+                this._reportLspGuardedModel(model, null, safety);
                 return;
             }
 
@@ -1399,6 +1471,7 @@ class MonacoEditorManager {
             if (this._lspDocuments.has(model)) {
                 await this.closeLspDocument(model);
             }
+            this._reportLspGuardedModel(model, null, safety);
             return;
         }
         if (this._lspChangeInFlight.has(model)) {
@@ -2802,9 +2875,6 @@ class MonacoEditorManager {
             if (lspDocumentSafety.safe) {
                 await this.ensureLspReady();
                 this.registerCppSemanticHighlightingProviders();
-            } else {
-                logWarn('[LSP] 当前文件包含潜在超大静态数组，跳过主动初始化:', fileName, lspDocumentSafety.reason, '行:', lspDocumentSafety.line || '?');
-            
             }
 
 

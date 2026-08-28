@@ -1007,7 +1007,9 @@
   },
   "lsp": {
     "restartFailUnknown": "clangd 重启失败（未知原因）",
-    "startFailUnknown": "clangd 启动失败（未知原因）"
+    "startFailUnknown": "clangd 启动失败（未知原因）",
+    "largeArrayDisabled": "文件 {fileName} 包含潜在超大静态数组（第 {line} 行），已禁用 clangd LSP 以保护内存。基础语法高亮仍可用。",
+    "disabledLabel": "LSP 已禁用"
   },
   "monaco": {
     "userSnippet": "用户代码片段"

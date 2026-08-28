@@ -3961,10 +3961,11 @@ ${data.message || '程序已加载，等待开始执行'}
         }, 3000);
     }
 
-    showMessage(message, type = 'info') {
+    showMessage(message, type = 'info', durationMs = 3000) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message-toast ${type}`;
         messageDiv.textContent = message;
+        messageDiv.setAttribute('role', 'alert');
         messageDiv.style.cssText = `
             position: fixed;
             top: 20px;
@@ -3984,6 +3985,9 @@ ${data.message || '程序已加载，等待开始执行'}
             messageDiv.style.backgroundColor = '#4CAF50';
         } else if (type === 'error') {
             messageDiv.style.backgroundColor = '#f44336';
+        } else if (type === 'warning') {
+            messageDiv.style.backgroundColor = '#ff9800';
+            messageDiv.style.color = '#111';
         } else {
             messageDiv.style.backgroundColor = '#2196F3';
         }
@@ -3996,9 +4000,10 @@ ${data.message || '程序已加载，等待开始执行'}
         } catch (_) {}
         document.body.appendChild(messageDiv);
         
+        const duration = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 3000;
         setTimeout(() => {
             messageDiv.remove();
-        }, 3000);
+        }, duration);
     }
 
     updateStatusBar() {
@@ -4031,8 +4036,21 @@ ${data.message || '程序已加载，等待开始执行'}
 
         const icon = lspItem.querySelector('.lsp-status-icon');
         if (!icon) return;
+        const label = lspItem.querySelector('.lsp-status-label');
 
         try {
+            const guardedInfo = this.editorManager?.getCurrentLspGuardInfo?.();
+            lspItem.classList.remove('warning', 'error', 'success');
+            if (guardedInfo) {
+                icon.textContent = '⊘';
+                icon.style.color = '#111';
+                if (label) label.textContent = this.t('lsp.disabledLabel', null, 'LSP 已禁用');
+                lspItem.classList.add('warning');
+                lspItem.title = guardedInfo.message || this.t('lsp.largeArrayDisabled', null, '当前文件包含潜在超大静态数组，已禁用 clangd LSP。');
+                return;
+            }
+
+            if (label) label.textContent = 'clangd';
             const status = this.editorManager?.getLspStatus?.() || 'idle';
             switch (status) {
                 case 'ready':
