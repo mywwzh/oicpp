@@ -1007,7 +1007,9 @@
   },
   "lsp": {
     "restartFailUnknown": "clangd restart failed (unknown reason)",
-    "startFailUnknown": "clangd start failed (unknown reason)"
+    "startFailUnknown": "clangd start failed (unknown reason)",
+    "largeArrayDisabled": "File {fileName} contains a potentially oversized static array (line {line}); clangd LSP has been disabled to protect memory. Basic syntax highlighting remains available.",
+    "disabledLabel": "LSP disabled"
   },
   "monaco": {
     "userSnippet": "User snippet"
