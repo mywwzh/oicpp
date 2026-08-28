@@ -443,6 +443,12 @@ class FileExplorer {
         if (window.sidebarManager) {
             window.sidebarManager.updateFileExplorerButtons();
         }
+
+        // Report the workspace to the main process so external file opens don't
+        // forcibly switch the workspace when one is already open.
+        if (window.electronAPI && typeof window.electronAPI.reportWorkspacePath === 'function') {
+            window.electronAPI.reportWorkspacePath(path);
+        }
     }
 
     clearWorkspace() {
@@ -457,6 +463,11 @@ class FileExplorer {
 
         if (window.sidebarManager) {
             window.sidebarManager.updateFileExplorerButtons();
+        }
+
+        // Notify the main process that no workspace is currently open.
+        if (window.electronAPI && typeof window.electronAPI.reportWorkspacePath === 'function') {
+            window.electronAPI.reportWorkspacePath('');
         }
     }
 
