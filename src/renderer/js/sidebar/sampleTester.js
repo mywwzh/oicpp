@@ -44,6 +44,7 @@ class SampleTester {
                         }
                         const nameRaw = (data.problemName || '').trim();
                         const fileName = this.buildProblemFileName(nameRaw, data.OJ);
+                        this.isOperating = true;
                         (async () => {
                             try {
                                 const targetPath = await window.electronAPI.pathJoin(workspacePath, fileName);
@@ -100,6 +101,9 @@ class SampleTester {
                                 try { window.sidebarManager?.showPanel?.('samples'); } catch (_) { }
                                 logInfo('[样例测试器] 题目处理完成 文件:', targetPath, '新增样例数:', newSamples.length, '创建新文件:', created);
                             } catch (e) { logError('[样例测试器] 处理外部题目失败', e); }
+                            finally {
+                                this.isOperating = false;
+                            }
                         })();
                     } catch (e) { logError('[样例测试器] 处理外部样例失败(外层)', e); }
                 });
@@ -187,37 +191,44 @@ class SampleTester {
                 return;
             }
 
-            if (window.sidebarManager?.getCurrentPanel() === 'samples') {
-                const currentEditor = window.editorManager?.currentEditor;
+            const currentEditor = window.editorManager?.currentEditor;
 
-                if (currentEditor !== lastEditor) {
-                    lastEditor = currentEditor;
-                    const currentFilePath = currentEditor?.getFilePath ? currentEditor.getFilePath() : currentEditor?.filePath;
+            if (currentEditor === lastEditor) {
+                return;
+            }
 
-                    if (currentFilePath !== lastFilePath) {
+            lastEditor = currentEditor;
+            const currentFilePath = currentEditor?.getFilePath ? currentEditor.getFilePath() : currentEditor?.filePath;
 
-                        this.isOperating = true;
+            if (currentFilePath === lastFilePath) {
+                return;
+            }
 
-                        try {
-                            lastFilePath = currentFilePath;
+            this.isOperating = true;
 
-                            this.samples = [];
-                            this.samplesFilePath = null;
+            try {
+                lastFilePath = currentFilePath;
 
-                            await this.updateCurrentFile();
-                            await this.loadSamples();
-                            this.updateUI();
+                this.samples = [];
+                this.samplesFilePath = null;
 
-                            setTimeout(() => {
-                                if (this.samples.length > 0) {
-                                    this.expandAllSamples();
-                                }
-                            }, 100);
-                        } finally {
-                            this.isOperating = false;
+                // 始终根据当前活动编辑器更新 currentFile / samplesFilePath，
+                // 避免样例关联到「上一个文件」。
+                await this.updateCurrentFile();
+
+                // 仅在样例面板为活动面板时才刷新 UI，减少不必要的渲染。
+                if (window.sidebarManager?.getCurrentPanel() === 'samples') {
+                    await this.loadSamples();
+                    this.updateUI();
+
+                    setTimeout(() => {
+                        if (this.samples.length > 0) {
+                            this.expandAllSamples();
                         }
-                    }
+                    }, 100);
                 }
+            } finally {
+                this.isOperating = false;
             }
         };
 
