@@ -101,7 +101,8 @@
     "cloudSpace": "Cloud Space",
     "newFile": "New File",
     "newFolder": "New Folder",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "batchDelete": "Batch Delete"
   },
   "settings": {
     "title": "Editor Settings",

@@ -1997,6 +1997,108 @@ class FileExplorer {
         this.showError('文件删除功能需要在完整应用环境中运行');
         if (!suppressFocus) this.refocusSelectedFile();
     }
+
+    async batchDelete() {
+        if (!this.hasWorkspace) {
+            this.showError('没有打开的工作区');
+            return;
+        }
+        const selected = this.getSelectedFilesArray();
+        if (selected.length === 0) {
+            await this.batchDeleteByPath();
+            return;
+        }
+
+        const dm = window.dialogManager;
+        if (dm && typeof dm.showActionDialog === 'function') {
+            const actions = [
+                { id: 'selected', label: `删除选中的 ${selected.length} 个项目` },
+                { id: 'path', label: '删除指定路径下的所有文件' },
+                { id: 'cancel', label: window.i18n ? window.i18n.t('dialog.cancel') : '取消', className: 'dialog-btn-cancel' }
+            ];
+            const choice = await dm.showActionDialog('批量删除', '请选择批量删除方式：', actions);
+            if (choice === 'selected') {
+                await this.deleteFiles(selected);
+            } else if (choice === 'path') {
+                await this.batchDeleteByPath();
+            }
+        } else {
+            await this.deleteFiles(selected);
+        }
+    }
+
+    async batchDeleteByPath() {
+        if (!this.hasWorkspace) return;
+
+        let targetPath = '';
+        if (window.electronAPI && typeof window.electronAPI.showOpenDialog === 'function') {
+            const result = await window.electronAPI.showOpenDialog({
+                title: '选择要清空的目录',
+                properties: ['openDirectory']
+            });
+            if (!result || result.canceled || !result.filePaths || result.filePaths.length === 0) {
+                return;
+            }
+            targetPath = result.filePaths[0];
+        } else if (typeof window.prompt === 'function') {
+            targetPath = window.prompt('请输入要清空的目录路径:');
+        }
+
+        if (!targetPath || !String(targetPath).trim()) return;
+        targetPath = String(targetPath).trim();
+
+        const confirmed = await this.confirmOperation(
+            '批量删除',
+            `确定要清空 ${targetPath} 下的所有文件和子目录吗？\n该操作不可恢复。`
+        );
+        if (!confirmed) return;
+
+        try {
+            if (window.electronAPI && typeof window.electronAPI.clearDirectoryContents === 'function') {
+                const result = await window.electronAPI.clearDirectoryContents(targetPath);
+                if (!result || !result.success) {
+                    this.showError(`清空目录失败: ${result?.error || '未知错误'}`);
+                    return;
+                }
+                this._closeTabsUnderPath(targetPath);
+                this.refresh();
+                const successMsg = `已删除 ${targetPath} 下的 ${result.removed ?? 0} 个顶层项目`;
+                if (window.oicppApp && typeof window.oicppApp.showMessage === 'function') {
+                    window.oicppApp.showMessage(successMsg, 'success');
+                } else {
+                    logInfo(successMsg);
+                }
+            } else {
+                this.showError('批量删除功能需要在完整应用环境中运行');
+            }
+        } catch (error) {
+            this.showError(`批量删除失败: ${error?.message || error}`);
+        }
+    }
+
+    _closeTabsUnderPath(dirPath) {
+        try {
+            const tabManager = window.tabManager;
+            if (!tabManager || typeof tabManager.getAllTabs !== 'function') return;
+            const normDir = String(dirPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+            const keys = tabManager.getAllTabs();
+            for (const key of keys) {
+                const tabData = tabManager.tabs && typeof tabManager.tabs.get === 'function' ? tabManager.tabs.get(key) : null;
+                const filePath = tabData?.filePath || '';
+                if (!filePath) continue;
+                const normFile = String(filePath).replace(/\\/g, '/');
+                if (normFile === normDir || normFile.startsWith(normDir + '/')) {
+                    if (typeof tabManager.closeTabByUniqueKey === 'function') {
+                        tabManager.closeTabByUniqueKey(key, { skipAutoSave: true });
+                    } else if (typeof tabManager.closeTab === 'function') {
+                        tabManager.closeTab(key, { skipCloseConfirm: true });
+                    }
+                }
+            }
+        } catch (error) {
+            logWarn('关闭被删除路径下的标签页失败:', error?.message || error);
+        }
+    }
 }
 
 if (typeof window !== 'undefined') {

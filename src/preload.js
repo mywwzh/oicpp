@@ -500,6 +500,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readDirectory: (dirPath) => ipcRenderer.invoke('read-directory', dirPath),
     renameFile: (oldPath, newPath) => ipcRenderer.invoke('rename-file', oldPath, newPath),
     deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
+    clearDirectoryContents: (dirPath) => ipcRenderer.invoke('clear-directory-contents', dirPath),
     writeFile: (filePath, content) => ipcRenderer.invoke('write-file', filePath, content),
     createFile: (filePath, content) => ipcRenderer.invoke('create-file', filePath, content),
     createFolder: (folderPath) => ipcRenderer.invoke('create-folder', folderPath),
