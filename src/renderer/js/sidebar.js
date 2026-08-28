@@ -393,6 +393,9 @@ class SidebarManager {
                     case 2: // 刷新
                         fileExplorer.refresh();
                         break;
+                    case 3: // 批量删除
+                        fileExplorer.batchDelete();
+                        break;
                 }
             });
         });
@@ -463,7 +466,8 @@ class SidebarManager {
         const hasWorkspace = fileExplorer && fileExplorer.hasWorkspace;
 
         fileButtons.forEach((btn, index) => {
-            if (index < 2) {
+            // 新建文件、新建文件夹、批量删除在无工作区时禁用；刷新始终可用
+            if (index === 0 || index === 1 || index === 3) {
                 btn.disabled = !hasWorkspace;
                 btn.style.opacity = hasWorkspace ? '1' : '0.5';
                 btn.style.cursor = hasWorkspace ? 'pointer' : 'not-allowed';

@@ -84,7 +84,8 @@
     "cloudSpace": "云空间",
     "newFile": "新建文件",
     "newFolder": "新建文件夹",
-    "refresh": "刷新"
+    "refresh": "刷新",
+    "batchDelete": "批量删除"
   },
   "settings": {
     "title": "编辑器设置",

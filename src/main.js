@@ -4963,6 +4963,40 @@ function setupIPC() {
         }
     });
 
+    // 清空指定目录下的所有文件和子目录（保留该目录本身）。
+    ipcMain.handle('clear-directory-contents', async (event, dirPath) => {
+        let previousWatchStates = [];
+        try {
+            if (!dirPath || typeof dirPath !== 'string' || !dirPath.trim()) {
+                return { success: false, error: '路径无效' };
+            }
+            const resolved = path.resolve(String(dirPath).trim());
+            let stat = null;
+            try {
+                stat = fs.statSync(resolved);
+            } catch (_) {
+                stat = null;
+            }
+            if (!stat || !stat.isDirectory()) {
+                return { success: false, error: '指定路径不是目录' };
+            }
+            // 安全保护：禁止清空驱动器/文件系统根目录
+            if (path.dirname(resolved) === resolved) {
+                return { success: false, error: '不允许清空根目录' };
+            }
+            previousWatchStates = markLocalDeletion(resolved);
+            const entries = fs.readdirSync(resolved);
+            for (const entry of entries) {
+                fs.rmSync(path.join(resolved, entry), { recursive: true, force: true });
+            }
+            return { success: true, removed: entries.length };
+        } catch (error) {
+            restoreFileWatchStates(previousWatchStates);
+            logError(`[主进程] 清空目录失败: ${dirPath}`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('get-path-info', async (event, filePath) => {
         try {
             return {
