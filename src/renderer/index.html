@@ -622,20 +622,13 @@
     </div>
 
     <script>
+        // 语言 worker（json/css/html/ts 等）的 worker 文件本身是 AMD 模块，直接作为
+        // getWorkerUrl 返回会被当成普通脚本加载而缺少 AMD loader，导致
+        // "define is not defined"。workerMain.js 是 Monaco 的自引导入口，会在
+        // worker 内自行加载 AMD loader 并根据消息加载对应的语言 worker 模块，
+        // 因此所有 worker 统一返回 workerMain.js。
         window.MonacoEnvironment = {
             getWorkerUrl: function (moduleId, label) {
-                if (label === 'json') {
-                    return '../../node_modules/monaco-editor/min/vs/language/json/jsonWorker.js';
-                }
-                if (label === 'css' || label === 'scss' || label === 'less') {
-                    return '../../node_modules/monaco-editor/min/vs/language/css/cssWorker.js';
-                }
-                if (label === 'html' || label === 'handlebars' || label === 'razor') {
-                    return '../../node_modules/monaco-editor/min/vs/language/html/htmlWorker.js';
-                }
-                if (label === 'typescript' || label === 'javascript') {
-                    return '../../node_modules/monaco-editor/min/vs/language/typescript/tsWorker.js';
-                }
                 return '../../node_modules/monaco-editor/min/vs/base/worker/workerMain.js';
             }
         };

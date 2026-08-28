@@ -1,11 +1,10 @@
 if (!self.MonacoEnvironment) {
+    const basePath = '../../node_modules/monaco-editor/min/vs';
     self.MonacoEnvironment = {
-        getWorkerUrl: function (_moduleId, label) {
-            const basePath = '../../node_modules/monaco-editor/min/vs';
-            if (label === 'json') return `${basePath}/language/json/jsonWorker.js`;
-            if (['css','scss','less'].includes(label)) return `${basePath}/language/css/cssWorker.js`;
-            if (['html','handlebars','razor'].includes(label)) return `${basePath}/language/html/htmlWorker.js`;
-            if (label === 'typescript' || label === 'javascript') return `${basePath}/language/typescript/tsWorker.js`;
+        // 语言 worker 的入口文件是 AMD 模块，直接作为 getWorkerUrl 返回会缺少
+        // AMD loader 而报 "define is not defined"。workerMain.js 会在 worker 内
+        // 自行加载 loader 并按消息加载对应模块，因此统一返回 workerMain.js。
+        getWorkerUrl: function (_moduleId, _label) {
             return `${basePath}/base/worker/workerMain.js`;
         }
     };
