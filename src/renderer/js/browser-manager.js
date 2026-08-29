@@ -94,12 +94,31 @@ class BrowserManager {
             .replace(/\soicpp-ide\/\S+/i, '');
         webview.setAttribute('useragent', browserUserAgent);
         webview.setAttribute('src', initialUrl);
+        // 允许 guest 打开新窗口（target="_blank" / window.open），
+        // 否则 Electron 会在 webview 层拦截弹窗，setWindowOpenHandler 不会触发，
+        // 导致网页内链接无法在新标签页中打开。
+        webview.setAttribute('allowpopups', 'true');
         webview.style.width = '100%';
         webview.style.height = '100%';
         webview.style.border = 'none';
 
         frameWrapper.appendChild(webview);
         container.appendChild(frameWrapper);
+
+        // Electron 37 的 webview 内部 iframe 在初始 tab 中（容器为 display:none）
+        // 时不会自动获得高度样式，会保留 HTML iframe 默认的 150px 高度。
+        // 必须在首次导航前修正，否则 guest surface 即使外层之后变高，
+        // 仍只渲染顶部 150px，导致页面显示不全、点击错位、链接无法跳转。
+        // 注意：webview 挂载到 DOM 后 shadowRoot 才会存在，因此在此处才可获取。
+        const fixInternalFrame = (el) => {
+            const internalFrame = el?.shadowRoot?.querySelector('iframe');
+            if (internalFrame) {
+                internalFrame.style.width = '100%';
+                internalFrame.style.height = '100%';
+            }
+        };
+        fixInternalFrame(webview);
+        webview.addEventListener('did-attach', () => fixInternalFrame(webview), { once: true });
 
         // 保存引用
         const state = {
@@ -114,7 +133,9 @@ class BrowserManager {
             canGoForward: false,
             isLoading: false,
             currentUrl: initialUrl,
-            history: []
+            history: [],
+            // 标记是否已显示过；首次显示时强制重载，确保 guest 以正确视口重新布局
+            _hasBeenShown: false
         };
         this.browserTabs.set(uniqueKey, state);
 
@@ -534,6 +555,13 @@ class BrowserManager {
             state._needsContentRestore = false;
 
             let shouldReload = needsRestore;
+            // webview 曾在 display:none 容器中加载时，guest 布局可能不完整
+            // （例如只渲染部分区域、背景留黑）。首次显示时强制重新加载，
+            // 让 guest 以正确的视口尺寸重新布局。
+            if (!state._hasBeenShown) {
+                shouldReload = true;
+            }
+            state._hasBeenShown = true;
             try {
                 shouldReload = shouldReload || !state.webview.getURL();
             } catch (_) {
