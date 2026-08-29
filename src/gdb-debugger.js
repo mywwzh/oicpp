@@ -146,7 +146,7 @@ class GDBDebugger extends EventEmitter {
                 try { process.kill(this.gdbProcess.pid, 'SIGINT'); } catch (_) { }
                 await new Promise(r => setTimeout(r, 200));
             }
-            await this._send('quit');
+            await this._quitGDB();
         } catch (_) { }
         try { this.gdbProcess.kill(); } catch (_) { }
         this.gdbProcess = null;
@@ -156,6 +156,27 @@ class GDBDebugger extends EventEmitter {
         this._queueBusy = false;
         this._cmdQueue = [];
         await this._cleanupLinuxTTY();
+    }
+    // gdb 收到 quit 会立即退出、不会打印自定义提示符，因此不能依赖 _send('quit')
+    // （它等待返回提示符，会永不完成，导致 stop() 卡死）。改为「写入 quit 后等待进程退出（带超时兜底）」。
+    _quitGDB() {
+        return new Promise((resolve) => {
+            const p = this.gdbProcess;
+            if (!p) { resolve(); return; }
+            if (p.exitCode !== null || p.signalCode !== null) { resolve(); return; }
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                p.removeListener('exit', onExit);
+                resolve();
+            };
+            const onExit = () => finish();
+            const timer = setTimeout(finish, 1500);
+            p.once('exit', onExit);
+            try { p.stdin.write('quit\n'); } catch (_) { finish(); }
+        });
     }
     async run() {
         if (this.programExited) throw new Error('Program has exited');
@@ -305,21 +326,67 @@ class GDBDebugger extends EventEmitter {
     }
     _onData(chunk) { this._buffer += chunk; this._parseBuffer(); }
     _parseBuffer() {
-        const idx = this._buffer.indexOf(GDB_PROMPT);
+        // 关键：仅当缓冲区末尾出现「完整且其后无内容」的提示符时，才认定为真正的 GDB 提示符。
+        // 这样可避免被调试程序自身输出中恰好包含 oicpp_gdb: / >>>>oicpp_gdb: 的文本干扰。
+        let idx = -1;
+        let searchFrom = 0;
+        while (true) {
+            const found = this._buffer.indexOf(FULL_GDB_PROMPT, searchFrom);
+            if (found === -1) break;
+            const after = this._buffer.substring(found + FULL_GDB_PROMPT.length);
+            if (after.trim() === '') { idx = found; break; }
+            searchFrom = found + 1;
+        }
         if (idx === -1) {
+            // 尚未到达提示符：运行中的程序输出需及时转发为目标输出，
+            // 但绝不能把 GDB 自身的控制消息（断点命中/退出/信号等）也当作程序输出消费掉，
+            // 否则 program-exited / stopped 事件会丢失，导致状态错乱、命令队列卡死。
             if (this._inferiorRunning && this._buffer.length > 0) {
-                const nl = this._buffer.lastIndexOf('\n');
-                if (nl > 0) { this._emitTargetOutput(this._buffer.substring(0, nl + 1)); this._buffer = this._buffer.substring(nl + 1); }
+                const safeEnd = this._safeDrainEnd();
+                if (safeEnd > 0) {
+                    this._emitTargetOutput(this._buffer.substring(0, safeEnd));
+                    this._buffer = this._buffer.substring(safeEnd);
+                }
             }
             return;
         }
-        let end = idx;
-        while (end > 0 && this._buffer[end - 1] === '>') end--;
-        const content = this._buffer.substring(0, end);
-        this._buffer = this._buffer.substring(idx + GDB_PROMPT.length);
+        const content = this._buffer.substring(0, idx);
+        this._buffer = this._buffer.substring(idx + FULL_GDB_PROMPT.length);
         const clean = content.replace(/^\n+/, '').replace(/\n+$/, '');
         this._parseOutput(clean);
-        if (this._buffer.includes(GDB_PROMPT)) this._parseBuffer();
+        if (this._buffer.includes(FULL_GDB_PROMPT)) this._parseBuffer();
+    }
+    // 在运行态中，找到可以安全作为「程序输出」转发的子串末尾：
+    // 从缓冲区开头逐个完整行扫描，遇到第一条 GDB 控制消息即停止（该行及之后留待提示符统一处理）。
+    _safeDrainEnd() {
+        const buf = this._buffer;
+        let pos = 0;
+        let safeEnd = -1;
+        while (pos < buf.length) {
+            const nl = buf.indexOf('\n', pos);
+            if (nl === -1) break; // 不完整行，保留
+            const line = buf.substring(pos, nl);
+            if (this._isCriticalControlLine(line)) break;
+            safeEnd = nl + 1;
+            pos = nl + 1;
+        }
+        return safeEnd;
+    }
+    // 判断某一行是否属于「必须交给 _parseOutput 处理」的 GDB 控制消息。
+    _isCriticalControlLine(line) {
+        if (!line) return false;
+        if (line.charCodeAt(0) === 0x1A) return true; // -fullname 的源文件行标记
+        const t = line.trim();
+        if (!t) return false;
+        if (reInferiorExited.test(t) || reInferiorExitedWithCode.test(t)) return true;
+        if (/^Program received signal /.test(t)) return true;
+        if (/^Program (exited|terminated with signal) /.test(t)) return true;
+        if (/^During startup program exited/.test(t)) return true;
+        if (/^Thread \d+ hit (Breakpoint|Catchpoint) \d+/.test(t)) return true;
+        if (/^(Breakpoint|Temporary breakpoint) \d+/.test(t)) return true;
+        if (/^Catchpoint \d+ /.test(t)) return true;
+        if (/^\[Switching to thread /.test(t)) return true;
+        return false;
     }
     _parseOutput(output) {
         this._queueBusy = false;
