@@ -91,6 +91,7 @@
         let inBlockComment = false;
         let indentLevel = 0;
         let blankCount = 0;
+        let inPreprocessorContinuation = false;
 
         const mkIndent = (level) => insertSpaces ? ' '.repeat(level * indentWidth) : '\t'.repeat(level);
 
@@ -469,6 +470,14 @@
         for (let idx = 0; idx < rawLines.length; idx++) {
             let line = rawLines[idx];
             line = line.replace(/[ \t]+$/g, '');
+
+            const trimmedLeft = line.replace(/^[\t ]+/, '');
+            if (inPreprocessorContinuation || trimmedLeft.startsWith('#')) {
+                out.push(line);
+                inPreprocessorContinuation = /\\$/.test(line);
+                blankCount = 0;
+                continue;
+            }
 
             if (line.trim() === '') {
                 if (blankCount < 1) out.push('');
