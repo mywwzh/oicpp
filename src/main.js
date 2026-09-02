@@ -7568,7 +7568,8 @@ async function compileFile(options) {
                 if (cached?.cacheVersion === compileCacheVersion
                     && cached.signature === compileCacheRecord.signature) {
                     logInfo('[编译缓存] 编译器、参数和源文件签名均未变化，跳过编译:', inputFile);
-                    return { success: true, cached: true, exitCode: 0, stdout: '', stderr: '', warnings: [], errors: [], diagnostics: [] };
+                    resolve({ success: true, cached: true, exitCode: 0, stdout: '', stderr: '', warnings: [], errors: [], diagnostics: [] });
+                    return;
                 }
             }
         }
