@@ -2929,7 +2929,7 @@ function createCompetitiveCompanionServer(port, tagLabel) {
         try { logger.logerror(`[${label}] 服务出错`, err); } catch (_) { }
     });
 
-    server.listen(port, '0.0.0.0', () => {
+    server.listen(port, '127.0.0.1', () => {
         logger.logInfo(`[${label}] 服务已启动 http://127.0.0.1:${port}`);
     });
 
@@ -2970,7 +2970,7 @@ function startSampleTesterServer() {
                 logger.logInfo('[SampleTesterAPI] 请求:', req.method, requestPath, '来自', req.socket?.remoteAddress || 'unknown');
             } catch (_) { }
         });
-        sampleTesterServer.listen(PORT, '0.0.0.0', () => {
+        sampleTesterServer.listen(PORT, '127.0.0.1', () => {
             logger.logInfo(`[SampleTesterAPI] 服务已启动 http://127.0.0.1:${PORT}`);
         });
     } catch (err) {
