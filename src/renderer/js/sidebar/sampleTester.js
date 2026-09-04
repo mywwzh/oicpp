@@ -2166,7 +2166,6 @@ class SampleTester {
                 outputSizeBytes: this.getOutputSizeBytes(actualOutput),
                 outputExpanded: false,
                 time: runResult.time,
-                memoryBytes: runResult.memoryBytes,
                 usedSpj: spjUsed
                 ,spjOutput
             };
@@ -2327,7 +2326,6 @@ class SampleTester {
                 outputSizeBytes: this.getOutputSizeBytes(actualOutput),
                 outputExpanded: false,
                 time: runResult.time,
-                memoryBytes: runResult.memoryBytes,
                 usedSpj: spjUsed
                 ,spjOutput
             };
@@ -2725,10 +2723,6 @@ class SampleTester {
         if (result.time !== undefined) {
             statusBadge += `<span style="color: #858585; font-size: 11px; margin-left: 8px;">${result.time}ms</span>`;
         }
-        if (Number.isFinite(result.memoryBytes)) {
-            statusBadge += `<span style="color: #858585; font-size: 11px; margin-left: 8px;">${(result.memoryBytes / (1024 * 1024)).toFixed(1)}MB</span>`;
-        }
-
         statusContainer.innerHTML = statusBadge;
 
         const outputContainer = element.querySelector('.program-output-container');
