@@ -4657,54 +4657,8 @@ function setupIPC() {
             let observedOutputBytes = 0;
             let outputLimitExceeded = false;
             let outputLimitTriggered = false;
-            let peakMemoryBytes = 0;
-            let memoryTimer = null;
-            let memorySamplePromise = null;
             let timeout = false;
             let startTime = null;
-
-            const readMemoryBytes = () => new Promise((resolve) => {
-                const pid = childProcess?.pid;
-                if (!pid) return resolve(0);
-                if (process.platform === 'linux') {
-                    fs.readFile(`/proc/${pid}/status`, 'utf8', (error, content) => {
-                        if (error) return resolve(0);
-                        const match = content.match(/^VmRSS:\s+(\d+)\s+kB$/m);
-                        resolve(match ? Number(match[1]) * 1024 : 0);
-                    });
-                    return;
-                }
-                if (process.platform === 'win32') {
-                    const tasklist = spawn('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { windowsHide: true });
-                    let output = '';
-                    tasklist.stdout.on('data', chunk => { output += chunk.toString(); });
-                    tasklist.on('close', () => {
-                        const match = output.match(/"([\d,.]+)\s*K"/i);
-                        resolve(match ? Number(match[1].replace(/[^\d]/g, '')) * 1024 : 0);
-                    });
-                    tasklist.on('error', () => resolve(0));
-                    return;
-                }
-                const ps = spawn('ps', ['-o', 'rss=', '-p', String(pid)]);
-                let output = '';
-                ps.stdout.on('data', chunk => { output += chunk.toString(); });
-                ps.on('close', () => resolve((Number(output.trim()) || 0) * 1024));
-                ps.on('error', () => resolve(0));
-            });
-
-            const sampleMemory = () => {
-                if (memorySamplePromise) {
-                    return memorySamplePromise;
-                }
-                memorySamplePromise = readMemoryBytes()
-                    .then((bytes) => {
-                        peakMemoryBytes = Math.max(peakMemoryBytes, bytes);
-                    })
-                    .finally(() => {
-                        memorySamplePromise = null;
-                    });
-                return memorySamplePromise;
-            };
 
             let effectiveTimeLimit = Number(timeLimit);
             const useTimeouts = Number.isFinite(effectiveTimeLimit) && effectiveTimeLimit > 0;
@@ -4781,8 +4735,6 @@ function setupIPC() {
 
             childProcess.on('spawn', () => {
                 startTime = performance.now();
-                sampleMemory();
-                memoryTimer = setInterval(sampleMemory, 200);
                 try { logInfo('[运行程序][启动] 子进程已启动'); } catch (_) { }
             });
 
@@ -4794,13 +4746,9 @@ function setupIPC() {
                 pushChunkWithLimit(data, stderrChunks, 'stderr');
             });
 
-            childProcess.on('close', async (code) => {
+            childProcess.on('close', (code) => {
                 if (tleTimer) clearTimeout(tleTimer);
                 if (killTimer) clearTimeout(killTimer);
-                if (memoryTimer) clearInterval(memoryTimer);
-                if (memorySamplePromise) {
-                    try { await memorySamplePromise; } catch (_) { }
-                }
                 const endTime = performance.now();
 
                 let executionTime = 0;
@@ -4843,7 +4791,6 @@ function setupIPC() {
                     stdout: output,
                     stderr: errorOutput,
                     outputLimitExceeded,
-                    memoryBytes: peakMemoryBytes,
                     outputLimitBytes: OUTPUT_LIMIT_BYTES,
                     capturedOutputBytes: combinedOutputBytes,
                     observedOutputBytes
