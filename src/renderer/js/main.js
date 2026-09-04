@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 45851)
-Total output lines: 4551
-
 ﻿class OICPPApp {
     constructor() {
         this.currentFile = null;
@@ -2017,7 +2014,588 @@ Total output lines: 4551
     }
 
     async openIntegratedTerminalAndRunExecutable(executablePath, options = {}) {
-        if (!this.terminalPanel) {…5851 tokens truncated…Id || this.terminalPanel?.activeId || '';
+        if (!this.terminalPanel) {
+            throw new Error('内置终端组件未初始化');
+        }
+        return this.terminalPanel.runExecutableInNewTerminal(executablePath, options);
+    }
+
+    bindDebugTerminalBridge(terminalId) {
+        if (!this.terminalPanel || !terminalId || typeof require === 'undefined') {
+            return false;
+        }
+
+        try {
+            const { ipcRenderer } = require('electron');
+            const ok = this.terminalPanel.setInputBridge(terminalId, (data) => {
+                ipcRenderer.send('debug-send-input', data);
+            });
+            if (!ok) {
+                return false;
+            }
+
+            this.terminalPanel.setRemoteOutputMuted(terminalId, true);
+            this._debugTerminalId = terminalId;
+            this._debugTerminalBridgeEnabled = true;
+            this.terminalPanel.activateTerminal(terminalId);
+            this.terminalPanel.focusTerminal?.(terminalId);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    sanitizeDebugTerminalOutput(data) {
+        let text = String(data ?? '');
+        if (!text) {
+            return '';
+        }
+
+        // Hide common GDB runtime noise while keeping user program output (all platforms).
+        text = text
+            .replace(/\[(?:New Thread [^\]\r\n]*)\]\r?\n?/g, '')
+            .replace(/\[(?:Thread [^\]\r\n]* exited(?: with code [^\]\r\n]*)?)\]\r?\n?/g, '')
+            .replace(/\[(?:Inferior [^\]\r\n]* exited[^\]\r\n]*)\]\r?\n?/g, '')
+            .replace(/\[(?:Switching to thread [^\]\r\n]*)\]\r?\n?/g, '')
+            .replace(/^Type\s+"show\s+configuration".*\r?\n?/gm, '')
+            .replace(/^For\s+bug\s+reporting\s+instructions.*\r?\n?/gm, '')
+            .replace(/^Find\s+the\s+GDB\s+manual.*\r?\n?/gm, '')
+            .replace(/^For\s+help,\s+type\s+"help".*\r?\n?/gm, '')
+            .replace(/^Type\s+"apropos\s+word".*\r?\n?/gm, '')
+            .replace(/^https?:\/\/[^\s]+\r?\n?/gm, '')
+            .replace(/^Reading\s+symbols\s+from\s+.*\r?\n?/gm, '')
+            .replace(/^Starting\s+program:\s+.*\r?\n?/gm, '')
+            .replace(/^Breakpoint\s+\d+\s+at\s+.*\r?\n?/gm, '')
+            .replace(/^Thread\s+\d+\s+hit\s+(?:Breakpoint|Catchpoint)\s+\d+.*\r?\n?/gm, '')
+            .replace(/^Continuing\.\r?\n?/gm, '')
+            .replace(/^No\s+arguments\.\r?\n?/gm, '')
+            .replace(/^No\s+locals\.\r?\n?/gm, '')
+            .replace(/^#\d+\s+.*\s+at\s+.*\r?\n?/gm, '')
+            .replace(/^\$\d+\s*=.*\r?\n?/gm, '')
+            .replace(/^\[Loading\s+[^\]]*\]\r?\n?/gm, '');
+
+        return text;
+    }
+
+    unbindDebugTerminalBridge() {
+        const terminalId = this._debugTerminalId || this._debugSessionTerminalId;
+
+        // 清除输入桥接（如果存在）
+        if (this._debugTerminalId && this.terminalPanel) {
+            this.terminalPanel.clearInputBridge(this._debugTerminalId);
+            this.terminalPanel.setRemoteOutputMuted(this._debugTerminalId, false);
+        }
+
+        // 恢复终端：发送换行以强制 shell 打印新提示符
+        if (terminalId && this.terminalPanel) {
+            // 先尝试通过 IPC 写入 PTY
+            try {
+                if (window.electronAPI && typeof window.electronAPI.writeTerminal === 'function') {
+                    window.electronAPI.writeTerminal(terminalId, '\n');
+                }
+            } catch (_) { }
+            // 同时直接写入 xterm.js 显示层，确保用户能看到换行
+            try {
+                this.terminalPanel.writeTerminalOutput(terminalId, '\r\n');
+            } catch (_) { }
+        }
+
+        this._debugTerminalBridgeEnabled = false;
+        this._debugTerminalId = null;
+        this._debugSessionTerminalId = null;
+    }
+
+    appendDebugTerminalOutput(data) {
+        if (!this.terminalPanel) {
+            return;
+        }
+
+        const text = this.sanitizeDebugTerminalOutput(data);
+        if (!text) {
+            return;
+        }
+
+        let targetTerminalId = this._debugTerminalId;
+        if (!targetTerminalId && this.terminalPanel.activeId) {
+            targetTerminalId = this.terminalPanel.activeId;
+        }
+        if (!targetTerminalId) {
+            return;
+        }
+
+        this.terminalPanel.writeTerminalOutput(targetTerminalId, text);
+    }
+
+    resolveRunModeForCurrentPlatform() {
+        const platform = String((typeof process !== 'undefined' ? process.platform : '') || '').toLowerCase();
+        if (platform === 'darwin' || platform === 'linux') {
+            return 'integrated-terminal';
+        }
+        return String(this.settings?.runMode || '').toLowerCase() === 'integrated-terminal'
+            ? 'integrated-terminal'
+            : 'popup';
+    }
+
+    isLinuxPlatform() {
+        return !!(typeof process !== 'undefined' && process.platform === 'linux');
+    }
+
+    isUnixLikePlatform() {
+        return !!(typeof process !== 'undefined' && (process.platform === 'linux' || process.platform === 'darwin'));
+    }
+
+    async resolveTerminalTTYForDebug(terminalId) {
+        if (!this.isUnixLikePlatform()) {
+            return null;
+        }
+        if (!terminalId || !window.electronAPI || typeof window.electronAPI.getTerminalTTY !== 'function') {
+            return null;
+        }
+
+        const maxAttempts = 12;
+        let lastResult = null;
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            try {
+                const result = await window.electronAPI.getTerminalTTY(terminalId);
+                lastResult = result || null;
+                const tty = String(result?.tty || '').trim();
+                if (tty) {
+                    logInfo(`[调试] 已获取内置终端TTY: ${tty} (terminalId=${terminalId})`);
+                    return tty;
+                }
+            } catch (_) {
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 120));
+        }
+
+        logWarn('[调试] 获取内置终端TTY失败:', {
+            terminalId,
+            lastResult
+        });
+
+        return null;
+    }
+
+    async resolveLinuxTerminalTTYForDebug(terminalId) {
+        return this.resolveTerminalTTYForDebug(terminalId);
+    }
+
+    async saveFile() {
+        if (this.editorManager && this.editorManager.currentEditor) {
+            const content = this.editorManager.currentEditor.getValue();
+            const filePath = this.editorManager.currentEditor.getFilePath ? 
+                            this.editorManager.currentEditor.getFilePath() : null;
+            
+            logInfo('保存文件 - 文件路径:', filePath, '内容长度:', content ? content.length : 'undefined');
+            if (window.electronAPI) {
+                if (filePath) {
+                    if (this.isCloudFilePath(String(filePath))) {
+                        const ok = await this.saveCloudFileToServer(filePath, content);
+                        if (ok && window.tabManager?.markTabAsSavedByUniqueKey) {
+                            window.tabManager.markTabAsSavedByUniqueKey(filePath);
+                        }
+                        return;
+                    }
+                    logInfo('调用 electronAPI.saveFile 保存到:', filePath);
+                    try {
+                        await window.electronAPI.saveFile(filePath, content);
+                        if (window.tabManager) {
+                            if (window.tabManager.markTabAsSavedByUniqueKey) {
+                                window.tabManager.markTabAsSavedByUniqueKey(filePath.replace(/\\/g, '/'));
+                            } else {
+                                const fileName = filePath.split(/[\\/]/).pop();
+                                window.tabManager.markTabAsSaved(fileName);
+                            }
+                        }
+                    } catch (e) {
+                        logError('保存失败:', e);
+                    }
+                } else {
+                    logInfo('调用 electronAPI.saveAsFile 另存为新文件');
+                    try {
+                        const newPath = await window.electronAPI.saveAsFile(content);
+                        if (newPath) {
+                            try {
+                                const ed = this.editorManager.currentEditor;
+                                ed.filePath = newPath;
+                                ed.getFilePath = () => ed.filePath;
+                            } catch (_) {}
+                            try { window.tabManager?.updateTabPathBySource(null, newPath); } catch (_) {}
+                            if (window.tabManager) {
+                                if (window.tabManager.markTabAsSavedByUniqueKey) {
+                                    window.tabManager.markTabAsSavedByUniqueKey(newPath.replace(/\\/g, '/'));
+                                } else {
+                                    const fileName = newPath.split(/[\\/]/).pop();
+                                    window.tabManager.markTabAsSaved(fileName);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        logError('另存为失败:', e);
+                    }
+                }
+            } else {
+                const blob = new Blob([content], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'untitled.cpp';
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        } else {
+            logWarn('保存文件失败: 没有编辑器管理器或当前编辑器');
+        }
+    }
+
+    saveFileAs() {
+        if (this.editorManager && this.editorManager.currentEditor) {
+            const content = this.editorManager.currentEditor.getValue();
+            if (window.electronAPI) {
+                window.electronAPI.saveAsFile(content);
+            } else {
+                this.saveFile(); // 浏览器环境下等同于保存
+            }
+        }
+    }
+
+    async saveCurrentFile() {
+
+        if (this.editorManager && this.editorManager.currentEditor) {
+            const content = this.editorManager.getCurrentContent();
+            const filePath = this.editorManager.currentEditor.getFilePath ? 
+                            this.editorManager.currentEditor.getFilePath() : null;
+            
+            if (window.electronAPI && filePath && content !== null) {
+                try {
+                    if (this.isCloudFilePath(String(filePath))) {
+                        const ok = await this.saveCloudFileToServer(filePath, content);
+                        if (ok && window.tabManager?.markTabAsSavedByUniqueKey) {
+                            window.tabManager.markTabAsSavedByUniqueKey(filePath);
+                        }
+                        return;
+                    }
+                    await window.electronAPI.saveFile(filePath, content);
+                    if (window.tabManager) {
+                        if (window.tabManager.markTabAsSavedByUniqueKey) {
+                            window.tabManager.markTabAsSavedByUniqueKey(filePath.replace(/\\/g, '/'));
+                        } else {
+                            const fileName = filePath.split(/[\\/]/).pop();
+                            window.tabManager.markTabAsSaved(fileName);
+                        }
+                    }
+                } catch (e) {
+                    logError('保存失败:', e);
+                }
+            } else {
+                const event = new CustomEvent('saveFile', {
+                    detail: { 
+                        content: content,
+                        filePath: filePath
+                    }
+                });
+                document.dispatchEvent(event);
+            }
+        } else {
+            logWarn('保存文件失败: 没有编辑器管理器或当前编辑器');
+        }
+    }
+
+    openCompilerSettings() {
+        if (window.electronAPI && window.electronAPI.openCompilerSettings) {
+            window.electronAPI.openCompilerSettings();
+        } else if (typeof require !== 'undefined') {
+            try {
+                const { ipcRenderer } = require('electron');
+                ipcRenderer.invoke('open-compiler-settings').catch(error => {
+                    logError('打开编译器设置失败:', error);
+                });
+            } catch (error) {
+                logError('IPC 调用失败:', error);
+            }
+        } else {
+            logWarn('无法打开编译器设置：API不可用');
+        }
+    }
+
+    async openEditorSettings() {
+        logInfo('=== openEditorSettings 被调用 ===');
+        logInfo('electronAPI 可用性:', !!window.electronAPI);
+        logInfo('openEditorSettings 方法可用性:', !!(window.electronAPI && window.electronAPI.openEditorSettings));
+        
+        if (window.electronAPI && window.electronAPI.openEditorSettings) {
+            logInfo('使用 electronAPI.openEditorSettings');
+            window.electronAPI.openEditorSettings();
+        } else if (typeof require !== 'undefined') {
+            logInfo('使用 ipcRenderer.send');
+            const { ipcRenderer } = require('electron');
+            ipcRenderer.send('open-editor-settings');
+        } else {
+            logWarn('无法打开编辑器设置：Electron API 不可用');
+        }
+    }
+
+    async saveCloudFileToServer(filePath, content) {
+        try {
+            const cloudPanel = window.sidebarManager?.getPanelManager?.('cloud') || window.cloudSyncPanel;
+            if (!cloudPanel || typeof cloudPanel.saveCloudFile !== 'function') {
+                this.showMessage(this.t('message.cloudSyncNotReady', null, 'Cloud sync panel is not ready'), 'error');
+                return false;
+            }
+            const cloudPath = String(filePath).replace(/^cloud:\/\//, '/').replace(/^cloud:/i, '/');
+            const ok = await cloudPanel.saveCloudFile(cloudPath, content || '');
+            if (ok) {
+                this.showMessage(this.t('message.cloudSaveSuccess', null, 'Saved to cloud'), 'success');
+            }
+            return ok;
+        } catch (error) {
+            this.showMessage(this.t('message.cloudSaveFailed', { error: error?.message || error }, `Failed to save to cloud: ${error?.message || error}`), 'error');
+            return false;
+        }
+    }
+
+    openTemplateSettings() {
+        if (window.electronAPI && window.electronAPI.openTemplateSettings) {
+            window.electronAPI.openTemplateSettings();
+        } else if (typeof require !== 'undefined') {
+            const { ipcRenderer } = require('electron');
+            ipcRenderer.send('open-template-settings');
+        } else {
+            logWarn('无法打开模板设置：Electron API 不可用');
+        }
+    }
+
+    openBackupSettings() {
+        if (window.electronAPI && window.electronAPI.openBackupSettings) {
+            window.electronAPI.openBackupSettings();
+        } else if (typeof require !== 'undefined') {
+            const { ipcRenderer } = require('electron');
+            ipcRenderer.invoke('open-backup-settings').catch(error => {
+                logError('打开设置备份设置失败:', error);
+            });
+        } else {
+            logWarn('无法打开设置备份设置：Electron API 不可用');
+        }
+    }
+
+    getDefaultCppTemplate() {
+        return '';
+    }
+    startDebug() {
+        if (!this.ensureLocalFileForFeature('调试')) {
+            return;
+        }
+        logInfo('开始调试');
+        if (window.sidebarManager) {
+            window.sidebarManager.showPanel('debug');
+        }
+        
+        this.initializeDebugFeatures();
+        
+        setTimeout(() => {
+            this.handleDebugStart();
+        }, 100);
+    }
+
+    initializeDebugFeatures() {
+        if (!window.debugUIInitialized) {
+            window.debugUIInitialized = true;
+        }
+        
+        this.setupDebugEventListeners();
+        
+        this.setupDebugIPC();
+    }
+
+    loadDebugUI() {
+        logInfo('调试UI采用侧边栏 DebugPanel，跳过外部脚本加载');
+        window.debugUIInitialized = true;
+    }
+
+    initializeDebugUI() {
+        this.setupSimplifiedDebugUI();
+    }
+
+    setupSimplifiedDebugUI() {
+        logInfo('设置简化版调试UI');
+        
+        const waitingMessages = document.querySelectorAll('.waiting-debug-message');
+        waitingMessages.forEach(msg => {
+            msg.textContent = '调试器就绪，等待开始调试...';
+        });
+        
+        this.setupDebugEventListeners();
+    }
+
+    setupDebugEventListeners() {
+        if (window.debugUI) {
+            logInfo('DebugUI已存在，跳过简化版事件监听器设置');
+            return;
+        }
+        
+        logInfo('设置简化版调试事件监听器');
+        
+        const startBtn = document.getElementById('debug-start');
+        if (startBtn && !startBtn.hasAttribute('data-debug-listener')) {
+            startBtn.addEventListener('click', () => {
+                this.handleDebugStart();
+            });
+            startBtn.setAttribute('data-debug-listener', 'true');
+        }
+
+        const debugControls = {
+            'debug-continue': () => this.handleDebugContinue(),
+            'debug-step-over': () => this.handleDebugStepOver(),
+            'debug-step-into': () => this.handleDebugStepInto(),
+            'debug-step-out': () => this.handleDebugStepOut(),
+            'debug-stop': () => this.handleDebugStop()
+        };
+
+        Object.entries(debugControls).forEach(([id, handler]) => {
+            const btn = document.getElementById(id);
+            if (btn && !btn.hasAttribute('data-debug-listener')) {
+                btn.addEventListener('click', handler);
+                btn.setAttribute('data-debug-listener', 'true');
+            }
+        });
+    }
+
+    setupDebugIPC() {
+        if (typeof require === 'undefined') {
+            logWarn('Electron IPC 不可用');
+            return;
+        }
+
+        try {
+            const { ipcRenderer } = require('electron');
+            
+            if (!window.debugIPCInitialized) {
+            ipcRenderer.on('debug-started', (event, data) => {
+                logInfo('[前端] 收到debug-started事件:', data);
+                this.onDebugStarted(data);
+            });
+            ipcRenderer.on('debug-stopped', (event, data) => {
+                logInfo('[前端] 收到debug-stopped事件:', data);
+                this.onDebugStopped(data);
+            });
+            ipcRenderer.on('debug-running', (event) => {
+                logInfo('[前端] 收到debug-running事件');
+                this.onDebugRunning();
+                try { window.monacoEditorManager?.clearAllExecHighlights?.(); } catch (_) {}
+            });
+
+            ipcRenderer.on('debug-program-exited', (event, data) => {
+                this.onProgramExited(data);
+            });
+
+            ipcRenderer.on('debug-ready-waiting', (event, data) => {
+                this.onDebugReadyWaiting(data);
+            });
+
+            ipcRenderer.removeAllListeners('debug-breakpoint-hit');
+            ipcRenderer.on('debug-breakpoint-hit', (event, data) => {
+                this.onBreakpointHit(data);
+            });
+
+            ipcRenderer.on('debug-error', (event, error) => {
+                this.onDebugError(error);
+            });
+
+                ipcRenderer.on('debug-variables-updated', (event, variables) => {
+                    this.onVariablesUpdated(variables);
+                });
+
+                ipcRenderer.on('debug-callstack-updated', (event, callStack) => {
+                    this.onCallStackUpdated(callStack);
+                });
+
+                ipcRenderer.on('debug-terminal-output', (_event, payload) => {
+                    const text = typeof payload === 'string'
+                        ? payload
+                        : String(payload?.data ?? '');
+                    if (!text) return;
+                    this.appendDebugTerminalOutput(text);
+                });
+
+
+                ipcRenderer.on('goto-source-location', async (event, frame) => {
+                    try {
+                        const file = frame?.file;
+                        const line = Number(frame?.line) || 1;
+                        if (!file) return;
+                        if (window.tabManager && typeof window.tabManager.openFileByPath === 'function') {
+                            await window.tabManager.openFileByPath(file);
+                        }
+                        const ed = window.monacoEditorManager?.getCurrentEditor?.();
+                        if (ed && typeof ed.highlightLine === 'function') {
+                            ed.highlightLine(line);
+                        }
+                    } catch (_) {}
+                });
+
+                window.debugIPCInitialized = true;
+                logInfo('调试IPC监听器已设置');
+            }
+        } catch (error) {
+            logError('设置调试IPC失败:', error);
+        }
+    }
+
+    async handleDebugStart() {
+        logInfo('开始调试会话');
+        
+        try {
+            this.showMessage(this.t('debug.checkingEnvironment', null, 'Checking debug environment...'), 'info');
+            const gdbStatus = await this.checkGDBAvailability();
+            
+            if (!gdbStatus.available) {
+                this.showMessage(gdbStatus.message, 'error');
+                this.showDebugStatus(gdbStatus.message);
+                return;
+            }
+            
+            logInfo('调试环境检查通过:', gdbStatus.message);
+        } catch (error) {
+            logError('调试环境检查失败:', error);
+            this.showMessage(this.t('debug.environmentCheckFailed', null, 'Unable to check the debug environment. Make sure the debugger is installed correctly.'), 'error');
+            return;
+        }
+        
+        const currentFile = this.getCurrentFilePath();
+        logInfo('当前文件路径:', currentFile);
+        
+        if (!currentFile) {
+            this.showMessage(this.t('debug.noDebugFile', null, 'No file is open for debugging. Open a C++ source file first.'), 'warning');
+            return;
+        }
+
+        if (!currentFile.match(/\.(cpp|cc|cxx|c)$/i)) {
+            this.showMessage(this.t('debug.debugCppOnly', null, 'Open a C++ source file to debug. The current file is not a C++ source file.'), 'warning');
+            return;
+        }
+
+        this.showMessage(this.t('debug.compilingForDebug', null, 'Compiling code for debugging...'), 'info');
+        
+        try {
+            if (!this.compilerManager) {
+                this.showMessage(this.t('debug.compilerUnavailable', null, 'The compiler is not initialized and cannot be used for debugging'), 'error');
+                return;
+            }
+
+            logInfo('开始编译代码...');
+            await this.compileBeforeDebug();
+
+            const debugRunMode = this.resolveRunModeForCurrentPlatform();
+            let inferiorTTY = '';
+            let useInputBridge = false;
+            let terminalId = '';
+            if (debugRunMode === 'integrated-terminal') {
+                try {
+                    this.compilerManager?.hideOutput?.();
+                } catch (_) { }
+                const openedTerminalId = await this.openIntegratedTerminal({ forceCreate: true });
+                terminalId = openedTerminalId || this.terminalPanel?.activeId || '';
                 this._debugSessionTerminalId = terminalId || null;
                 this.unbindDebugTerminalBridge();
                 const isUnixLike = this.isUnixLikePlatform();
