@@ -4551,7 +4551,7 @@ function setupIPC() {
         }
     });
 
-    ipcMain.handle('run-program', async (event, executablePathOrOptions, input, timeLimit) => {
+    ipcMain.handle('run-program', async (event, executablePathOrOptions, input, timeLimit, memoryLimit) => {
         const { spawn } = require('child_process');
 
         let executablePath, args = [], workingDirectory = null;
@@ -4561,6 +4561,9 @@ function setupIPC() {
             args = executablePathOrOptions.args || [];
             workingDirectory = executablePathOrOptions.workingDirectory;
             skipPreKill = !!executablePathOrOptions.skipPreKill;
+            if (executablePathOrOptions.memoryLimit !== undefined) {
+                memoryLimit = executablePathOrOptions.memoryLimit;
+            }
         } else {
             executablePath = executablePathOrOptions;
         }
@@ -4618,6 +4621,7 @@ function setupIPC() {
                 args,
                 cwd: workingDirectory || null,
                 timeLimitMs: Number(timeLimit) || 0,
+                memoryLimitMb: Number(memoryLimit) || 0,
                 inputBytes: input ? Buffer.byteLength(input, 'utf8') : 0
             });
         } catch (_) { }
@@ -4658,10 +4662,20 @@ function setupIPC() {
             let outputLimitExceeded = false;
             let outputLimitTriggered = false;
             let peakMemoryBytes = 0;
+            let memoryLimitExceeded = false;
+            let memoryLimitTriggered = false;
             let memoryTimer = null;
             let memorySamplePromise = null;
             let timeout = false;
             let startTime = null;
+
+            const parsedMemoryLimit = Number(memoryLimit);
+            const effectiveMemoryLimitMb = Number.isFinite(parsedMemoryLimit) && parsedMemoryLimit > 0
+                ? parsedMemoryLimit
+                : 0;
+            const memoryLimitBytes = effectiveMemoryLimitMb > 0
+                ? effectiveMemoryLimitMb * 1024 * 1024
+                : 0;
 
             const readMemoryBytes = () => new Promise((resolve) => {
                 const pid = childProcess?.pid;
@@ -4699,6 +4713,29 @@ function setupIPC() {
                 memorySamplePromise = readMemoryBytes()
                     .then((bytes) => {
                         peakMemoryBytes = Math.max(peakMemoryBytes, bytes);
+                        if (memoryLimitBytes > 0 && bytes > memoryLimitBytes && !memoryLimitTriggered) {
+                            memoryLimitTriggered = true;
+                            memoryLimitExceeded = true;
+                            if (tleTimer) {
+                                clearTimeout(tleTimer);
+                            }
+                            if (killTimer) {
+                                clearTimeout(killTimer);
+                            }
+                            try {
+                                logWarn('[运行程序][MLE触发]', {
+                                    limitBytes: memoryLimitBytes,
+                                    observedBytes: bytes
+                                });
+                            } catch (_) { }
+                            try {
+                                if (childProcess && !childProcess.killed) {
+                                    childProcess.kill('SIGKILL');
+                                }
+                            } catch (e) {
+                                logError('[主进程-程序调试] 终止进程(内存限制)出错:', e?.message || String(e));
+                            }
+                        }
                     })
                     .finally(() => {
                         memorySamplePromise = null;
@@ -4728,7 +4765,7 @@ function setupIPC() {
             }, Math.floor(effectiveTimeLimit * 1.1)) : null; // 110%时杀进程
 
             const handleOutputLimit = (streamName) => {
-                if (outputLimitTriggered) {
+                if (outputLimitTriggered || memoryLimitExceeded) {
                     return;
                 }
                 outputLimitTriggered = true;
@@ -4831,6 +4868,15 @@ function setupIPC() {
                         finalOutput = notice;
                     }
                 }
+                if (memoryLimitExceeded) {
+                    const notice = '内存超过限制 (' + effectiveMemoryLimitMb + ' MB)，程序已被终止。';
+                    if (finalOutput) {
+                        finalOutput = finalOutput.endsWith('\n') ? finalOutput + notice : finalOutput + '\n' + notice;
+                    } else {
+                        finalOutput = notice;
+                    }
+                }
+
                 const effectiveExitCode = outputLimitExceeded ? (code ?? -3) : code;
                 const measuredTime = useTimeouts ? Math.max(0, Math.min(executionTime, effectiveTimeLimit + 100)) : Math.max(0, executionTime);
                 const timedOut = outputLimitExceeded ? false : (useTimeouts ? timeout : false);
@@ -4843,6 +4889,8 @@ function setupIPC() {
                     stdout: output,
                     stderr: errorOutput,
                     outputLimitExceeded,
+                    memoryLimitExceeded,
+                    memoryLimitBytes,
                     memoryBytes: peakMemoryBytes,
                     outputLimitBytes: OUTPUT_LIMIT_BYTES,
                     capturedOutputBytes: combinedOutputBytes,
@@ -4882,6 +4930,8 @@ function setupIPC() {
                     stdout: '',
                     stderr: error.message,
                     outputLimitExceeded: false,
+                    memoryLimitExceeded: false,
+                    memoryLimitBytes,
                     outputLimitBytes: OUTPUT_LIMIT_BYTES,
                     capturedOutputBytes: combinedOutputBytes,
                     observedOutputBytes

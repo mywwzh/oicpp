@@ -321,6 +321,12 @@
                                 <span class="setting-unit">ms</span>
                                 <button class="bulk-apply-btn" id="apply-time-limit-all-btn" type="button" title="将运行时间应用到全部样例" data-i18n="menu.apply">应用</button>
                             </div>
+                            <div class="setting-group global-bulk-row">
+                                <span class="setting-label" data-i18n="tester.memoryLimit">内存</span>
+                                <input type="number" class="setting-input" id="global-memory-limit" min="0" step="0.1" value="0">
+                                <span class="setting-unit" data-i18n="tester.mb">MB</span>
+                                <button class="bulk-apply-btn" id="apply-memory-limit-all-btn" type="button" title="将内存限制应用到全部样例" data-i18n="menu.apply">应用</button>
+                            </div>
                         </div>
                     </div>
                     <div class="global-settings-resizer" id="global-settings-resizer" role="separator" aria-orientation="horizontal" aria-controls="global-settings" tabindex="0"></div>
