@@ -12,15 +12,22 @@ class SampleTester {
             key: null,
             executablePath: null
         };
+        this.graderCompileCache = {
+            key: null,
+            executablePath: null
+        };
         this.spjTempFiles = new Set();
         this.spjTempSequence = 0;
+        this.interactiveTempSequence = 0;
         this.deferSpjTempCleanup = false;
         this.isOperating = false;
         this.editorChangeInterval = null;
         this.statusFilter = null;
         this.globalSettings = {
             useTestlib: false,
+            useInteractive: false,
             spjPath: '',
+            graderPath: '',
             freopenInputFile: '',
             freopenOutputFile: '',
             defaultTimeLimit: 1000,
@@ -280,6 +287,21 @@ class SampleTester {
         if (globalUseTestlib) {
             globalUseTestlib.addEventListener('change', (e) => {
                 this.updateGlobalSetting('useTestlib', e.target.checked);
+            });
+        }
+
+        const globalUseInteractive = document.getElementById('global-use-interactive');
+        if (globalUseInteractive) {
+            globalUseInteractive.addEventListener('change', (e) => {
+                this.updateGlobalSetting('useInteractive', e.target.checked);
+                this.updateGlobalSettingsUI();
+            });
+        }
+
+        const browseGlobalGraderBtn = document.getElementById('browse-global-grader-btn');
+        if (browseGlobalGraderBtn) {
+            browseGlobalGraderBtn.addEventListener('click', () => {
+                this.selectGlobalGraderFile();
             });
         }
 
@@ -1933,6 +1955,8 @@ class SampleTester {
                     button.textContent = window.i18n ? window.i18n.t('tester.reuseCompile') : '复用编译';
                 } else if (status === 'cached-spj') {
                     button.textContent = window.i18n ? window.i18n.t('tester.reuseSpj') : '复用SPJ';
+                } else if (status === 'cached-grader') {
+                    button.textContent = '复用 grader';
                 } else if (status === 'running') {
                     button.textContent = window.i18n ? window.i18n.t('tester.running') : '运行中';
                 }
@@ -1987,11 +2011,14 @@ class SampleTester {
 
         let executablePath = null;
         let spjExecutablePath = null;
+        let graderExecutablePath = null;
         this.deferSpjTempCleanup = true;
 
         try {
             const useTestlib = this.globalSettings.useTestlib;
+            const useInteractive = !!this.globalSettings.useInteractive;
             const spjPath = this.globalSettings.spjPath;
+            const graderPath = this.globalSettings.graderPath;
 
             runSamples.forEach(sample => {
                 const button = document.getElementById(`run-btn-${sample.id}`);
@@ -2029,7 +2056,51 @@ class SampleTester {
 
             executablePath = compileResult.executablePath;
 
-            if (useTestlib && spjPath) {
+            if (useInteractive) {
+                if (!graderPath) {
+                    for (const sample of runSamples) {
+                        sample.result = {
+                            status: 'CE',
+                            output: window.i18n ? window.i18n.t('tester.graderPathEmpty') : 'grader.cpp 文件路径为空',
+                            time: 0
+                        };
+                        if (this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile)) {
+                            this.updateSampleResult(sample.id, sample.result, sample);
+                        }
+                    }
+                    const samplesToPersist = this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile) ? this.samples : runSamples;
+                    await this.saveSamplesToPath(runSamplesFilePath, samplesToPersist, this.globalSettings);
+                    return;
+                }
+
+                const graderCompileResult = await this.compileGraderFile(graderPath);
+                if (!graderCompileResult.success) {
+                    for (const sample of runSamples) {
+                        sample.result = {
+                            status: 'CE',
+                            output: 'grader 编译失败: ' + (graderCompileResult.stderr || graderCompileResult.stdout || (window.i18n ? window.i18n.t('tester.compileFail') : '编译失败')),
+                            time: 0
+                        };
+                        if (this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile)) {
+                            this.updateSampleResult(sample.id, sample.result, sample);
+                        }
+                    }
+                    const samplesToPersist = this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile) ? this.samples : runSamples;
+                    await this.saveSamplesToPath(runSamplesFilePath, samplesToPersist, this.globalSettings);
+                    return;
+                }
+
+                if (graderCompileResult.cached) {
+                    this.notifyCompileCacheHit('grader');
+                    runSamples.forEach(sample => {
+                        const button = document.getElementById('run-btn-' + sample.id);
+                        if (button) {
+                            button.textContent = '复用 grader';
+                        }
+                    });
+                }
+                graderExecutablePath = graderCompileResult.executablePath;
+            } else if (useTestlib && spjPath) {
                 const spjCompileResult = await this.compileSpjFile(spjPath);
                 if (!spjCompileResult.success) {
                     for (const sample of runSamples) {
@@ -2080,7 +2151,7 @@ class SampleTester {
 
                     const sample = runSamples[index];
                     try {
-                        const result = await this.executeSampleWithCompiledProgram(sample, executablePath, spjExecutablePath);
+                        const result = await this.executeSampleWithCompiledProgram(sample, executablePath, spjExecutablePath, graderExecutablePath);
                         sample.result = result;
                         if (this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile)) {
                             this.updateSampleResult(sample.id, result, sample);
@@ -2127,7 +2198,103 @@ class SampleTester {
         }
     }
 
-    async executeSampleWithCompiledProgram(sample, executablePath, spjExecutablePath = null) {
+    async executeInteractiveSample(sample, executablePath, graderExecutablePath) {
+        if (!graderExecutablePath) {
+            return {
+                status: 'CE',
+                output: window.i18n ? window.i18n.t('tester.graderPathEmpty') : 'grader.cpp 文件路径为空',
+                rawOutput: '',
+                expectedOutput: '',
+                stderr: '',
+                outputSizeBytes: 0,
+                outputExpanded: false,
+                time: 0,
+                interactive: true
+            };
+        }
+
+        let inputData = '';
+        if (sample.inputType === 'file') {
+            try {
+                inputData = await window.electronAPI.readFileContent(sample.input);
+            } catch (error) {
+                throw new Error((window.i18n ? window.i18n.t('tester.cannotReadInputFile', {msg: error.message}) : '无法读取输入文件: ' + error.message));
+            }
+        } else {
+            inputData = sample.input || '';
+        }
+
+        const suffix = Date.now() + '_' + (++this.interactiveTempSequence) + '_' + (sample.id || 'x');
+        const inputFilePath = await window.electronAPI.saveTempFile(
+            'interactive_input_' + suffix + '.txt',
+            inputData
+        );
+
+        try {
+            const contestantWorkingDirectory = this.currentFile
+                ? await window.electronAPI.pathDirname(this.currentFile)
+                : null;
+            const graderWorkingDirectory = this.globalSettings.graderPath
+                ? await window.electronAPI.pathDirname(this.globalSettings.graderPath)
+                : null;
+            const runResult = await window.electronAPI.runInteractive({
+                contestantExecutablePath: executablePath,
+                graderExecutablePath,
+                inputFilePath,
+                contestantWorkingDirectory,
+                graderWorkingDirectory,
+                timeLimit: sample.timeLimit,
+                memoryLimit: sample.memoryLimit,
+                skipPreKill: true
+            });
+
+            let status;
+            if (runResult.outputLimitExceeded) {
+                status = 'OLE';
+            } else if (runResult.memoryLimitExceeded) {
+                status = 'MLE';
+            } else if (runResult.timeout) {
+                status = 'TLE';
+            } else if (runResult.contestantExitCode !== 0 && runResult.contestantExitCode !== null) {
+                status = 'RE';
+            } else if (runResult.graderExitCode !== 0 && runResult.graderExitCode !== null) {
+                status = 'WA';
+            } else if (runResult.contestantExitCode === 0 && runResult.graderExitCode === 0) {
+                status = 'AC';
+            } else {
+                status = 'RE';
+            }
+
+            const output = runResult.output || '';
+            return {
+                status,
+                output: this.truncateOutput(output),
+                rawOutput: output,
+                expectedOutput: '',
+                stderr: runResult.stderr || '',
+                outputSizeBytes: this.getOutputSizeBytes(output),
+                outputExpanded: false,
+                time: runResult.time,
+                memoryBytes: runResult.memoryBytes,
+                usedSpj: false,
+                spjOutput: '',
+                interactive: true,
+                contestantExitCode: runResult.contestantExitCode,
+                graderExitCode: runResult.graderExitCode
+            };
+        } finally {
+            try {
+                await window.electronAPI.deleteTempFile(inputFilePath);
+            } catch (_) { }
+        }
+    }
+
+    async executeSampleWithCompiledProgram(sample, executablePath, spjExecutablePath = null, graderExecutablePath = null) {
+        const useInteractive = !!this.globalSettings.useInteractive;
+        if (useInteractive) {
+            return await this.executeInteractiveSample(sample, executablePath, graderExecutablePath);
+        }
+
         const useTestlib = this.globalSettings.useTestlib;
         const spjPath = this.globalSettings.spjPath;
 
@@ -2142,6 +2309,7 @@ class SampleTester {
             } else {
                 inputData = sample.input || '';
             }
+
 
             let expectedOutput = '';
             if (sample.outputType === 'file') {
@@ -2238,9 +2406,11 @@ class SampleTester {
     }
 
     async executeSample(sample, statusCallback = null) {
+        const useInteractive = !!this.globalSettings.useInteractive;
         const useTestlib = sample.useTestlib !== undefined ? sample.useTestlib : this.globalSettings.useTestlib;
 
         const spjPath = sample.spjPath || this.globalSettings.spjPath;
+        const graderPath = this.globalSettings.graderPath;
 
         logInfo('[样例测试器] 执行样例调试信息:');
         logInfo('- 样例ID:', sample.id);
@@ -2265,9 +2435,32 @@ class SampleTester {
 
         let executablePath = compileResult.executablePath;
         let spjExecutablePath = null;
+        let graderExecutablePath = null;
 
         try {
-            if (useTestlib && spjPath) {
+            if (useInteractive) {
+                if (!graderPath) {
+                    return {
+                        status: 'CE',
+                        output: window.i18n ? window.i18n.t('tester.graderPathEmpty') : 'grader.cpp 文件路径为空',
+                        time: 0
+                    };
+                }
+
+                const graderCompileResult = await this.compileGraderFile(graderPath);
+                if (!graderCompileResult.success) {
+                    return {
+                        status: 'CE',
+                        output: 'grader 编译失败: ' + (graderCompileResult.stderr || graderCompileResult.stdout || (window.i18n ? window.i18n.t('tester.compileFail') : '编译失败')),
+                        time: 0
+                    };
+                }
+                if (graderCompileResult.cached) {
+                    this.notifyCompileCacheHit('grader');
+                    if (statusCallback) statusCallback('cached-grader');
+                }
+                graderExecutablePath = graderCompileResult.executablePath;
+            } else if (useTestlib && spjPath) {
                 logInfo('[样例测试器] 开始编译SPJ程序:', spjPath);
                 const spjCompileResult = await this.compileSpjFile(spjPath);
 
@@ -2297,6 +2490,11 @@ class SampleTester {
                 }
             } else {
                 inputData = sample.input || '';
+            }
+
+            if (useInteractive) {
+                if (statusCallback) statusCallback('running');
+                return await this.executeInteractiveSample(sample, executablePath, graderExecutablePath);
             }
 
             let expectedOutput = '';
@@ -2444,6 +2642,23 @@ class SampleTester {
             testlibIncludePath || '',
             spjContent || ''
         ].join('\n<oicpp-spj-cache>\n');
+        return this.computeStableHash(payload);
+    }
+
+    buildGraderCompileCacheKey({
+        graderPath,
+        graderContent,
+        compilerPath,
+        compilerArgs,
+        testlibIncludePath
+    }) {
+        const payload = [
+            graderPath || '',
+            compilerPath || '',
+            compilerArgs || '',
+            testlibIncludePath || '',
+            graderContent || ''
+        ].join('\n<oicpp-grader-cache>\n');
         return this.computeStableHash(payload);
     }
 
@@ -3121,6 +3336,113 @@ class SampleTester {
         return result;
     }
 
+    async compileGraderFile(graderPath) {
+        if (!graderPath) {
+            throw new Error(window.i18n ? window.i18n.t('tester.graderPathEmpty') : 'grader.cpp 文件路径为空');
+        }
+
+        let graderContent;
+        try {
+            graderContent = await window.electronAPI.readFileContent(graderPath);
+        } catch (error) {
+            throw new Error('无法读取 grader.cpp 文件: ' + error.message);
+        }
+
+        if (!graderContent.trim()) {
+            throw new Error(window.i18n ? window.i18n.t('tester.graderContentEmpty') : 'grader.cpp 文件内容为空');
+        }
+
+        const settings = await window.electronAPI.getAllSettings();
+        const compilerPath = settings.compilerPath;
+        let compilerArgs = settings.compilerArgs || '-std=c++14 -O2';
+        let testlibIncludePath = '';
+
+        if (!compilerPath) {
+            throw new Error(window.i18n ? window.i18n.t('tester.setCompilerFirst') : '请先设置编译器路径');
+        }
+
+        if (this.globalSettings.useTestlib) {
+            if (settings.testlibPath) {
+                const testlibPathInfo = await window.electronAPI.getPathInfo(settings.testlibPath);
+                testlibIncludePath = testlibPathInfo.dirname;
+            } else {
+                const pathInfo = await window.electronAPI.getPathInfo(compilerPath);
+                testlibIncludePath = await window.electronAPI.pathJoin(pathInfo.dirname, '..', 'include');
+            }
+            compilerArgs += ' -I"' + testlibIncludePath + '"';
+        }
+
+        const cacheKey = this.buildGraderCompileCacheKey({
+            graderPath,
+            graderContent,
+            compilerPath,
+            compilerArgs,
+            testlibIncludePath
+        });
+
+        if (
+            this.graderCompileCache.key === cacheKey &&
+            this.graderCompileCache.executablePath &&
+            await window.electronAPI.checkFileExists(this.graderCompileCache.executablePath)
+        ) {
+            return {
+                success: true,
+                cached: true,
+                executablePath: this.graderCompileCache.executablePath,
+                stdout: '',
+                stderr: '',
+                warnings: [],
+                errors: [],
+                diagnostics: []
+            };
+        }
+
+        const isWin = (typeof window !== 'undefined' && window.process && window.process.platform === 'win32');
+        const tempDir = await window.electronAPI.pathJoin(await window.electronAPI.getUserHome(), '.oicpp', 'codeTemp');
+        await window.electronAPI.ensureDirectory(tempDir);
+        const executableFile = await window.electronAPI.pathJoin(
+            tempDir,
+            'grader_' + cacheKey + (isWin ? '.exe' : '')
+        );
+        const graderPathInfo = await window.electronAPI.getPathInfo(graderPath);
+
+        const result = await window.electronAPI.compileFile({
+            inputFile: graderPath,
+            outputFile: executableFile,
+            compilerPath,
+            compilerArgs,
+            workingDirectory: graderPathInfo?.dirname || tempDir
+        });
+
+        if (result.success) {
+            if (
+                this.graderCompileCache.executablePath &&
+                this.graderCompileCache.executablePath !== executableFile
+            ) {
+                try {
+                    await window.electronAPI.deleteTempFile(this.graderCompileCache.executablePath);
+                } catch (_) { }
+            }
+
+            this.graderCompileCache = {
+                key: cacheKey,
+                executablePath: executableFile
+            };
+            result.executablePath = executableFile;
+        } else {
+            this.graderCompileCache = {
+                key: null,
+                executablePath: null
+            };
+        }
+
+        if (!result.success) {
+            this.showCompileOutputForResult('grader 编译', result);
+        }
+
+        return result;
+    }
+
     async judgeWithSpj(spjExecutablePath, inputData, actualOutput, expectedOutput) {
         try {
             const suffix = `${Date.now()}_${++this.spjTempSequence}`;
@@ -3204,7 +3526,10 @@ class SampleTester {
 
     updateGlobalSettingsUI() {
         const globalUseTestlib = document.getElementById('global-use-testlib');
+        const globalUseInteractive = document.getElementById('global-use-interactive');
         const globalSpjPath = document.getElementById('global-spj-path');
+        const globalGraderPath = document.getElementById('global-grader-path');
+        const globalGraderGroup = document.getElementById('global-grader-group');
         const globalFreopenInputFile = document.getElementById('global-freopen-input-file');
         const globalFreopenOutputFile = document.getElementById('global-freopen-output-file');
         const globalTimeLimit = document.getElementById('global-time-limit');
@@ -3212,6 +3537,16 @@ class SampleTester {
 
         if (globalUseTestlib) {
             globalUseTestlib.checked = this.globalSettings.useTestlib;
+        }
+        if (globalUseInteractive) {
+            globalUseInteractive.checked = !!this.globalSettings.useInteractive;
+        }
+        if (globalGraderGroup) {
+            globalGraderGroup.style.display = this.globalSettings.useInteractive ? '' : 'none';
+        }
+        if (globalGraderPath) {
+            globalGraderPath.value = this.globalSettings.graderPath || '';
+            this.updateGraderFileDisplay(this.globalSettings.graderPath || '');
         }
         if (globalSpjPath) {
             globalSpjPath.value = this.globalSettings.spjPath || '';
@@ -3276,6 +3611,50 @@ class SampleTester {
         this.saveGlobalSettings();
     }
 
+    async selectGlobalGraderFile() {
+        try {
+            const result = await window.electronAPI.showOpenDialog({
+                title: '选择 grader.cpp 文件',
+                filters: [
+                    { name: 'C++ Files', extensions: ['cpp', 'cc', 'cxx'] },
+                    { name: 'All Files', extensions: ['*'] }
+                ],
+                properties: ['openFile']
+            });
+
+            if (!result.canceled && result.filePaths.length > 0) {
+                const graderPath = result.filePaths[0];
+                this.globalSettings.graderPath = graderPath;
+                document.getElementById('global-grader-path').value = graderPath;
+                this.updateGraderFileDisplay(graderPath);
+                this.saveGlobalSettings();
+            }
+        } catch (error) {
+            logError('选择 grader 文件失败:', error);
+        }
+    }
+
+    clearGlobalGraderFile() {
+        this.globalSettings.graderPath = '';
+        document.getElementById('global-grader-path').value = '';
+        this.updateGraderFileDisplay('');
+        this.saveGlobalSettings();
+    }
+
+    updateGraderFileDisplay(graderPath) {
+        const display = document.getElementById('grader-file-display');
+        const fileName = document.getElementById('grader-file-name');
+
+        if (!display || !fileName) return;
+        if (graderPath) {
+            fileName.textContent = graderPath.split(/[\\\\\\/]/).pop();
+            fileName.title = graderPath;
+            display.style.display = 'flex';
+        } else {
+            display.style.display = 'none';
+        }
+    }
+
     updateSpjFileDisplay(spjPath) {
         const spjFileDisplay = document.getElementById('spj-file-display');
         const spjFileName = document.getElementById('spj-file-name');
@@ -3302,7 +3681,9 @@ class SampleTester {
         } else {
             this.globalSettings = {
                 useTestlib: false,
+                useInteractive: false,
                 spjPath: '',
+                graderPath: '',
                 freopenInputFile: '',
                 freopenOutputFile: '',
                 defaultTimeLimit: 1000,
@@ -3314,6 +3695,8 @@ class SampleTester {
         this.globalSettings.freopenOutputFile = this.normalizeFreopenFileName(this.globalSettings.freopenOutputFile || '');
         this.globalSettings.defaultTimeLimit = this.sanitizeTimeLimit(this.globalSettings.defaultTimeLimit, 1000);
         this.globalSettings.defaultMemoryLimit = this.sanitizeMemoryLimit(this.globalSettings.defaultMemoryLimit, 0);
+        this.globalSettings.useInteractive = !!this.globalSettings.useInteractive;
+        this.globalSettings.graderPath = typeof this.globalSettings.graderPath === 'string' ? this.globalSettings.graderPath : '';
     }
 }
 

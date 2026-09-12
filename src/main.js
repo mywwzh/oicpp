@@ -4948,6 +4948,281 @@ function setupIPC() {
         });
     });
 
+    ipcMain.handle('run-interactive', async (event, options = {}) => {
+        const { spawn } = require('child_process');
+        const contestantPath = options?.contestantExecutablePath;
+        const graderPath = options?.graderExecutablePath;
+        const inputFilePath = options?.inputFilePath;
+        const timeLimit = Number(options?.timeLimit);
+        const memoryLimit = Number(options?.memoryLimit);
+        if (!contestantPath || !graderPath || !inputFilePath || !fs.existsSync(inputFilePath)) {
+            throw new Error('交互题运行参数不完整');
+        }
+
+        const runtimeEnv = { ...process.env };
+        const compilerPath = settings.compilerPath || '';
+        if (compilerPath && fs.existsSync(compilerPath)) {
+            const compilerDir = path.dirname(compilerPath);
+            const compilerRoot = path.dirname(compilerDir);
+            const compilerPaths = [
+                compilerDir,
+                path.join(compilerRoot, 'bin'),
+                path.join(compilerRoot, 'mingw64', 'bin'),
+                path.join(compilerRoot, 'mingw32', 'bin')
+            ].filter(p => fs.existsSync(p));
+            if (compilerPaths.length > 0) {
+                runtimeEnv.PATH = [...compilerPaths, process.env.PATH].join(path.delimiter);
+            }
+        }
+
+        const spawnChild = (target, args, cwd) => spawn(
+            path.resolve(target),
+            Array.isArray(args) ? args : [],
+            {
+                stdio: ['pipe', 'pipe', 'pipe'],
+                env: {
+                    ...runtimeEnv,
+                    OICPP_INTERACTIVE_INPUT: inputFilePath,
+                    OICPP_CONTESTANT_EXECUTABLE: contestantPath
+                },
+                cwd: cwd || undefined
+            }
+        );
+
+        return new Promise((resolve) => {
+            let contestant;
+            let grader;
+            try {
+                contestant = spawnChild(
+                    contestantPath,
+                    [],
+                    options?.contestantWorkingDirectory || path.dirname(path.resolve(contestantPath))
+                );
+                grader = spawnChild(
+                    graderPath,
+                    [inputFilePath],
+                    options?.graderWorkingDirectory || path.dirname(path.resolve(graderPath))
+                );
+            } catch (error) {
+                resolve({
+                    output: error?.message || String(error),
+                    time: 0,
+                    timeout: false,
+                    exitCode: -1,
+                    contestantExitCode: -1,
+                    graderExitCode: -1,
+                    stdout: '',
+                    stderr: error?.message || String(error),
+                    outputLimitExceeded: false,
+                    memoryLimitExceeded: false,
+                    memoryBytes: 0
+                });
+                return;
+            }
+
+            const contestantOut = [];
+            const contestantErr = [];
+            const graderOut = [];
+            const graderErr = [];
+            const outputLimitBytes = 256 * 1024 * 1024;
+            let capturedBytes = 0;
+            let observedBytes = 0;
+            let outputLimitExceeded = false;
+            let memoryLimitExceeded = false;
+            let peakMemoryBytes = 0;
+            let timeout = false;
+            let contestantClosed = false;
+            let graderClosed = false;
+            let contestantExitCode = null;
+            let graderExitCode = null;
+            let memoryTimer = null;
+            let memoryPromise = null;
+            let timeoutTimer = null;
+            let killTimer = null;
+            let settled = false;
+            let processError = '';
+            const startTime = performance.now();
+
+            const closeInput = stream => {
+                try {
+                    if (stream && !stream.destroyed && !stream.writableEnded) stream.end();
+                } catch (_) { }
+            };
+            const kill = child => {
+                try {
+                    if (child && !child.killed && child.exitCode === null) child.kill('SIGKILL');
+                } catch (_) { }
+            };
+            const terminate = () => {
+                closeInput(contestant?.stdin);
+                closeInput(grader?.stdin);
+                kill(contestant);
+                kill(grader);
+            };
+            const clearTimers = () => {
+                if (memoryTimer) clearInterval(memoryTimer);
+                if (timeoutTimer) clearTimeout(timeoutTimer);
+                if (killTimer) clearTimeout(killTimer);
+                memoryTimer = null;
+                timeoutTimer = null;
+                killTimer = null;
+            };
+
+            const readMemory = () => new Promise((done) => {
+                const pid = contestant?.pid;
+                if (!pid) return done(0);
+                if (process.platform === 'linux') {
+                    fs.readFile('/proc/' + pid + '/status', 'utf8', (error, content) => {
+                        if (error) return done(0);
+                        const match = content.match(/^VmRSS:\s+(\d+)\s+kB$/m);
+                        done(match ? Number(match[1]) * 1024 : 0);
+                    });
+                    return;
+                }
+                if (process.platform === 'win32') {
+                    const tasklist = spawn('tasklist', ['/FI', 'PID eq ' + pid, '/FO', 'CSV', '/NH'], { windowsHide: true });
+                    let output = '';
+                    tasklist.stdout.on('data', chunk => { output += chunk.toString(); });
+                    tasklist.on('close', () => {
+                        const match = output.match(/([\d,.]+)\s*K/i);
+                        done(match ? Number(match[1].replace(/[^\d]/g, '')) * 1024 : 0);
+                    });
+                    tasklist.on('error', () => done(0));
+                    return;
+                }
+                const ps = spawn('ps', ['-o', 'rss=', '-p', String(pid)]);
+                let output = '';
+                ps.stdout.on('data', chunk => { output += chunk.toString(); });
+                ps.on('close', () => done((Number(output.trim()) || 0) * 1024));
+                ps.on('error', () => done(0));
+            });
+
+            const memoryLimitBytes = Number.isFinite(memoryLimit) && memoryLimit > 0
+                ? memoryLimit * 1024 * 1024
+                : 0;
+            const sampleMemory = () => {
+                if (memoryPromise) return memoryPromise;
+                memoryPromise = readMemory().then((bytes) => {
+                    peakMemoryBytes = Math.max(peakMemoryBytes, bytes);
+                    if (memoryLimitBytes > 0 && bytes > memoryLimitBytes && !memoryLimitExceeded) {
+                        memoryLimitExceeded = true;
+                        if (timeoutTimer) clearTimeout(timeoutTimer);
+                        if (killTimer) clearTimeout(killTimer);
+                        terminate();
+                    }
+                }).finally(() => {
+                    memoryPromise = null;
+                });
+                return memoryPromise;
+            };
+
+            const append = (chunk, target) => {
+                const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+                observedBytes += buffer.length;
+                if (outputLimitExceeded) return;
+                const available = outputLimitBytes - capturedBytes;
+                if (available <= 0) {
+                    outputLimitExceeded = true;
+                    terminate();
+                    return;
+                }
+                target.push(buffer.slice(0, available));
+                capturedBytes += Math.min(buffer.length, available);
+                if (buffer.length > available) {
+                    outputLimitExceeded = true;
+                    terminate();
+                }
+            };
+            const forward = (data, targetProcess, targetChunks) => {
+                append(data, targetChunks);
+                if (outputLimitExceeded) return;
+                try {
+                    if (targetProcess?.stdin && !targetProcess.stdin.destroyed && !targetProcess.stdin.writableEnded) {
+                        targetProcess.stdin.write(data);
+                    }
+                } catch (_) { }
+            };
+            const decode = chunks => decodeBufferAuto(Buffer.concat(chunks));
+
+            const finish = async () => {
+                if (settled || !contestantClosed || !graderClosed) return;
+                settled = true;
+                clearTimers();
+                if (memoryPromise) {
+                    try { await memoryPromise; } catch (_) { }
+                }
+                const contestantStdout = decode(contestantOut);
+                const contestantStderr = decode(contestantErr);
+                const graderStdout = decode(graderOut);
+                const graderStderr = decode(graderErr);
+                const parts = [];
+                if (graderStdout) parts.push('[grader stdout]\n' + graderStdout);
+                if (contestantStdout) parts.push('[contestant stdout]\n' + contestantStdout);
+                if (graderStderr) parts.push('[grader stderr]\n' + graderStderr);
+                if (contestantStderr) parts.push('[contestant stderr]\n' + contestantStderr);
+                if (processError) parts.push(processError);
+                const elapsed = Math.round(performance.now() - startTime);
+                resolve({
+                    output: parts.join('\n'),
+                    time: elapsed,
+                    timeout: outputLimitExceeded || memoryLimitExceeded ? false : timeout,
+                    exitCode: contestantExitCode,
+                    contestantExitCode,
+                    graderExitCode,
+                    stdout: contestantStdout,
+                    stderr: [graderStderr, contestantStderr].filter(Boolean).join('\n'),
+                    graderStdout,
+                    graderStderr,
+                    outputLimitExceeded,
+                    outputLimitBytes,
+                    capturedOutputBytes: capturedBytes,
+                    observedOutputBytes: observedBytes,
+                    memoryLimitExceeded,
+                    memoryLimitBytes,
+                    memoryBytes: peakMemoryBytes
+                });
+            };
+
+            if (Number.isFinite(timeLimit) && timeLimit > 0) {
+                timeoutTimer = setTimeout(() => { timeout = true; }, timeLimit);
+                killTimer = setTimeout(terminate, Math.floor(timeLimit * 1.1));
+            }
+
+            contestant.stdout.on('data', data => forward(data, grader, contestantOut));
+            contestant.stderr.on('data', data => append(data, contestantErr));
+            grader.stdout.on('data', data => forward(data, contestant, graderOut));
+            grader.stderr.on('data', data => append(data, graderErr));
+            contestant.stdin.on('error', () => { });
+            grader.stdin.on('error', () => { });
+            contestant.on('error', error => {
+                processError = error?.message || String(error);
+                terminate();
+            });
+            grader.on('error', error => {
+                processError = error?.message || String(error);
+                terminate();
+            });
+            contestant.on('close', code => {
+                contestantClosed = true;
+                contestantExitCode = code;
+                closeInput(grader.stdin);
+                finish();
+            });
+            grader.on('close', code => {
+                graderClosed = true;
+                graderExitCode = code;
+                closeInput(contestant.stdin);
+                if (code !== 0 && !timeout && !memoryLimitExceeded && !outputLimitExceeded) {
+                    kill(contestant);
+                }
+                finish();
+            });
+
+            memoryTimer = setInterval(sampleMemory, 200);
+            sampleMemory();
+        });
+    });
+
     ipcMain.handle('check-file-exists', async (event, filePath) => {
         try {
             await fs.promises.access(filePath, fs.constants.F_OK);
