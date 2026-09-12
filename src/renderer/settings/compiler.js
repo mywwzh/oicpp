@@ -1196,13 +1196,15 @@ class CompilerSettings {
                     : `https://oicpp.mywwzh.top${testlib.downloadUrl}`;
                 
                 const versionLabel = window.i18n ? window.i18n.t('compiler.versionSelected').split(' ')[0] : 'Version:';
-                const sizeLabel = window.i18n ? window.i18n.t('compiler.testlibSize', { size: '' }) : 'Size:';
+                const sizeLabel = window.i18n
+                    ? window.i18n.t('compiler.testlibSize', { size: testlib.file_size_mb })
+                    : 'Size: ' + testlib.file_size_mb + 'MB';
                 testlibDiv.innerHTML = `
                     <div class="compiler-info">
                         <h4>${testlib.name}</h4>
                         <p>${versionLabel} ${testlib.version}</p>
                         <p>${testlib.description}</p>
-                        <span class="platform">${sizeLabel} ${testlib.file_size_mb}MB</span>
+                        <span class="platform">${sizeLabel}</span>
                     </div>
                     <div class="compiler-actions">
                         ${isSelected ? 
