@@ -554,7 +554,11 @@
     "expandConfirmMsg": "The current output is approximately {size} MB.<br><br>Large output may make the interface or process unresponsive. Expand the full output anyway?",
     "expandConfirmTitle": "Confirm Full Output Expansion",
     "spjPathEmpty": "The SPJ file path is empty",
-    "spjContentEmpty": "The SPJ file content is empty"
+    "spjContentEmpty": "The SPJ file content is empty",
+    "interactiveMode": "Interactive problem mode",
+    "grader": "grader.cpp",
+    "graderPathEmpty": "The grader.cpp path is empty",
+    "graderContentEmpty": "The grader.cpp file is empty"
   },
   "compare": {
     "title": "Code Comparer",

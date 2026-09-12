@@ -292,6 +292,27 @@
                                     <span class="setting-label" data-i18n="menu.useTestlib">全局使用 testlib</span>
                                 </label>
                             </div>
+                            <div class="setting-group">
+                                <label class="setting-checkbox">
+                                    <input type="checkbox" id="global-use-interactive" onchange="sampleTester.updateGlobalSetting('useInteractive', this.checked)">
+                                    <span class="setting-label" data-i18n="tester.interactiveMode">交互题模式</span>
+                                </label>
+                            </div>
+                            <div class="setting-group" id="global-grader-group" style="display: none;">
+                                <div class="spj-header-row">
+                                    <span class="setting-label" data-i18n="tester.grader">grader.cpp</span>
+                                    <a href="#" class="spj-browse-link" id="browse-global-grader-btn" data-i18n="menu.browse" title="选择 grader.cpp 文件">
+                                        浏览
+                                    </a>
+                                </div>
+                                <div class="spj-file-display" id="grader-file-display" style="display: none;">
+                                    <span class="spj-file-name" id="grader-file-name"></span>
+                                    <a href="#" class="spj-clear-link" onclick="sampleTester.clearGlobalGraderFile(); return false;" title="清除 grader.cpp 文件">
+                                        删除
+                                    </a>
+                                </div>
+                                <input type="hidden" id="global-grader-path">
+                            </div>
                             <div class="setting-group" id="global-spj-group">
                                 <div class="spj-header-row">
                                     <span class="setting-label" data-i18n="menu.spj">SPJ</span>
