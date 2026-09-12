@@ -496,6 +496,7 @@ class CompilerSettings {
                         ${isDownloaded ? '<span class="status downloaded-status">' + (window.i18n ? window.i18n.t('compiler.downloaded') : 'Downloaded') + '</span>' : ''}
                     </div>
                 `;
+
                 
                 this.addCompilerItemListeners(compilerDiv, compiler);
                 
@@ -508,9 +509,16 @@ class CompilerSettings {
                 <div class="error-message">
                     <p>${window.i18n ? window.i18n.t('compiler.networkError') : 'Network error: could not fetch compiler list'}</p>
                     <p class="error-detail">${error.message}</p>
-                    <button class="retry-btn" onclick="this.loadAvailableCompilers()" data-i18n="compiler.retry">Retry</button>
+                    <button class="retry-btn" data-i18n="compiler.retry">Retry</button>
                 </div>
             `;
+            const retryBtn = compilerList.querySelector('.retry-btn');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.loadAvailableCompilers();
+                });
+            }
         }
     }
 
@@ -1206,6 +1214,7 @@ class CompilerSettings {
                         ${isDownloaded ? '<span class="status downloaded-status">' + (window.i18n ? window.i18n.t('compiler.downloaded') : 'Downloaded') + '</span>' : ''}
                     </div>
                 `;
+
                 
                 this.addTestlibItemListeners(testlibDiv, testlib);
                 testlibList.appendChild(testlibDiv);
@@ -1217,9 +1226,16 @@ class CompilerSettings {
                 <div class="error-message">
                     <p>${window.i18n ? window.i18n.t('compiler.networkError') : 'Network error: could not fetch list'}</p>
                     <p class="error-detail">${error.message}</p>
-                    <button class="retry-btn" onclick="this.loadAvailableTestlibs()" data-i18n="compiler.retry">Retry</button>
+                    <button class="retry-btn" data-i18n="compiler.retry">Retry</button>
                 </div>
             `;
+            const retryBtn = testlibList.querySelector('.retry-btn');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.loadAvailableTestlibs();
+                });
+            }
         }
     }
     
