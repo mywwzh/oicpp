@@ -1121,14 +1121,15 @@ class EditorSettings {
         const opacityValue = document.getElementById('editor-opacity-value');
         if (opacityInput && opacityValue) {
             opacityInput.addEventListener('input', (e) => {
-                const val = parseFloat(e.target.value);
-                opacityValue.textContent = Math.round(val * 100) + '%';
+                const transparency = Math.max(0, Math.min(0.8, parseFloat(e.target.value) || 0));
+                const windowOpacity = 1 - transparency;
+                opacityValue.textContent = Math.round(transparency * 100) + '%';
                 // 实时预览透明度
                 if (window.electronAPI && window.electronAPI.updateSettings) {
                     // 简单的防抖
                     clearTimeout(this.opacityTimeout);
                     this.opacityTimeout = setTimeout(() => {
-                        window.electronAPI.updateSettings({ windowOpacity: val });
+                        window.electronAPI.updateSettings({ windowOpacity });
                     }, 100);
                 }
             });
@@ -1698,7 +1699,8 @@ class EditorSettings {
 
         const opacityInput = document.getElementById('editor-opacity');
         if (opacityInput) {
-            newSettings.windowOpacity = parseFloat(opacityInput.value);
+            const transparency = Math.max(0, Math.min(0.8, parseFloat(opacityInput.value) || 0));
+            newSettings.windowOpacity = 1 - transparency;
         }
 
         const glassEffectCheckbox = document.getElementById('editor-glass-effect-enabled');
@@ -1993,8 +1995,9 @@ class EditorSettings {
 
         if (opacityInput && opacityValue) {
             const opacity = typeof this.settings.windowOpacity === 'number' ? this.settings.windowOpacity : 1.0;
-            opacityInput.value = opacity;
-            opacityValue.textContent = Math.round(opacity * 100) + '%';
+            const transparency = Math.max(0, Math.min(0.8, 1 - opacity));
+            opacityInput.value = transparency;
+            opacityValue.textContent = Math.round(transparency * 100) + '%';
         }
 
         if (glassEffectCheckbox) {
