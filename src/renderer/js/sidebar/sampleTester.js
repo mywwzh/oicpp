@@ -23,7 +23,8 @@ class SampleTester {
             spjPath: '',
             freopenInputFile: '',
             freopenOutputFile: '',
-            defaultTimeLimit: 1000
+            defaultTimeLimit: 1000,
+            defaultMemoryLimit: 0
         };
         this.globalSettingsPanelHeight = this.loadGlobalSettingsPanelHeight();
 
@@ -86,6 +87,7 @@ class SampleTester {
                                     input: s.input || '',
                                     output: s.output || '',
                                     timeLimit: s.timeLimit && Number.isInteger(s.timeLimit) ? s.timeLimit : 1000,
+                                    memoryLimit: this.sanitizeMemoryLimit(this.globalSettings.defaultMemoryLimit, 0),
                                     showInput: true,
                                     showOutput: true,
                                     inputType: 'userinput',
@@ -322,6 +324,15 @@ class SampleTester {
             });
         }
 
+        const globalMemoryLimit = document.getElementById('global-memory-limit');
+        if (globalMemoryLimit) {
+            globalMemoryLimit.addEventListener('change', (e) => {
+                const parsed = this.sanitizeMemoryLimit(e.target.value, this.globalSettings.defaultMemoryLimit);
+                e.target.value = parsed;
+                this.updateGlobalSetting('defaultMemoryLimit', parsed);
+            });
+        }
+
         const applyFileIoAllBtn = document.getElementById('apply-fileio-all-btn');
         if (applyFileIoAllBtn) {
             applyFileIoAllBtn.addEventListener('click', () => {
@@ -333,6 +344,13 @@ class SampleTester {
         if (applyTimeLimitAllBtn) {
             applyTimeLimitAllBtn.addEventListener('click', () => {
                 this.applyTimeLimitToAllSamples();
+            });
+        }
+
+        const applyMemoryLimitAllBtn = document.getElementById('apply-memory-limit-all-btn');
+        if (applyMemoryLimitAllBtn) {
+            applyMemoryLimitAllBtn.addEventListener('click', () => {
+                this.applyMemoryLimitToAllSamples();
             });
         }
 
@@ -641,6 +659,7 @@ class SampleTester {
                     if (typeof sample.freopenOutputFile !== 'string') {
                         sample.freopenOutputFile = '';
                     }
+                    sample.memoryLimit = this.sanitizeMemoryLimit(sample.memoryLimit, 0);
 
                     if (sample.hasOwnProperty('useTestlib')) {
                         delete sample.useTestlib;
@@ -770,6 +789,7 @@ class SampleTester {
             TLE: 0,
             RE: 0,
             CE: 0,
+            MLE: 0,
             OLE: 0,
             PENDING: 0
         };
@@ -792,7 +812,7 @@ class SampleTester {
                 overallLabel = 'AC';
                 overallClass = 'status-ac';
             } else {
-                const priority = ['CE', 'RE', 'TLE', 'WA', 'OLE', 'AC'];
+                const priority = ['CE', 'MLE', 'RE', 'TLE', 'WA', 'OLE', 'AC'];
                 const found = priority.find(s => counts[s] > 0);
                 if (found) {
                     overallLabel = found;
@@ -803,7 +823,7 @@ class SampleTester {
             overallLabel = window.i18n ? window.i18n.t('tester.running') : '运行中';
         }
 
-        const badgeOrder = ['AC', 'WA', 'TLE', 'RE', 'CE', 'OLE', 'PENDING'];
+        const badgeOrder = ['AC', 'WA', 'MLE', 'TLE', 'RE', 'CE', 'OLE', 'PENDING'];
         const badges = badgeOrder
             .filter(status => counts[status] > 0)
             .map(status => {
@@ -990,6 +1010,12 @@ class SampleTester {
                         <span class="setting-unit">ms</span>
                     </div>
                     <div class="setting-group">
+                        <span class="setting-label"><span data-i18n="tester.memoryLimit">内存:</span></span>
+                        <input type="number" class="setting-input" min="0" value="${this.sanitizeMemoryLimit(sample.memoryLimit, 0)}"
+                               onchange="sampleTester.updateSampleSetting(${sample.id}, 'memoryLimit', this.value)">
+                        <span class="setting-unit" data-i18n="tester.mb">MB</span>
+                    </div>
+                    <div class="setting-group">
                         <span class="setting-label"><span data-i18n="tester.inputFile">输入文件:</span></span>
                         <input type="text" class="setting-input setting-input-wide" value="${sample.freopenInputFile || ''}"
                                data-i18n-placeholder="tester.freopenInputPlaceholder" placeholder="如 sample.in"
@@ -1010,7 +1036,7 @@ class SampleTester {
 
     getSampleStatusKey(sample) {
         const status = sample?.result?.status;
-        const knownStatuses = ['AC', 'WA', 'TLE', 'RE', 'CE', 'OLE'];
+        const knownStatuses = ['AC', 'WA', 'MLE', 'TLE', 'RE', 'CE', 'OLE'];
         if (status && knownStatuses.includes(status)) {
             return status;
         }
@@ -1395,6 +1421,7 @@ class SampleTester {
                         input: inputFilePath,
                         output: outputFilePath,
                         timeLimit: 1000,
+                        memoryLimit: this.sanitizeMemoryLimit(this.globalSettings.defaultMemoryLimit, 0),
                         freopenInputFile: freopenOptions.freopenInputFile || '',
                         freopenOutputFile: freopenOptions.freopenOutputFile || '',
                         useTestlib: false,
@@ -1409,6 +1436,7 @@ class SampleTester {
                         input: pair.input?.content || '',
                         output: pair.output?.content || '',
                         timeLimit: 1000,
+                        memoryLimit: this.sanitizeMemoryLimit(this.globalSettings.defaultMemoryLimit, 0),
                         freopenInputFile: freopenOptions.freopenInputFile || '',
                         freopenOutputFile: freopenOptions.freopenOutputFile || '',
                         useTestlib: false,
@@ -1445,6 +1473,7 @@ class SampleTester {
                 input: '',
                 output: '',
                 timeLimit: this.sanitizeTimeLimit(this.globalSettings.defaultTimeLimit, 1000),
+                memoryLimit: this.sanitizeMemoryLimit(this.globalSettings.defaultMemoryLimit, 0),
                 freopenInputFile: this.normalizeFreopenFileName(this.globalSettings.freopenInputFile || ''),
                 freopenOutputFile: this.normalizeFreopenFileName(this.globalSettings.freopenOutputFile || ''),
                 useTestlib: false,
@@ -1523,6 +1552,8 @@ class SampleTester {
         if (sample) {
             if (setting === 'timeLimit') {
                 sample[setting] = this.sanitizeTimeLimit(value, sample.timeLimit || this.globalSettings.defaultTimeLimit || 1000);
+            } else if (setting === 'memoryLimit') {
+                sample[setting] = this.sanitizeMemoryLimit(value, sample.memoryLimit || 0);
             } else if (setting === 'freopenInputFile' || setting === 'freopenOutputFile') {
                 sample[setting] = this.normalizeFreopenFileName(value);
             } else if (setting === 'useTestlib') {
@@ -1541,6 +1572,17 @@ class SampleTester {
             return safeFallback;
         }
         return Math.floor(parsed);
+    }
+
+    sanitizeMemoryLimit(value, fallback = 0) {
+        const parsed = Number(value);
+        const safeFallback = Number.isFinite(Number(fallback)) && Number(fallback) >= 0
+            ? Math.round(Number(fallback) * 100) / 100
+            : 0;
+        if (!Number.isFinite(parsed) || parsed < 0) {
+            return safeFallback;
+        }
+        return Math.round(parsed * 100) / 100;
     }
 
     applyFreopenToAllSamples() {
@@ -1574,6 +1616,23 @@ class SampleTester {
 
         this.samples.forEach(sample => {
             sample.timeLimit = timeLimit;
+        });
+
+        this.saveSamples();
+        this.updateUI();
+        this.restoreExpandedSampleIds(expandedSampleIds);
+    }
+
+    applyMemoryLimitToAllSamples() {
+        if (this.samples.length === 0) return;
+
+        const expandedSampleIds = this.getExpandedSampleIds();
+
+        const memoryLimit = this.sanitizeMemoryLimit(this.globalSettings.defaultMemoryLimit, 0);
+        this.globalSettings.defaultMemoryLimit = memoryLimit;
+
+        this.samples.forEach(sample => {
+            sample.memoryLimit = memoryLimit;
         });
 
         this.saveSamples();
@@ -2102,7 +2161,7 @@ class SampleTester {
                 const runOptions = freopenContext.workingDirectory
                     ? { executablePath, workingDirectory: freopenContext.workingDirectory }
                     : executablePath;
-                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit);
+                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit, sample.memoryLimit);
                 actualOutput = await this.resolveProgramOutput(runResult, freopenContext);
             } finally {
                 await this.cleanupFreopenContext(freopenContext);
@@ -2122,6 +2181,9 @@ class SampleTester {
                         observedBytes: runResult.observedOutputBytes
                     });
                 } catch (_) { }
+            } else if (runResult.memoryLimitExceeded) {
+                status = 'MLE';
+                try { logWarn('[样例测试器][MLE]', { sampleId: sample.id, durationMs: runResult.time, limitMb: sample.memoryLimit, memoryBytes: runResult.memoryBytes }); } catch (_) { }
             } else if (runResult.timeout) {
                 status = 'TLE';
                 try { logInfo('[样例测试器][TLE]', { sampleId: sample.id, durationMs: runResult.time, limitMs: sample.timeLimit }); } catch (_) { }
@@ -2258,7 +2320,7 @@ class SampleTester {
                 const runOptions = freopenContext.workingDirectory
                     ? { executablePath, workingDirectory: freopenContext.workingDirectory }
                     : executablePath;
-                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit);
+                runResult = await this.runProgram(runOptions, freopenContext.runInput, sample.timeLimit, sample.memoryLimit);
                 actualOutput = await this.resolveProgramOutput(runResult, freopenContext);
             } finally {
                 await this.cleanupFreopenContext(freopenContext);
@@ -2279,6 +2341,9 @@ class SampleTester {
                             observedBytes: runResult.observedOutputBytes
                         });
                     } catch (_) { }
+                } else if (runResult.memoryLimitExceeded) {
+                    status = 'MLE';
+                    try { logWarn('[样例测试器][MLE]', { sampleId: sample.id, durationMs: runResult.time, limitMb: sample.memoryLimit, memoryBytes: runResult.memoryBytes }); } catch (_) { }
                 } else if (runResult.timeout) {
                     status = 'TLE';
                     try { logInfo('[样例测试器][TLE]', { sampleId: sample.id, durationMs: runResult.time, limitMs: sample.timeLimit }); } catch (_) { }
@@ -2521,11 +2586,14 @@ class SampleTester {
         return result;
     }
 
-    async runProgram(executablePath, input, timeLimit) {
+    async runProgram(executablePath, input, timeLimit, memoryLimit) {
         const execOptions = typeof executablePath === 'object'
             ? { ...executablePath, skipPreKill: true }
             : { executablePath, skipPreKill: true };
-        return await window.electronAPI.runProgram(execOptions, input, timeLimit);
+        if (memoryLimit !== undefined) {
+            execOptions.memoryLimit = memoryLimit;
+        }
+        return await window.electronAPI.runProgram(execOptions, input, timeLimit, memoryLimit);
     }
 
     compareOutput(actual, expected) {
@@ -3140,6 +3208,7 @@ class SampleTester {
         const globalFreopenInputFile = document.getElementById('global-freopen-input-file');
         const globalFreopenOutputFile = document.getElementById('global-freopen-output-file');
         const globalTimeLimit = document.getElementById('global-time-limit');
+        const globalMemoryLimit = document.getElementById('global-memory-limit');
 
         if (globalUseTestlib) {
             globalUseTestlib.checked = this.globalSettings.useTestlib;
@@ -3157,6 +3226,9 @@ class SampleTester {
         if (globalTimeLimit) {
             globalTimeLimit.value = this.sanitizeTimeLimit(this.globalSettings.defaultTimeLimit, 1000);
         }
+        if (globalMemoryLimit) {
+            globalMemoryLimit.value = this.sanitizeMemoryLimit(this.globalSettings.defaultMemoryLimit, 0);
+        }
     }
 
     updateGlobalSetting(setting, value) {
@@ -3165,6 +3237,8 @@ class SampleTester {
             this.globalSettings[setting] = this.normalizeFreopenFileName(value);
         } else if (setting === 'defaultTimeLimit') {
             this.globalSettings[setting] = this.sanitizeTimeLimit(value, this.globalSettings.defaultTimeLimit);
+        } else if (setting === 'defaultMemoryLimit') {
+            this.globalSettings[setting] = this.sanitizeMemoryLimit(value, this.globalSettings.defaultMemoryLimit);
         } else {
             this.globalSettings[setting] = value;
         }
@@ -3231,13 +3305,15 @@ class SampleTester {
                 spjPath: '',
                 freopenInputFile: '',
                 freopenOutputFile: '',
-                defaultTimeLimit: 1000
+                defaultTimeLimit: 1000,
+                defaultMemoryLimit: 0
             };
         }
 
         this.globalSettings.freopenInputFile = this.normalizeFreopenFileName(this.globalSettings.freopenInputFile || '');
         this.globalSettings.freopenOutputFile = this.normalizeFreopenFileName(this.globalSettings.freopenOutputFile || '');
         this.globalSettings.defaultTimeLimit = this.sanitizeTimeLimit(this.globalSettings.defaultTimeLimit, 1000);
+        this.globalSettings.defaultMemoryLimit = this.sanitizeMemoryLimit(this.globalSettings.defaultMemoryLimit, 0);
     }
 }
 
