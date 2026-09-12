@@ -415,6 +415,25 @@ class TabManager {
         const groupId = tabBar.dataset.groupId || tabBar.closest('.editor-group')?.dataset.groupId || this.activeGroupId || 'group-1';
         tabBar.dataset.groupId = groupId;
         this.ensureTabBarDragHandlers(tabBar);
+        if (!tabBar._horizontalWheelHandlerBound) {
+            tabBar.addEventListener('wheel', (event) => {
+                if (event.altKey || event.ctrlKey || event.metaKey) {
+                    return;
+                }
+
+                const deltaY = Number(event.deltaY) || 0;
+                const deltaX = Number(event.deltaX) || 0;
+                const scrollDelta = Math.abs(deltaY) >= 1 ? deltaY : deltaX;
+                const maxScrollLeft = Math.max(0, tabBar.scrollWidth - tabBar.clientWidth);
+                if (!scrollDelta || maxScrollLeft <= 0) {
+                    return;
+                }
+
+                tabBar.scrollLeft += scrollDelta;
+                event.preventDefault();
+            }, { passive: false });
+            tabBar._horizontalWheelHandlerBound = true;
+        }
         tabBar._tabBarEventsBound = true;
     }
 
