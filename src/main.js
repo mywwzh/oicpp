@@ -22,7 +22,7 @@ const IntegratedTerminalManager = require('./terminal-manager');
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
-const APP_VERSION = '1.5.2';
+const APP_VERSION = '1.5.3';
 const SAVE_ALL_TIMEOUT = 4000;
 const EXTERNAL_OPEN_DEDUP_WINDOW_MS = 800;
 const recentExternalOpens = new Map();
@@ -2270,7 +2270,7 @@ ipcMain.handle('get-build-info', () => {
     } catch (error) {
         logger.logwarn('读取构建信息失败:', error);
     }
-    return { version: '1.5.2 (v47)', buildTime: '未知', author: 'mywwzh' };
+    return { version: '1.5.3 (v48)', buildTime: '未知', author: 'mywwzh' };
 });
 
 function requestSaveAllAndClose(context = '关闭窗口') {
@@ -2929,7 +2929,7 @@ function createCompetitiveCompanionServer(port, tagLabel) {
         try { logger.logerror(`[${label}] 服务出错`, err); } catch (_) { }
     });
 
-    server.listen(port, '0.0.0.0', () => {
+    server.listen(port, '127.0.0.1', () => {
         logger.logInfo(`[${label}] 服务已启动 http://127.0.0.1:${port}`);
     });
 
@@ -2970,7 +2970,7 @@ function startSampleTesterServer() {
                 logger.logInfo('[SampleTesterAPI] 请求:', req.method, requestPath, '来自', req.socket?.remoteAddress || 'unknown');
             } catch (_) { }
         });
-        sampleTesterServer.listen(PORT, '0.0.0.0', () => {
+        sampleTesterServer.listen(PORT, '127.0.0.1', () => {
             logger.logInfo(`[SampleTesterAPI] 服务已启动 http://127.0.0.1:${PORT}`);
         });
     } catch (err) {
@@ -7628,7 +7628,7 @@ function resetSettings(settingsType = null) {
 function exportSettings(filePath) {
     try {
         const exportData = {
-            version: '1.5.2 (v47)',
+            version: '1.5.3 (v48)',
             timestamp: new Date().toISOString(),
             settings: settings
         };
@@ -7893,7 +7893,8 @@ async function compileFile(options) {
                 if (cached?.cacheVersion === compileCacheVersion
                     && cached.signature === compileCacheRecord.signature) {
                     logInfo('[编译缓存] 编译器、参数和源文件签名均未变化，跳过编译:', inputFile);
-                    return { success: true, cached: true, exitCode: 0, stdout: '', stderr: '', warnings: [], errors: [], diagnostics: [] };
+                    resolve({ success: true, cached: true, exitCode: 0, stdout: '', stderr: '', warnings: [], errors: [], diagnostics: [] });
+                    return;
                 }
             }
         }
