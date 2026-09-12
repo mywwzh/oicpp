@@ -81,7 +81,12 @@
         }
       ]
     },
-    "mac": {
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true
+    },    "mac": {
       "icon": "build/icons/png",
       "extraResources": [
         {
