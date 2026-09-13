@@ -1025,17 +1025,19 @@ class SampleTester {
                     </div>
                 </div>
                 <div class="sample-settings">
-                    <div class="setting-group">
-                        <span class="setting-label"><span data-i18n="tester.timeLimit">时限:</span></span>
-                        <input type="number" class="setting-input" value="${sample.timeLimit || 1000}" 
-                               onchange="sampleTester.updateSampleSetting(${sample.id}, 'timeLimit', this.value)">
-                        <span class="setting-unit">ms</span>
-                    </div>
-                    <div class="setting-group">
-                        <span class="setting-label"><span data-i18n="tester.memoryLimit">内存:</span></span>
-                        <input type="number" class="setting-input" min="0" value="${this.sanitizeMemoryLimit(sample.memoryLimit, 0)}"
-                               onchange="sampleTester.updateSampleSetting(${sample.id}, 'memoryLimit', this.value)">
-                        <span class="setting-unit" data-i18n="tester.mb">MB</span>
+                    <div class="sample-settings-pair">
+                        <div class="setting-group">
+                            <span class="setting-label"><span data-i18n="tester.timeLimit">时限:</span></span>
+                            <input type="number" class="setting-input" value="${sample.timeLimit || 1000}" 
+                                   onchange="sampleTester.updateSampleSetting(${sample.id}, 'timeLimit', this.value)">
+                            <span class="setting-unit">ms</span>
+                        </div>
+                        <div class="setting-group">
+                            <span class="setting-label"><span data-i18n="tester.memoryLimit">内存:</span></span>
+                            <input type="number" class="setting-input" min="0" value="${this.sanitizeMemoryLimit(sample.memoryLimit, 0)}"
+                                   onchange="sampleTester.updateSampleSetting(${sample.id}, 'memoryLimit', this.value)">
+                            <span class="setting-unit" data-i18n="tester.mb">MB</span>
+                        </div>
                     </div>
                     <div class="setting-group">
                         <span class="setting-label"><span data-i18n="tester.inputFile">输入文件:</span></span>
