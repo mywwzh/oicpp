@@ -286,17 +286,19 @@
                             <span class="settings-title" data-i18n="menu.globalSettings">全局设置</span>
                         </div>
                         <div class="global-settings-content">
-                            <div class="setting-group">
-                                <label class="setting-checkbox">
-                                    <input type="checkbox" id="global-use-testlib" onchange="sampleTester.updateGlobalSetting('useTestlib', this.checked)">
-                                    <span class="setting-label" data-i18n="menu.useTestlib">全局使用 testlib</span>
-                                </label>
-                            </div>
-                            <div class="setting-group">
-                                <label class="setting-checkbox">
-                                    <input type="checkbox" id="global-use-interactive" onchange="sampleTester.updateGlobalSetting('useInteractive', this.checked)">
-                                    <span class="setting-label" data-i18n="tester.interactiveMode">交互题模式</span>
-                                </label>
+                            <div class="global-settings-pair">
+                                <div class="setting-group">
+                                    <label class="setting-checkbox">
+                                        <input type="checkbox" id="global-use-testlib" onchange="sampleTester.updateGlobalSetting('useTestlib', this.checked)">
+                                        <span class="setting-label" data-i18n="menu.useTestlib">全局使用 testlib</span>
+                                    </label>
+                                </div>
+                                <div class="setting-group">
+                                    <label class="setting-checkbox">
+                                        <input type="checkbox" id="global-use-interactive" onchange="sampleTester.updateGlobalSetting('useInteractive', this.checked)">
+                                        <span class="setting-label" data-i18n="tester.interactiveMode">交互题模式</span>
+                                    </label>
+                                </div>
                             </div>
                             <div class="setting-group" id="global-grader-group" style="display: none;">
                                 <div class="spj-header-row">
@@ -336,17 +338,19 @@
                                     <button class="bulk-apply-btn" id="apply-fileio-all-btn" type="button" title="将文件IO设置应用到全部样例" data-i18n="menu.apply">应用</button>
                                 </div>
                             </div>
-                            <div class="setting-group global-bulk-row">
-                                <span class="setting-label" data-i18n="menu.runTime">运行时间</span>
-                                <input type="number" class="setting-input" id="global-time-limit" min="1" value="1000">
-                                <span class="setting-unit">ms</span>
-                                <button class="bulk-apply-btn" id="apply-time-limit-all-btn" type="button" title="将运行时间应用到全部样例" data-i18n="menu.apply">应用</button>
-                            </div>
-                            <div class="setting-group global-bulk-row">
-                                <span class="setting-label" data-i18n="tester.memoryLimit">内存</span>
-                                <input type="number" class="setting-input" id="global-memory-limit" min="0" step="0.1" value="0">
-                                <span class="setting-unit" data-i18n="tester.mb">MB</span>
-                                <button class="bulk-apply-btn" id="apply-memory-limit-all-btn" type="button" title="将内存限制应用到全部样例" data-i18n="menu.apply">应用</button>
+                            <div class="global-settings-pair">
+                                <div class="setting-group global-bulk-row">
+                                    <span class="setting-label" data-i18n="menu.runTime">运行时间</span>
+                                    <input type="number" class="setting-input" id="global-time-limit" min="1" value="1000">
+                                    <span class="setting-unit">ms</span>
+                                    <button class="bulk-apply-btn" id="apply-time-limit-all-btn" type="button" title="将运行时间应用到全部样例" data-i18n="menu.apply">应用</button>
+                                </div>
+                                <div class="setting-group global-bulk-row">
+                                    <span class="setting-label" data-i18n="tester.memoryLimit">内存</span>
+                                    <input type="number" class="setting-input" id="global-memory-limit" min="0" step="0.1" value="0">
+                                    <span class="setting-unit" data-i18n="tester.mb">MB</span>
+                                    <button class="bulk-apply-btn" id="apply-memory-limit-all-btn" type="button" title="将内存限制应用到全部样例" data-i18n="menu.apply">应用</button>
+                                </div>
                             </div>
                         </div>
                     </div>
