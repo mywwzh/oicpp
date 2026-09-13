@@ -83,7 +83,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": true,
+      "perMachine": false,
+      "selectPerMachineByDefault": false,
       "allowToChangeInstallationDirectory": true,
       "allowElevation": true
     },    "mac": {
