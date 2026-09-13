@@ -24,6 +24,10 @@ Var DESKTOP_SHORTCUT_CHECKBOX
 Var CONTEXT_MENU_CHECKBOX
 Var UPDATE_SILENT_MODE
 Var UPDATE_INSTALL_DIR
+Var OICPP_ELEVATED_INSTANCE
+Var OICPP_USER_PROFILE
+Var OICPP_ORIGINAL_PARAMETERS
+Var OICPP_NEEDS_ELEVATION
 
 SetCompressor lzma
 
@@ -64,19 +68,43 @@ ShowUnInstDetails show
 
 Function .onInit
   SetShellVarContext current
+  StrCpy $OICPP_USER_PROFILE "$PROFILE"
+  StrCpy $OICPP_ELEVATED_INSTANCE "0"
+  StrCpy $OICPP_NEEDS_ELEVATION "0"
+  ${GetParameters} $OICPP_ORIGINAL_PARAMETERS
+
+  StrCpy $R0 ""
+  ${GetOptions} $OICPP_ORIGINAL_PARAMETERS "/OICPP_ELEVATED=" $R0
+  ${If} $R0 == "1"
+    StrCpy $OICPP_ELEVATED_INSTANCE "1"
+  ${EndIf}
+
+  StrCpy $R0 ""
+  ${GetOptions} $OICPP_ORIGINAL_PARAMETERS "/OICPP_PROFILE=" $R0
+  ${If} $R0 != ""
+    StrCpy $OICPP_USER_PROFILE $R0
+  ${EndIf}
+
   StrCpy $UPDATE_SILENT_MODE "0"
   StrCpy $UPDATE_INSTALL_DIR ""
 
-  ${GetParameters} $R0
-  ${GetOptions} $R0 "/UPDATE_SILENT=" $R1
+  StrCpy $R1 ""
+  ${GetOptions} $OICPP_ORIGINAL_PARAMETERS "/UPDATE_SILENT=" $R1
   ${If} $R1 != ""
     StrCpy $UPDATE_SILENT_MODE $R1
   ${EndIf}
 
-  ${GetOptions} $R0 "/UPDATE_DIR=" $R2
+  StrCpy $R2 ""
+  ${GetOptions} $OICPP_ORIGINAL_PARAMETERS "/UPDATE_DIR=" $R2
   ${If} $R2 != ""
     StrCpy $UPDATE_INSTALL_DIR $R2
     StrCpy $INSTDIR $R2
+  ${EndIf}
+
+  StrCpy $R0 ""
+  ${GetOptions} $OICPP_ORIGINAL_PARAMETERS "/OICPP_INSTALL_DIR=" $R0
+  ${If} $R0 != ""
+    StrCpy $INSTDIR $R0
   ${EndIf}
 
   ${If} $UPDATE_SILENT_MODE == "1"
@@ -89,18 +117,56 @@ Function .onInit
       ${EndIf}
     ${EndIf}
   ${EndIf}
+
+FunctionEnd
+Function IsProtectedInstallDirectory
+  StrCpy $OICPP_NEEDS_ELEVATION "0"
+
+  StrCmp /I "$INSTDIR" "$PROGRAMFILES" protected
+  StrCpy $R0 "$PROGRAMFILES\"
+  StrLen $R1 $R0
+  StrCpy $R2 "$INSTDIR" $R1
+  StrCmp /I "$R2" "$R0" protected
+
+  StrCmp /I "$INSTDIR" "$PROGRAMFILES32" protected
+  StrCpy $R0 "$PROGRAMFILES32\"
+  StrLen $R1 $R0
+  StrCpy $R2 "$INSTDIR" $R1
+  StrCmp /I "$R2" "$R0" protected
+
+  StrCmp /I "$INSTDIR" "$PROGRAMFILES64" protected
+  StrCpy $R0 "$PROGRAMFILES64\"
+  StrLen $R1 $R0
+  StrCpy $R2 "$INSTDIR" $R1
+  StrCmp /I "$R2" "$R0" protected
+  Goto done
+
+protected:
+  StrCpy $OICPP_NEEDS_ELEVATION "1"
+done:
 FunctionEnd
 
+Function EnsureInstallDirectoryAccess
+  Call IsProtectedInstallDirectory
+  ${If} $OICPP_NEEDS_ELEVATION == "1"
+    ${If} $OICPP_ELEVATED_INSTANCE != "1"
+      StrCpy $R0 '$OICPP_ORIGINAL_PARAMETERS /OICPP_ELEVATED=1 /OICPP_PROFILE="$OICPP_USER_PROFILE" /OICPP_INSTALL_DIR="$INSTDIR"'
+      ExecShell "runas" "$EXEFILE" "$R0"
+      Quit
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
 Section "OICPP 主程序" SEC01
-  IfFileExists "$PROFILE\.oicpp\settings.json" 0 +3
+  Call EnsureInstallDirectoryAccess
+  IfFileExists "$OICPP_USER_PROFILE\.oicpp\settings.json" 0 +3
     CreateDirectory "$TEMP\oicpp_backup"
-    CopyFiles "$PROFILE\.oicpp\settings.json" "$TEMP\oicpp_backup\settings.json"
+    CopyFiles "$OICPP_USER_PROFILE\.oicpp\settings.json" "$TEMP\oicpp_backup\settings.json"
   
-  SetOutPath "$PROFILE\.oicpp"
+  SetOutPath "$OICPP_USER_PROFILE\.oicpp"
   SetOverwrite on
   File "dist\win-unpacked\ConsolePauser.exe"
   File "oicpp.ico"
-  SetOutPath "$PROFILE\.oicpp\LSP"
+  SetOutPath "$OICPP_USER_PROFILE\.oicpp\LSP"
   SetOverwrite on
   File /r "dist\win-unpacked\resources\clangd\*"
   SetOutPath "$INSTDIR"
@@ -109,7 +175,7 @@ Section "OICPP 主程序" SEC01
   File "dist\win-unpacked\chrome_200_percent.pak"
 
   CreateDirectory "$SMPROGRAMS\OICPP IDE"
-  CreateShortCut "$SMPROGRAMS\OICPP IDE\OICPP IDE.lnk" "$INSTDIR\OICPP IDE.exe" "" "$PROFILE\.oicpp\oicpp.ico"
+  CreateShortCut "$SMPROGRAMS\OICPP IDE\OICPP IDE.lnk" "$INSTDIR\OICPP IDE.exe" "" "$OICPP_USER_PROFILE\.oicpp\oicpp.ico"
 
   File "dist\win-unpacked\d3dcompiler_47.dll"
   File "dist\win-unpacked\ffmpeg.dll"
@@ -189,7 +255,7 @@ Section "OICPP 主程序" SEC01
   File "dist\win-unpacked\vulkan-1.dll"
   
   IfFileExists "$TEMP\oicpp_backup\settings.json" 0 +3
-    CopyFiles "$TEMP\oicpp_backup\settings.json" "$PROFILE\.oicpp\settings.json"
+    CopyFiles "$TEMP\oicpp_backup\settings.json" "$OICPP_USER_PROFILE\.oicpp\settings.json"
     RMDir /r "$TEMP\oicpp_backup" 
 SectionEnd
 
@@ -204,7 +270,7 @@ Section -Post
   WriteRegStr HKCU "${PRODUCT_DIR_REGKEY}" "" "$INSTDIR\OICPP IDE.exe"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayName" "$(^Name)"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "UninstallString" "$INSTDIR\uninst.exe"
-  WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$PROFILE\.oicpp\oicpp.ico"
+  WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$OICPP_USER_PROFILE\.oicpp\oicpp.ico"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "URLInfoAbout" "${PRODUCT_WEB_SITE}"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "Publisher" "${PRODUCT_PUBLISHER}"
@@ -273,7 +339,7 @@ Function MyCppAssocLeave
 FunctionEnd
 
 Function CreateDesktopShortcut
-  CreateShortCut "$DESKTOP\OICPP IDE.lnk" "$INSTDIR\OICPP IDE.exe" "" "$PROFILE\.oicpp\oicpp.ico"
+  CreateShortCut "$DESKTOP\OICPP IDE.lnk" "$INSTDIR\OICPP IDE.exe" "" "$OICPP_USER_PROFILE\.oicpp\oicpp.ico"
 FunctionEnd
 
 Function un.onUninstSuccess
@@ -282,6 +348,8 @@ Function un.onUninstSuccess
 FunctionEnd
 
 Function un.onInit
+  SetShellVarContext current
+  StrCpy $OICPP_USER_PROFILE "$PROFILE"
   MessageBox MB_ICONQUESTION|MB_YESNO|MB_DEFBUTTON2 "确实要完全移除 $(^Name) 及其所有组件吗？" IDYES +2
   Abort
 FunctionEnd
@@ -364,10 +432,10 @@ Section Uninstall
   Delete "$INSTDIR\d3dcompiler_47.dll"
   Delete "$INSTDIR\chrome_200_percent.pak"
   Delete "$INSTDIR\chrome_100_percent.pak"
-  Delete "$PROFILE\.oicpp\ConsolePauser.exe"
-  Delete "$PROFILE\.oicpp\oicpp.ico"
-  RMDir /r "$PROFILE\.oicpp\LSP"
-  RMDir "$PROFILE\.oicpp" 
+  Delete "$OICPP_USER_PROFILE\.oicpp\ConsolePauser.exe"
+  Delete "$OICPP_USER_PROFILE\.oicpp\oicpp.ico"
+  RMDir /r "$OICPP_USER_PROFILE\.oicpp\LSP"
+  RMDir "$OICPP_USER_PROFILE\.oicpp"
 
   Delete "$SMPROGRAMS\OICPP IDE\Uninstall.lnk"
   Delete "$SMPROGRAMS\OICPP IDE\Website.lnk"
