@@ -122,23 +122,23 @@ FunctionEnd
 Function IsProtectedInstallDirectory
   StrCpy $OICPP_NEEDS_ELEVATION "0"
 
-  StrCmp /I "$INSTDIR" "$PROGRAMFILES" protected
+  StrCmp "$INSTDIR" "$PROGRAMFILES" protected
   StrCpy $R0 "$PROGRAMFILES\"
   StrLen $R1 $R0
   StrCpy $R2 "$INSTDIR" $R1
-  StrCmp /I "$R2" "$R0" protected
+  StrCmp "$R2" "$R0" protected
 
-  StrCmp /I "$INSTDIR" "$PROGRAMFILES32" protected
+  StrCmp "$INSTDIR" "$PROGRAMFILES32" protected
   StrCpy $R0 "$PROGRAMFILES32\"
   StrLen $R1 $R0
   StrCpy $R2 "$INSTDIR" $R1
-  StrCmp /I "$R2" "$R0" protected
+  StrCmp "$R2" "$R0" protected
 
-  StrCmp /I "$INSTDIR" "$PROGRAMFILES64" protected
+  StrCmp "$INSTDIR" "$PROGRAMFILES64" protected
   StrCpy $R0 "$PROGRAMFILES64\"
   StrLen $R1 $R0
   StrCpy $R2 "$INSTDIR" $R1
-  StrCmp /I "$R2" "$R0" protected
+  StrCmp "$R2" "$R0" protected
   Goto done
 
 protected:
