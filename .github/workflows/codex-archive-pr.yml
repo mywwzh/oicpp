@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          query='mutation($input:ArchivePullRequestInput!){archivePullRequest(input:$input){pullRequest{id number isArchived state title}}}'
+          query='mutation($input:ArchivePullRequestInput!){archivePullRequest(input:$input){pullRequest{id number state title}}}'
           gh api graphql -f query="$query" \
             -F input='{"pullRequestId":"PR_kwDOPbh8dM6j7Qki"}'
           git push origin --delete codex-archive-pr-20260920
