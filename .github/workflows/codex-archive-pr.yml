@@ -1,0 +1,31 @@
+name: Codex archive withdrawn PR
+
+on:
+  push:
+    branches:
+      - codex-archive-pr-20260920
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out temporary branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex-archive-pr-20260920
+
+      - name: Archive the withdrawn pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          query='mutation($input:ArchivePullRequestInput!){archivePullRequest(input:$input){pullRequest{id number isArchived state title}}}'
+          gh api graphql -f query="$query" \
+            -F input='{"pullRequestId":"PR_kwDOPbh8dM6j7Qki"}'
+          git push origin --delete codex-archive-pr-20260920
+
