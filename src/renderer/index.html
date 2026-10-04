@@ -26,6 +26,7 @@
     <link rel="stylesheet" href="../../node_modules/xterm/css/xterm.css">
     <link rel="stylesheet" href="css/markdown.css">
     <link rel="stylesheet" href="css/browser.css">
+    <link rel="stylesheet" href="css/htoj.css">
 </head>
 <body>
     <div class="titlebar">
@@ -216,6 +217,13 @@
                 <div class="sidebar-icon" data-panel="debug" data-i18n-title="sidebar.debug" title="调试">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5s-.96.06-1.42.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8z"/>
+                    </svg>
+                </div>
+                <div class="sidebar-icon" data-panel="htoj" data-i18n-title="sidebar.htoj" title="核桃OJ">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v7A1.5 1.5 0 0 1 18.5 15h-13A1.5 1.5 0 0 1 4 13.5z"/>
+                        <path d="M8 19h8M12 15v4"/>
+                        <path d="M9 9.5l2 2-2 2M13.5 13.5h2.5"/>
                     </svg>
                 </div>
                 <div class="sidebar-icons-spacer"></div>
@@ -597,6 +605,10 @@
                     </div>
                     <div class="file-tree cloud-tree" id="cloud-tree"></div>
                 </div>
+
+                <div class="panel-content" id="htoj-panel">
+                    <div class="htoj-root" data-role="htoj-root"></div>
+                </div>
             </div>
         </div>
 
@@ -726,6 +738,9 @@
     <script src="js/sidebar/debugPanel.js"></script>
     <script src="js/sidebar/codeComparer.js"></script>
     <script src="js/sidebar/cloudSync.js"></script>
+    <script src="js/sidebar/htojApi.js"></script>
+    <script src="js/sidebar/htojProblem.js"></script>
+    <script src="js/sidebar/htojPanel.js"></script>
     <script src="js/sidebar.js"></script>
     <script src="js/tabs.js"></script>
     <script src="js/terminal-panel.js"></script>

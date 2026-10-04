@@ -757,6 +757,14 @@ class TabManager {
                 tabData.previewContainer.dataset.groupId = targetGroupId;
                 tabData.previewContainer.style.display = 'none';
             }
+        } else if (tabData.viewType === 'htoj-problem' && tabData.htojContainer) {
+            const newGroup = this.groups.get(targetGroupId);
+            const targetArea = newGroup?.editorArea;
+            if (targetArea) {
+                targetArea.appendChild(tabData.htojContainer);
+                tabData.htojContainer.dataset.groupId = targetGroupId;
+                tabData.htojContainer.style.display = 'none';
+            }
         } else if (tabData.viewType === 'browser') {
             const newGroup = this.groups.get(targetGroupId);
             const targetArea = newGroup?.editorArea;
@@ -1343,6 +1351,23 @@ class TabManager {
             }
             window.browserManager.showBrowserContainer(uniqueKey);
             window.browserManager.focusBrowserTab(uniqueKey);
+            if (this.monacoEditorManager) {
+                this.monacoEditorManager.groupActiveTab.set(tabData.groupId, null);
+            }
+        } else if (tabData.viewType === 'htoj-problem') {
+            this.hideGroupViewContainers(tabData.groupId);
+            if (window.htojProblemView) {
+                tabData.htojContainer = window.htojProblemView.ensureContainer({
+                    groupId: tabData.groupId,
+                    tabId: tabData.tabId,
+                    payload: tabData.htojPayload,
+                    container: tabData.htojContainer
+                });
+                if (tabData.htojContainer) {
+                    tabData.htojContainer.style.display = 'flex';
+                    tabData.htojContainer.classList.add('active');
+                }
+            }
             if (this.monacoEditorManager) {
                 this.monacoEditorManager.groupActiveTab.set(tabData.groupId, null);
             }
@@ -2155,7 +2180,7 @@ class TabManager {
 
     getTabContentForSave(tabData) {
         if (!tabData) return null;
-        if (tabData.viewType === 'pdf' || tabData.viewType === 'markdown-preview') {
+        if (tabData.viewType === 'pdf' || tabData.viewType === 'markdown-preview' || tabData.viewType === 'htoj-problem') {
             return null;
         }
         const editorMgr = this.monacoEditorManager || window.monacoEditorManager || window.editorManager;
@@ -2425,6 +2450,14 @@ class TabManager {
                 tabData.previewContainer.parentNode.removeChild(tabData.previewContainer);
             }
             tabData.previewContainer = null;
+        } else if (tabData.viewType === 'htoj-problem') {
+            if (tabData.htojContainer && tabData.htojContainer.parentNode) {
+                tabData.htojContainer.parentNode.removeChild(tabData.htojContainer);
+            }
+            if (window.htojProblemView && typeof window.htojProblemView.destroy === 'function') {
+                window.htojProblemView.destroy(tabData.tabId);
+            }
+            tabData.htojContainer = null;
         } else if (tabData.viewType === 'browser') {
             // 清理浏览器标签页
             if (window.browserManager && typeof window.browserManager.destroyBrowserTab === 'function') {
@@ -3338,7 +3371,7 @@ class TabManager {
         if (!editorArea) {
             return;
         }
-        const panes = editorArea.querySelectorAll('.monaco-editor-container, .pdf-viewer-container, .markdown-preview-container, .browser-container');
+        const panes = editorArea.querySelectorAll('.monaco-editor-container, .pdf-viewer-container, .markdown-preview-container, .browser-container, .htoj-problem-container');
         panes.forEach((pane) => {
             pane.style.display = 'none';
             pane.classList.remove('active');
@@ -3419,6 +3452,139 @@ class TabManager {
 
         await this.registerFileWatchForTab(tabData);
         await this.activateTabByUniqueKey(uniqueKey);
+    }
+
+    /**
+     * 打开核桃OJ 题目：左侧代码文件 + 右侧题面（自动分屏）。
+     */
+    async openHtojProblem(options = {}) {
+        const pid = Number(options.pid);
+        if (!Number.isFinite(pid) || pid <= 0) return;
+        const context = options.context || {};
+        const suffix = `${context.cid ? ':c' + context.cid : ''}${context.tid ? ':t' + context.tid : ''}${context.gid ? ':g' + context.gid : ''}`;
+        const uniqueKey = `htoj-problem:${pid}${suffix}`;
+        const statementTitle = options.title || `${options.problemId || ('P' + pid)} 题面`;
+
+        if (this.tabs.has(uniqueKey)) {
+            await this.activateTabByUniqueKey(uniqueKey);
+            return;
+        }
+        if (this._openingKeys.has(uniqueKey)) return;
+        this._openingKeys.add(uniqueKey);
+        try {
+            let codeGroupId = this.activeGroupId || this.groupOrder[0] || 'group-1';
+            if (options.codeFilePath) {
+                const codePath = String(options.codeFilePath);
+                const fileName = codePath.split(/[\\/]/).pop();
+                let content = '';
+                try {
+                    content = await window.electronAPI.readFileContent(codePath);
+                } catch (_) { }
+                await this.openFile(fileName, typeof content === 'string' ? content : '', false, codePath);
+                codeGroupId = this.activeGroupId || codeGroupId;
+                if (typeof this.markTabAsSavedByUniqueKey === 'function') {
+                    this.markTabAsSavedByUniqueKey(codePath.replace(/\\/g, '/'));
+                }
+            }
+
+            let targetGroup = options.codeFilePath ? this.findReusableStatementGroup(codeGroupId) : null;
+            if (!targetGroup) {
+                targetGroup = this.createGroup({ afterGroupId: codeGroupId });
+            }
+            if (!targetGroup) {
+                targetGroup = this.groups.get(codeGroupId) || this.createGroup({ afterGroupId: null });
+            }
+            if (!targetGroup) {
+                logError('打开题面失败：无法创建分组');
+                return;
+            }
+
+            await this.openHtojProblemTab({
+                title: statementTitle,
+                uniqueKey,
+                targetGroupId: targetGroup.id,
+                targetGroup,
+                payload: { pid, problemId: options.problemId, context }
+            });
+        } finally {
+            this._openingKeys.delete(uniqueKey);
+        }
+    }
+
+    findReusableStatementGroup(afterGroupId) {
+        const idx = this.groupOrder.indexOf(afterGroupId);
+        const start = idx >= 0 ? idx + 1 : 0;
+        for (let i = start; i < this.groupOrder.length; i++) {
+            const group = this.groups.get(this.groupOrder[i]);
+            if (!group) continue;
+            const tabs = Array.from(group.tabs.values());
+            if (tabs.length > 0 && tabs.every((tab) => tab.viewType === 'htoj-problem')) {
+                return group;
+            }
+        }
+        return null;
+    }
+
+    async openHtojProblemTab({ title, uniqueKey, targetGroupId, targetGroup, payload }) {
+        const view = window.htojProblemView;
+        if (!view) {
+            logError('HtojProblemView 未初始化，无法打开题面');
+            return;
+        }
+        if (!targetGroup) {
+            logError('打开题面失败：缺少目标分组');
+            return;
+        }
+
+        const tabId = `htoj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const tabElement = this.createTabElement(title || '核桃OJ 题目', tabId);
+        tabElement.dataset.groupId = targetGroupId;
+        tabElement.dataset.viewType = 'htoj-problem';
+        tabElement.classList.add('tab-type-htoj');
+        this.addTabDragListeners(tabElement);
+
+        const container = await view.createContainer({ groupId: targetGroupId, tabId, payload: payload || {} });
+        if (!container) {
+            logError('创建 htoj 题面容器失败');
+            return;
+        }
+
+        const tabData = {
+            element: tabElement,
+            fileName: title || '核桃OJ 题目',
+            modified: false,
+            content: null,
+            active: true,
+            filePath: null,
+            tabId,
+            uniqueKey,
+            groupId: targetGroupId,
+            viewType: 'htoj-problem',
+            isTempFile: false,
+            htojContainer: container,
+            htojPayload: payload || {}
+        };
+
+        this.tabs.set(uniqueKey, tabData);
+        targetGroup.tabs.set(uniqueKey, tabData);
+        if (targetGroup.tabBar) {
+            this.bindTabBarEvents(targetGroup.tabBar);
+            targetGroup.tabBar.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            targetGroup.tabBar.appendChild(tabElement);
+        }
+        targetGroup.activeTabKey = uniqueKey;
+
+        this.activeTab = tabData.fileName;
+        this.activeTabKey = uniqueKey;
+        this.activeGroupId = targetGroupId;
+        this.setTabElementUniqueKey(tabElement, uniqueKey);
+        this.syncGroupTabs(targetGroupId);
+        tabElement.classList.add('active');
+
+        container.style.display = 'flex';
+        container.classList.add('active');
+        await this.activateTabByUniqueKey(uniqueKey);
+        this.refreshTabLabels();
     }
 
     /**

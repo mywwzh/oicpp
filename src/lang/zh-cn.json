@@ -85,7 +85,14 @@
     "newFile": "新建文件",
     "newFolder": "新建文件夹",
     "refresh": "刷新",
-    "batchDelete": "批量删除"
+    "batchDelete": "批量删除",
+    "htoj": "核桃OJ"
+  },
+  "htoj": {
+    "title": "核桃OJ",
+    "search": "搜索题目",
+    "switchZone": "切换题库语言",
+    "account": "账户"
   },
   "settings": {
     "title": "编辑器设置",

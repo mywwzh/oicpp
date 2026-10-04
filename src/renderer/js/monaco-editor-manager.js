@@ -2872,7 +2872,11 @@ class MonacoEditorManager {
                 ? this.assessLspDocumentSafety(content)
                 : { safe: true };
             if (lspDocumentSafety.safe) {
-                await this.ensureLspReady();
+                try {
+                    await this.ensureLspReady();
+                } catch (lspError) {
+                    logWarn('[LSP] LSP 未就绪，编辑器将以无 LSP 模式继续:', lspError?.message || lspError);
+                }
                 this.registerCppSemanticHighlightingProviders();
             }
 
@@ -4216,7 +4220,11 @@ class MonacoEditorManager {
             if (typeof monaco === 'undefined') {
                 await this.waitForMonaco();
             }
-            await this.ensureLspReady();
+            try {
+                await this.ensureLspReady();
+            } catch (lspError) {
+                logWarn('[LSP] LSP 未就绪，对比视图将以无 LSP 模式继续:', lspError?.message || lspError);
+            }
             this.registerCppSemanticHighlightingProviders();
 
             const originalPath = options.originalPath || '';

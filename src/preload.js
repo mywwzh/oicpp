@@ -585,6 +585,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     startIdeLogin: () => ipcRenderer.invoke('ide-login-start'),
     getIdeLoginStatus: () => ipcRenderer.invoke('ide-login-status'),
     logoutIdeAccount: () => ipcRenderer.invoke('ide-logout'),
+
+    // === 核桃OJ API ===
+    htojRequest: (payload) => ipcRenderer.invoke('htoj-request', payload),
+    htojLoginStatus: () => ipcRenderer.invoke('htoj-login-status'),
+    htojGetConfig: () => ipcRenderer.invoke('htoj-get-config'),
+    htojSetZone: (zone) => ipcRenderer.invoke('htoj-set-zone', zone),
+    htojLogout: () => ipcRenderer.invoke('htoj-logout'),
+    htojLoginToken: (token) => ipcRenderer.invoke('htoj-login-token', token),
+    htojLoginPassword: (phoneNumber, password) => ipcRenderer.invoke('htoj-login-password', phoneNumber, password),
+    htojRefreshUser: () => ipcRenderer.invoke('htoj-refresh-user'),
+    htojQrCreate: () => ipcRenderer.invoke('htoj-qr-create'),
+    htojQrCheck: (sessionId) => ipcRenderer.invoke('htoj-qr-check', sessionId),
+    htojFetchImage: (url) => ipcRenderer.invoke('htoj-fetch-image', url),
+    onHtojUpdated: (callback) => ipcRenderer.on('htoj-updated', (_event, payload) => callback && callback(payload)),
+
     cloudSyncRequest: (payload) => ipcRenderer.invoke('cloud-sync-request', payload),
     backupSettingsToCloud: () => ipcRenderer.invoke('backup-settings-to-cloud'),
     getSettingsBackupInfo: () => ipcRenderer.invoke('get-settings-backup-info'),
