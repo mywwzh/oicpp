@@ -205,7 +205,9 @@ class CodeComparer {
 
                 if (hasCompiler) {
                     noCompilerMessage.style.display = 'none';
-                    compareFileSection.style.display = 'block';
+                    // 不要写死 display:block：.compare-file-section 在 CSS 里是 flex 列布局，
+                    // 内联的 block 会覆盖它并让 gap 失效，导致各区块紧紧贴在一起。
+                    compareFileSection.style.display = '';
                 } else {
                     noCompilerMessage.style.display = 'flex';
                     compareFileSection.style.display = 'none';
@@ -1532,7 +1534,9 @@ class CodeComparer {
         const completeInfo = completeSection?.querySelector('.complete-info span');
 
         if (completeSection) {
-            completeSection.style.display = 'flex';
+            // 交给 CSS 控制（.compare-complete 是 block + 居中的卡片）；
+            // 写成 flex 会变成横向排列，把图标/文字/信息挤在一行。
+            completeSection.style.display = '';
         }
 
         if (completedTests) {
