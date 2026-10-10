@@ -4655,42 +4655,77 @@ class MonacoEditorManager {
         if (!container || container.hasWheelZoomListener) {
             return; // 避免重复添加
         }
+        // 触控板捏合（Ctrl+wheel）会以极高频率发出很小的 deltaY，
+        // 逐事件直接 ±1 档会造成明显抖动。这里把 deltaY 累积到阈值后才缩放一档，
+        // 并按帧合并，既保证平滑又保留鼠标滚轮的“一格一档”手感。
+        const WHEEL_ZOOM_UNIT = 100; // 累积多少 deltaY 缩放一档
+        const MAX_STEPS_PER_FRAME = 3; // 单帧最多缩放档数，避免惯性滚动时跳变
         let wheelRAF = null;
-        let pendingDeltaY = 0;
-    const wheelHandler = (e) => {
-            if (e.ctrlKey) {
-                e.preventDefault(); 
-                pendingDeltaY += e.deltaY;
-                if (wheelRAF) return;
-                wheelRAF = requestAnimationFrame(() => {
-                    try {
-                        const delta = pendingDeltaY;
-                        pendingDeltaY = 0;
-                        wheelRAF = null;
-                        const currentOptions = editor.getOptions();
-                        const currentFontSize = currentOptions.get(monaco.editor.EditorOption.fontSize);
-                        let step = delta < 0 ? 1 : -1;
-                        let newFontSize = Math.max(8, Math.min(72, currentFontSize + step));
-                        if (newFontSize !== currentFontSize) {
-                            editor.updateOptions({ 
-                                fontSize: newFontSize,
-                                lineHeight: this.getLineHeightValue(newFontSize, this.lineHeightSetting)
-                            });
-                            if (window.electronAPI?.updateSettings) {
-                                window.electronAPI.updateSettings({ fontSize: newFontSize }).catch(err => {
-                                    logError('[字体调整] 更新字体大小设置失败:', err);
-                                });
-                            }
-                            document.documentElement.style.setProperty('--editor-font-size', newFontSize + 'px');
-                            setTimeout(() => { editor.layout(); }, 50);
-                        }
-                    } catch (error) {
-                        logError('[字体调整] 调整字体大小时发生错误:', error);
-                        wheelRAF = null;
-                        pendingDeltaY = 0;
+        let wheelAccum = 0;
+
+        const persistFontSize = (newFontSize) => {
+            if (this._pendingFontSizeSave) {
+                clearTimeout(this._pendingFontSizeSave);
+            }
+            // 缩放过程中频繁写设置会阻塞主进程，这里延后合并保存
+            this._pendingFontSizeSave = setTimeout(() => {
+                this._pendingFontSizeSave = null;
+                try {
+                    window.electronAPI?.updateSettings?.({ fontSize: newFontSize })?.catch?.((err) => {
+                        logError('[字体调整] 更新字体大小设置失败:', err);
+                    });
+                } catch (err) {
+                    logError('[字体调整] 更新字体大小设置失败:', err);
+                }
+            }, 400);
+        };
+
+        const wheelHandler = (e) => {
+            if (!e.ctrlKey) {
+                return;
+            }
+            if (e.__oicppZoomHandled) {
+                return; // 同一事件可能在多个节点上被监听，避免重复累加
+            }
+            e.__oicppZoomHandled = true;
+            e.preventDefault();
+            e.stopPropagation();
+
+            let delta = e.deltaY;
+            if (e.deltaMode === 1) { // 以行为单位
+                delta *= 16;
+            } else if (e.deltaMode === 2) { // 以页为单位
+                delta *= 100;
+            }
+            wheelAccum += delta;
+
+            if (wheelRAF) return;
+            wheelRAF = requestAnimationFrame(() => {
+                wheelRAF = null;
+                let magnitude = Math.round(Math.abs(wheelAccum) / WHEEL_ZOOM_UNIT);
+                if (magnitude === 0) return; // 尚未达到阈值，继续累积，避免抖动
+                magnitude = Math.min(magnitude, MAX_STEPS_PER_FRAME);
+                const steps = wheelAccum < 0 ? -magnitude : magnitude;
+                wheelAccum -= steps * WHEEL_ZOOM_UNIT;
+                try {
+                    const currentOptions = editor.getOptions();
+                    const currentFontSize = currentOptions.get(monaco.editor.EditorOption.fontSize);
+                    // deltaY > 0（向下/捏合缩小）时降低字号
+                    const newFontSize = Math.max(8, Math.min(72, currentFontSize - steps));
+                    if (newFontSize !== currentFontSize) {
+                        editor.updateOptions({ 
+                            fontSize: newFontSize,
+                            lineHeight: this.getLineHeightValue(newFontSize, this.lineHeightSetting)
+                        });
+                        persistFontSize(newFontSize);
+                        document.documentElement.style.setProperty('--editor-font-size', newFontSize + 'px');
+                        editor.layout();
                     }
-                });
-            } 
+                } catch (error) {
+                    logError('[字体调整] 调整字体大小时发生错误:', error);
+                    wheelAccum = 0;
+                }
+            });
         };
         container.addEventListener('wheel', wheelHandler, { capture: true, passive: false });
         try {
@@ -4700,7 +4735,7 @@ class MonacoEditorManager {
                 dom._wheelZoomHooked = true;
             }
         } catch (_) {}
-        
+
     container.hasWheelZoomListener = true;
     }
 
