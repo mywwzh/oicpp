@@ -1966,6 +1966,10 @@
                 fileExplorer.setWorkspace(path);
             }
         }
+        // 工作区根目录变化后重新计算标签页路径
+        if (window.tabManager && typeof window.tabManager.refreshTabLabels === 'function') {
+            try { window.tabManager.refreshTabLabels(); } catch (err) { logWarn('刷新标签页路径失败:', err); }
+        }
     }
 
     clearWorkspace() {
@@ -1975,6 +1979,9 @@
             if (fileExplorer) {
                 fileExplorer.clearWorkspace();
             }
+        }
+        if (window.tabManager && typeof window.tabManager.refreshTabLabels === 'function') {
+            try { window.tabManager.refreshTabLabels(); } catch (err) { logWarn('刷新标签页路径失败:', err); }
         }
     }
 
@@ -4185,6 +4192,9 @@ ${data.message || '程序已加载，等待开始执行'}
     onFolderOpened(folderPath) {
         logInfo('文件夹已打开:', folderPath);
         
+        // 关闭欢迎页：它同时负责恢复编辑器区域与侧边栏的显示，
+        // 因此即使当前没有欢迎标签页也必须调用，否则会卡在欢迎页模式。
+        // closeWelcomePage 内部已保证不会误清空已激活文件标签的 activeTab。
         if (window.tabManager && typeof window.tabManager.closeWelcomePage === 'function') {
             logInfo('自动关闭欢迎页面');
             window.tabManager.closeWelcomePage();
@@ -4197,6 +4207,12 @@ ${data.message || '程序已加载，等待开始执行'}
             }
             
             window.sidebarManager.showPanel('files');
+        }
+
+        // 工作区根目录变化后重新计算标签页路径，
+        // 让工作区外的文件重新显示完整路径。
+        if (window.tabManager && typeof window.tabManager.refreshTabLabels === 'function') {
+            try { window.tabManager.refreshTabLabels(); } catch (err) { logWarn('刷新标签页路径失败:', err); }
         }
         
         const event = new CustomEvent('workspace-opened', {

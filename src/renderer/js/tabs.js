@@ -4957,7 +4957,11 @@ class TabManager {
         }
 
         this.tabs.delete('Welcome');
-        this.activeTab = null;
+        // 仅当欢迎页正处于激活状态时才清空 activeTab。
+        // 否则会误伤当前打开的文件标签，导致 Ctrl+W 等依赖 activeTab 的功能失效。
+        if (this.activeTab === 'Welcome' || !this.activeTab) {
+            this.activeTab = null;
+        }
     }
 
 
