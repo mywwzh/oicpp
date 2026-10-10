@@ -2824,6 +2824,15 @@ function readJsonBody(req, res, callback) {
     });
 }
 
+// 部分 OJ（如某些中文题库）会把样例写成「见附件中的 zoo/zoo3.in」，
+// Competitive Companion 会把这段说明当作样例内容抓取下来。这里识别这类附件引用占位样例。
+const PLACEHOLDER_SAMPLE_PATTERN = /(?:见|参见|参阅)\s*附\s*件|附\s*件\s*中|see\s+(?:the\s+)?attach|refer(?:s|red)?\s+to\s+(?:the\s+)?attach/i;
+
+function isPlaceholderCompanionSample(input, output) {
+    const text = `${input || ''}\n${output || ''}`;
+    return PLACEHOLDER_SAMPLE_PATTERN.test(text);
+}
+
 function normalizeCompetitiveCompanionPayload(data) {
     if (!data || typeof data !== 'object') {
         return { ok: false, message: 'body must be JSON object', invalidField: 'body' };
@@ -2862,11 +2871,25 @@ function normalizeCompetitiveCompanionPayload(data) {
         timeLimitMs = data.timeLimit <= 50 ? Math.round(data.timeLimit * 1000) : Math.round(data.timeLimit);
     }
 
-    const samples = data.tests.map((t, idx) => ({
-        id: idx + 1,
+    const rawSamples = data.tests.map((t) => ({
         input: typeof t?.input === 'string' ? t.input : '',
         output: typeof t?.output === 'string' ? t.output : '',
         timeLimit: timeLimitMs
+    }));
+
+    // 过滤掉「见附件中的 zoo/zoo3.in」这类附件引用样例：
+    // 它们只是指向附件的占位文本，并没有真正的输入/输出，导入后无法运行。
+    const filteredSamples = rawSamples.filter((s) => !isPlaceholderCompanionSample(s.input, s.output));
+    const usableSamples = filteredSamples.length > 0 ? filteredSamples : rawSamples;
+    if (usableSamples.length !== rawSamples.length) {
+        try { logger.logInfo(`[CompetitiveCompanion] 已自动过滤 ${rawSamples.length - usableSamples.length} 个附件引用占位样例`); } catch (_) { }
+    }
+
+    const samples = usableSamples.map((s, idx) => ({
+        id: idx + 1,
+        input: s.input,
+        output: s.output,
+        timeLimit: s.timeLimit
     }));
 
     const payload = {
