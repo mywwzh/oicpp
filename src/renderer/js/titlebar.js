@@ -123,6 +123,16 @@ class TitlebarManager {
         if (this._closeConfirmInProgress) return;
         if (!window.electronIPC) return;
 
+        // 关闭前先持久化当前打开的标签页。标签页状态平时靠 2s 防抖保存，
+        // 快速关闭时可能来不及写入，导致下次启动恢复成更早的旧会话。
+        try {
+            if (window.oicppApp && typeof window.oicppApp.saveCurrentOpenTabs === 'function') {
+                await window.oicppApp.saveCurrentOpenTabs();
+            }
+        } catch (err) {
+            logWarn('关闭前保存标签页失败:', err);
+        }
+
         const tempFilesHandled = await this._confirmTemporaryFilesBeforeClose();
         if (!tempFilesHandled) {
             if (source === 'system') {

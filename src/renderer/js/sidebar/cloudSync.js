@@ -224,7 +224,7 @@ class CloudSyncPanel {
             this.renderEmptyState(window.i18n ? window.i18n.t('cloud.loginRequired') : '请先登录账户');
             return;
         }
-        this.refresh();
+        this.refresh({ silent: true });
     }
 
     async activate() {
@@ -242,7 +242,8 @@ class CloudSyncPanel {
         this.refresh();
     }
 
-    async refresh() {
+    async refresh(options = {}) {
+        const silent = options && options.silent === true;
         if (this.isLoading) return;
         if (!this._lastLoggedIn) {
             this.renderEmptyState(window.i18n ? window.i18n.t('cloud.loginRequired') : '请先登录账户');
@@ -253,7 +254,13 @@ class CloudSyncPanel {
             await this.loadDirectory('/');
             this.renderTree();
         } catch (error) {
-            this.showMessage(error?.message || (window.i18n ? window.i18n.t('cloud.refreshFail') : '刷新失败'), 'error');
+            const message = error?.message || (window.i18n ? window.i18n.t('cloud.refreshFail') : '刷新失败');
+            // 自动刷新（启动/登录状态变更）失败时只记日志，避免弹出无意义的错误提示
+            if (silent) {
+                try { logWarn('[云空间] 自动刷新失败:', message); } catch (_) { }
+            } else {
+                this.showMessage(message, 'error');
+            }
         } finally {
             this.isLoading = false;
         }
@@ -1230,7 +1237,11 @@ class CloudSyncPanel {
                 throw new Error('登录已过期，请重新登录');
             }
             const msg = response?.data?.msg || response?.error || '请求失败';
-            throw new Error(msg);
+            // 底层 fetch 失败时只会返回 "fetch failed" 这类晦涩文案，统一换成可读提示
+            const friendly = /fetch failed|failed to fetch|network|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|请求超时/i.test(String(msg))
+                ? '网络连接失败，请检查网络后重试'
+                : msg;
+            throw new Error(friendly);
         }
         const data = response?.data;
         if (data && data.code && data.code !== 200) {

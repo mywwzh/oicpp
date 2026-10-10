@@ -4516,18 +4516,19 @@ ${data.message || '程序已加载，等待开始执行'}
             if (!window.tabManager) return;
             const tabs = [];
             for (const [key, tabData] of window.tabManager.tabs) {
-                if (tabData && tabData.filePath && !tabData.isTempFile) {
-                    tabs.push({
-                        filePath: tabData.filePath,
-                        fileName: tabData.fileName || '',
-                        groupId: tabData.groupId || '',
-                        viewType: tabData.viewType || 'code'
-                    });
-                }
+                if (!tabData || tabData.isWelcome || tabData.isTempFile) continue;
+                const filePath = typeof tabData.filePath === 'string' ? tabData.filePath : '';
+                // 云端文件无法在下次启动时从磁盘恢复，跳过以免产生恢复失败
+                if (!filePath || /^cloud:/i.test(filePath)) continue;
+                tabs.push({
+                    filePath,
+                    fileName: tabData.fileName || '',
+                    groupId: tabData.groupId || '',
+                    viewType: tabData.viewType || 'code'
+                });
             }
-            if (tabs.length > 0) {
-                await window.electronAPI.saveLastOpenTabs(tabs);
-            }
+            // 即使列表为空也要保存：否则关闭所有标签后重启会恢复上一次的旧会话
+            await window.electronAPI.saveLastOpenTabs(tabs);
         } catch (err) {
             logWarn('保存打开标签页失败:', err);
         }
