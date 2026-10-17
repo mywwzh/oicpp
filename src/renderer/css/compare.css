@@ -52,14 +52,14 @@
 .compare-file-section {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 20px;
 }
 
 .compare-notice {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    padding: 14px;
+    gap: 8px;
+    padding: 12px;
     background-color: var(--warning-bg);
     border: 1px solid var(--warning-border);
     border-left: 4px solid var(--warning-border);
@@ -85,7 +85,7 @@
 .file-select-group {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 12px;
 }
 
 .file-select-item {
@@ -104,7 +104,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 14px;
+    padding: 8px 12px;
     background-color: var(--hover-bg);
     border-bottom: 1px solid var(--border-color);
 }
@@ -116,8 +116,8 @@
 }
 
 .file-browse-btn {
-    height: 26px;
-    padding: 5px 10px;
+    height: 24px;
+    padding: 4px 8px;
     border: none;
     background-color: var(--primary-color);
     color: white;
@@ -133,7 +133,7 @@
 }
 
 .file-path-display {
-    padding: 10px 14px;
+    padding: 8px 12px;
     font-size: 12px;
     color: var(--text-secondary);
     font-family: 'Consolas';
@@ -148,14 +148,14 @@
     border: 1px solid var(--border-color);
     border-radius: 6px;
     background-color: var(--card-bg);
-    padding: 16px;
+    padding: 12px;
 }
 
 .config-item {
     display: flex;
     align-items: center;
-    gap: 14px;
-    margin-bottom: 18px;
+    gap: 8px;
+    margin-bottom: 8px;
 }
 
 .config-item:last-child {
@@ -189,13 +189,13 @@
 }
 
 .config-checkbox {
-    margin-right: 8px;
+    margin-right: 6px;
     accent-color: var(--primary-color);
 }
 
 .file-input-group {
     display: flex;
-    gap: 16px;
+    gap: 8px;
     align-items: center;
     flex: 1;
 }
@@ -215,7 +215,7 @@
 .testlib-label {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     min-width: auto;
     white-space: nowrap;
 }
@@ -223,7 +223,7 @@
 .spj-section {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 8px;
     flex: 1;
     min-width: 200px;
 }
@@ -240,7 +240,7 @@
 .compare-freopen-row {
     flex-direction: column;
     align-items: stretch;
-    gap: 12px;
+    gap: 6px;
 }
 
 .compare-freopen-group {
@@ -263,15 +263,15 @@
 
 .compare-actions {
     display: flex;
-    gap: 20px;
+    gap: 12px;
     flex-wrap: wrap;
 }
 
 .compare-btn {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 9px 14px;
+    gap: 6px;
+    padding: 8px 12px;
     border: none;
     border-radius: 4px;
     font-size: 12px;
