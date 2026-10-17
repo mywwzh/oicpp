@@ -109,14 +109,30 @@
             let out = '';
             let segments = [];
 
-            let inStrS = false, inStrD = false, inStrRaw = false;
             let templateDepth = 0;
             let inlineBraceDepth = 0;
             let parenDepth = 0; // 括号深度，用于判定是否允许在分号处换行
 
             const isSpace = (ch) => ch === ' ' || ch === '\t';
 
+            // 字符串/字符/注释等字面量原样保留：扫描时用占位符代替，行尾统一还原，
+            // 避免后续的正则规范化改到字面量内部（见 issue #385）
+            const literals = [];
+            const pushLiteral = (text) => {
+                literals.push(text);
+                out += '\u0001' + String(literals.length - 1) + '\u0002';
+            };
+            const restoreLiterals = (text) => text.replace(/\u0001(\d+)\u0002/g, (m, n) => literals[Number(n)]);
+
             let pendingSpace = false; // 记录遇到的空白，按需输出
+            const addPendingSpace = () => {
+                if (!pendingSpace) return;
+                pendingSpace = false;
+                if (!out || /\s$/.test(out)) return;
+                const prevCh = out.slice(-1);
+                if (prevCh === '(' || prevCh === '[' || prevCh === '{') return;
+                out += ' ';
+            };
             const emitPendingSpaceIfNeeded = (nextCharCategory) => {
                 if (!pendingSpace) return;
                 const prev = out.replace(/\s+$/g, '').slice(-1);
@@ -134,43 +150,82 @@
                 const three = i + 2 < s.length ? s.substring(i, i + 3) : '';
 
                 if (inBlockComment) {
-                    if (pendingSpace) { out += ' '; pendingSpace = false; }
-                    out += ch;
-                    if (ch === '*' && next === '/') { out += '/'; i += 2; inBlockComment = false; continue; }
-                    i++; continue;
+                    const end = s.indexOf('*/', i);
+                    if (end === -1) {
+                        pushLiteral(s.substring(i));
+                        i = s.length;
+                    } else {
+                        pushLiteral(s.substring(i, end + 2));
+                        i = end + 2;
+                        inBlockComment = false;
+                    }
+                    continue;
                 }
-                if (!inStrS && !inStrD && !inStrRaw) {
-                    if (ch === '/' && next === '*') { if (pendingSpace) { out += ' '; pendingSpace = false; } out += '/*'; inBlockComment = true; i += 2; continue; }
-                    if (ch === '/' && next === '/') { if (pendingSpace) { out += ' '; pendingSpace = false; } out += s.substring(i); i = s.length; break; }
+                if (ch === '/' && next === '*') {
+                    addPendingSpace();
+                    const end = s.indexOf('*/', i + 2);
+                    if (end === -1) {
+                        pushLiteral(s.substring(i));
+                        inBlockComment = true;
+                        i = s.length;
+                    } else {
+                        pushLiteral(s.substring(i, end + 2));
+                        i = end + 2;
+                    }
+                    continue;
+                }
+                if (ch === '/' && next === '/') {
+                    addPendingSpace();
+                    pushLiteral(s.substring(i));
+                    i = s.length;
+                    break;
                 }
 
-                if (inStrS) {
-                    if (pendingSpace) { out += ' '; pendingSpace = false; }
-                    out += ch;
-                    if (ch === '\\' && i + 1 < s.length) { out += s[i + 1]; i += 2; continue; }
-                    if (ch === '\'') inStrS = false;
-                    i++; continue;
+                if (ch === '\'') {
+                    addPendingSpace();
+                    let end = i + 1;
+                    while (end < s.length) {
+                        if (s[end] === '\\') { end += 2; continue; }
+                        if (s[end] === '\'') { end++; break; }
+                        end++;
+                    }
+                    end = Math.min(end, s.length);
+                    pushLiteral(s.substring(i, end));
+                    i = end;
+                    continue;
                 }
-                if (inStrD) {
-                    if (pendingSpace) { out += ' '; pendingSpace = false; }
-                    out += ch;
-                    if (ch === '\\' && i + 1 < s.length) { out += s[i + 1]; i += 2; continue; }
-                    if (ch === '"') inStrD = false;
-                    i++; continue;
-                }
-                if (inStrRaw) {
-                    if (pendingSpace) { out += ' '; pendingSpace = false; }
-                    out += ch;
-                    if (ch === '"') inStrRaw = false;
-                    i++; continue;
-                }
-
-                if (ch === '\'') { if (pendingSpace) { out += ' '; pendingSpace = false; } inStrS = true; out += ch; i++; continue; }
                 if (ch === '"') {
                     const prev = s[i - 1] || '';
-                    const look = s.substring(i, i + 2);
-                    if (prev === 'R' && look === '"(') { if (pendingSpace) { out += ' '; pendingSpace = false; } inStrRaw = true; out += ch; i++; continue; }
-                    if (pendingSpace) { out += ' '; pendingSpace = false; } inStrD = true; out += ch; i++; continue;
+                    if (prev === 'R' && s[i + 1] === '(') {
+                        // 原始字符串 R"delim( ... )delim" —— 内容必须完全保持原样
+                        let prefixStart = i - 1;
+                        if (prefixStart >= 1 && 'uUL'.includes(s[prefixStart - 1])) {
+                            prefixStart--;
+                            if (s[prefixStart - 1] === '8') prefixStart--;
+                        }
+                        const prefix = s.substring(prefixStart, i);
+                        if (out.endsWith(prefix)) out = out.slice(0, out.length - prefix.length);
+                        let delimEnd = i + 2;
+                        while (delimEnd < s.length && s[delimEnd] !== '(') delimEnd++;
+                        const delimiter = s.substring(i + 2, delimEnd);
+                        const terminator = ')' + delimiter + '"';
+                        const closeIdx = s.indexOf(terminator, delimEnd + 1);
+                        const stop = closeIdx === -1 ? s.length : closeIdx + terminator.length;
+                        pushLiteral(prefix + s.substring(i, stop));
+                        i = stop;
+                        continue;
+                    }
+                    addPendingSpace();
+                    let end = i + 1;
+                    while (end < s.length) {
+                        if (s[end] === '\\') { end += 2; continue; }
+                        if (s[end] === '"') { end++; break; }
+                        end++;
+                    }
+                    end = Math.min(end, s.length);
+                    pushLiteral(s.substring(i, end));
+                    i = end;
+                    continue;
                 }
 
                 if (ch === '{') open++;
@@ -279,17 +334,23 @@
                         if (!prevLooksLikeName) return false;
                         let depth = 1;
                         let k = i + 1;
+                        let content = '';
                         while (k < s.length) {
                             const c = s[k];
-                            if (c === '<') depth++;
-                            else if (c === '>') { depth--; if (depth === 0) break; }
+                            if (c === '<') { depth++; content += c; }
+                            else if (c === '>') { depth--; if (depth === 0) break; content += c; }
                             else if (c === '"' || c === '\'') break; // 字符串/字符开始则放弃
                             else if (/[^\sA-Za-z0-9_,:<>&*]/.test(c)) { // 出现不被允许的字符
                                 return false;
+                            } else {
+                                content += c;
                             }
                             k++;
                         }
-                        return k < s.length && depth === 0;
+                        if (!(k < s.length && depth === 0)) return false;
+                        // 比较表达式（如 a < b && c > d）不能当成模板
+                        if (/&&|\|\||[;{}(=+\-\/%^|!?~]/.test(content)) return false;
+                        return true;
                     };
                     if (isTemplateStart()) {
                         emitPendingSpaceIfNeeded('op');
@@ -309,6 +370,8 @@
                     if (unary) {
                         emitPendingSpaceIfNeeded('op');
                         out = out.replace(/[ ]+$/g, '');
+                        // 避免 "a / *&b" 被拼成 "a /*&b" 而变成块注释
+                        if (ch === '*' && out.slice(-1) === '/') out += ' ';
                         out += ch; i++; continue;
                     }
                     emitPendingSpaceIfNeeded('op');
@@ -328,6 +391,14 @@
                     parenDepth++;
                     i++;
                     while (i < s.length && isSpace(s[i])) i++;
+                    continue;
+                }
+                if (ch === ')') {
+                    pendingSpace = false;
+                    out = out.replace(/[ ]+$/g, '');
+                    out += ')';
+                    parenDepth = Math.max(0, parenDepth - 1);
+                    i++;
                     continue;
                 }
                 if (ch === '{') {
@@ -433,38 +504,34 @@
                 out += ch; i++;
             }
 
-            out = out.replace(/\b(if|for|while|switch|catch)\s*\(/g, '$1 (');
-
-            out = out.replace(/\bcase\s+([^:]+?)\s*:\s*/g, 'case $1: ');
-            out = out.replace(/\bdefault\s*:\s*/g, 'default: ');
-            {
+            // 对每个输出片段做统一规范化（片段可能已在扫描阶段被切开）
+            const normalize = (text) => {
+                let t = text;
+                t = t.replace(/\b(if|for|while|switch|catch)\s*\(/g, '$1 (');
+                t = t.replace(/\bcase\s+([^:]+?)\s*:\s*/g, 'case $1: ');
+                t = t.replace(/\bdefault\s*:\s*/g, 'default: ');
                 const kw = new Set(['if', 'for', 'while', 'switch', 'catch']);
-                out = out.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\s+\(/g, (m, name) => {
+                t = t.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\s+\(/g, (m, name) => {
                     return kw.has(name) ? `${name} (` : `${name}(`;
                 });
-                out = out.replace(/([\]\>])\s+\(/g, '$1(');
-            }
-            out = out.replace(/([A-Za-z_][A-Za-z0-9_]*)\s*<\s*([^>]+?)\s*>/g, (m, name, inner) => {
-                if (/[;(){}]/.test(inner)) return m;
-                const cleaned = inner
-                    .replace(/\s*,\s*/g, ', ')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-                return `${name}<${cleaned}>`;
-            });
-
-            out = out.replace(/[ \t]+$/g, '');
-
-            out = out.replace(/}\n\s*;/g, '};');
-
-            out = out.replace(/^(\s*case [^:]+:\s*)([^\n][^]*)/gm, (m, head, rest) => {
-                if (/^break;/.test(rest.trim())) return head + '\n' + rest.trim();
-                return head + '\n' + rest.trim();
-            });
+                t = t.replace(/([\]\>])\s+\(/g, '$1(');
+                t = t.replace(/[ \t]+$/g, '');
+                t = t.replace(/}\n\s*;/g, '};');
+                // 还原被占位符保护的字面量（字符串、字符、注释）
+                return restoreLiterals(t);
+            };
 
             if (out.length > 0) segments.push(out);
 
-            return { segments, open, close, noIndent: false };
+            // 规范化后若片段内部被拆成多行（如 case 标签与语句），展开为独立片段
+            const expanded = [];
+            segments.forEach((seg) => {
+                normalize(seg).split('\n').forEach((part) => {
+                    if (part.length > 0) expanded.push(part);
+                });
+            });
+
+            return { segments: expanded, open, close, noIndent: false };
         }
 
         for (let idx = 0; idx < rawLines.length; idx++) {
