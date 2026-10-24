@@ -212,8 +212,20 @@ class I18nManager {
             // Translate text content
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
-                if (key) {
-                    el.textContent = this.t(key);
+                if (!key) return;
+                const text = this.t(key);
+                // 元素内部如果有子元素（复选框、图标等），不能直接覆盖 textContent，
+                // 否则会把 checkbox / svg 一起删掉。只替换文字节点。
+                if (el.children.length === 0) {
+                    el.textContent = text;
+                    return;
+                }
+                const textNodes = Array.from(el.childNodes).filter(node => node.nodeType === 3);
+                const target = textNodes.find(node => node.nodeValue.trim()) || textNodes[textNodes.length - 1];
+                if (target) {
+                    target.nodeValue = text;
+                } else {
+                    el.appendChild(document.createTextNode(text));
                 }
             });
 
