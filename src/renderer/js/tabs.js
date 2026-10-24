@@ -4740,44 +4740,6 @@ class TabManager {
         this.activeTab = 'Welcome';
     }
 
-    getWelcomePageContent() {
-        return `
-            <div class="welcome-page">
-                <div class="welcome-header">
-                    <img class="welcome-logo-image" alt="OICPP Logo">
-                    <div class="welcome-logo">OICPP IDE</div>
-                    <div class="welcome-subtitle">为 OIer 优化的 C++ 编程环境</div>
-                    <div class="welcome-version">版本 1.5.4 (v49)</div>
-                </div>
-                
-                <div class="welcome-content">
-                    <div class="welcome-section">
-                        <h3>开始</h3>
-                        <div class="welcome-actions">
-                            <a href="#" class="welcome-action" data-action="open-folder">
-                                <span class="icon" data-ui-icon="folder" aria-hidden="true"></span>
-                                <span>打开文件夹</span>
-                                <span class="shortcut">Ctrl+K</span>
-                            </a>
-                        </div>
-                    </div>
-                    
-                    <div class="welcome-section">
-                        <h3>最近打开</h3>
-                        <div class="welcome-recent" id="welcome-recent">
-                            <!-- 最近文件列表将动态生成 -->
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="welcome-footer">
-                    <p>OICPP IDE - 为竞赛编程而生</p>
-                    <p><a href="#">使用文档</a> | <a href="#">快捷键</a> | <a href="#">关于</a></p>
-                </div>
-            </div>
-        `;
-    }
-
     showWelcomeContent() {
         const editorArea = document.querySelector('.editor-area');
         if (editorArea) {

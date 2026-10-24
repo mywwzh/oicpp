@@ -448,10 +448,6 @@
         }
     }
 
-    openFolder() {
-        window.electronAPI.openFolder();
-    }
-
     updatePlatformSpecificMenu() {
         try {
             const isWindows = !!(window.process && window.process.platform === 'win32');

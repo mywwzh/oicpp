@@ -3563,14 +3563,6 @@ function setupIPC() {
         }
     });
 
-    ipcMain.on('compile-code', (event, code, options) => {
-        compileCode(code, options).then(result => {
-            event.reply('compile-result', result);
-        }).catch(error => {
-            event.reply('compile-error', error.message);
-        });
-    });
-
     ipcMain.on('start-debug', (event, filePath, options) => {
         startDebugSession(filePath, options).then(result => {
             event.reply('debug-started', result);
@@ -7376,28 +7368,6 @@ function getSettingsPath() {
         fs.mkdirSync(settingsDir, { recursive: true });
     }
     return path.join(settingsDir, 'settings.json');
-}
-
-function mergeSettings(defaultSettings, userSettings) {
-    const result = JSON.parse(JSON.stringify(defaultSettings));
-
-    function merge(target, source) {
-        for (const key in source) {
-            if (source.hasOwnProperty(key)) {
-                if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
-                    if (!target[key] || typeof target[key] !== 'object') {
-                        target[key] = {};
-                    }
-                    merge(target[key], source[key]);
-                } else {
-                    target[key] = source[key];
-                }
-            }
-        }
-    }
-
-    merge(result, userSettings);
-    return result;
 }
 
 function loadSettings() {
