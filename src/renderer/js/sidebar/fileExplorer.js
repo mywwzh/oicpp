@@ -1136,6 +1136,14 @@ class FileExplorer {
         if (window.electronIPC) {
             this.clipboard.files.forEach(file => {
                 const operation = this.clipboard.operation;
+                const normPath = (p) => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '');
+                const srcNorm = normPath(file.path);
+                const tgtNorm = normPath(targetPath);
+                // 复制/移动到自身或其子目录会无限递归（目录会在遍历时把新建的目标也读进来）。
+                if (file.type === 'folder' && (tgtNorm === srcNorm || tgtNorm.startsWith(srcNorm + '/'))) {
+                    this.showError('不能把文件夹粘贴到自身或其子目录');
+                    return;
+                }
                 window.electronIPC.send('paste-file', file.path, targetPath, operation);
 
                 const handleFilePasted = async (event, sourcePath, destPath, operation, error) => {
@@ -1147,7 +1155,13 @@ class FileExplorer {
                             logInfo(`文件${operation === 'copy' ? '复制' : '移动'}成功:`, file.name, '->', destPath);
 
                             if (operation === 'cut' && window.tabManager) {
-                                try { window.tabManager.updateTabPathBySource(sourcePath, destPath); } catch (e) { logWarn('更新标签页路径失败:', e); }
+                                try {
+                                    if (file.type === 'folder' && typeof window.tabManager.updateTabPathsUnderDirectory === 'function') {
+                                        window.tabManager.updateTabPathsUnderDirectory(sourcePath, destPath);
+                                    } else {
+                                        window.tabManager.updateTabPathBySource(sourcePath, destPath);
+                                    }
+                                } catch (e) { logWarn('更新标签页路径失败:', e); }
                             }
 
                             if (operation === 'cut') {
@@ -1223,10 +1237,14 @@ class FileExplorer {
                                 this.refresh();
 
                                 if (window.tabManager) {
-                                    const sep = newPath.includes('\\') ? '\\' : '/';
-                                    const newTitle = newPath.substring(newPath.lastIndexOf(sep) + 1);
-                                    // Keep the tab title, file path, and editor path in one update.
-                                    try { window.tabManager.updateTabPathBySource(oldPath, newPath, newTitle); } catch (_) { }
+                                    if (file.type === 'folder' && typeof window.tabManager.updateTabPathsUnderDirectory === 'function') {
+                                        window.tabManager.updateTabPathsUnderDirectory(oldPath, newPath);
+                                    } else {
+                                        const sep = newPath.includes('\\') ? '\\' : '/';
+                                        const newTitle = newPath.substring(newPath.lastIndexOf(sep) + 1);
+                                        // Keep the tab title, file path, and editor path in one update.
+                                        try { window.tabManager.updateTabPathBySource(oldPath, newPath, newTitle); } catch (_) { }
+                                    }
                                 }
 
                                 try {
@@ -1970,11 +1988,15 @@ class FileExplorer {
                             }
 
                             if (window.tabManager) {
-                                const normalizedPath = typeof file.path === 'string' ? file.path.replace(/\\/g, '/') : '';
-                                if (normalizedPath && typeof window.tabManager.closeTabByUniqueKey === 'function') {
-                                    window.tabManager.closeTabByUniqueKey(normalizedPath, { skipAutoSave: true });
-                                } else if (typeof window.tabManager.closeTabByFileName === 'function') {
-                                    window.tabManager.closeTabByFileName(file.name, { skipAutoSave: true });
+                                if (file.type === 'folder') {
+                                    this._closeTabsUnderPath(file.path);
+                                } else {
+                                    const normalizedPath = typeof file.path === 'string' ? file.path.replace(/\\/g, '/') : '';
+                                    if (normalizedPath && typeof window.tabManager.closeTabByUniqueKey === 'function') {
+                                        window.tabManager.closeTabByUniqueKey(normalizedPath, { skipAutoSave: true });
+                                    } else if (typeof window.tabManager.closeTabByFileName === 'function') {
+                                        window.tabManager.closeTabByFileName(file.name, { skipAutoSave: true });
+                                    }
                                 }
                             }
 

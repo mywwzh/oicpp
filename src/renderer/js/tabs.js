@@ -2126,6 +2126,10 @@ class TabManager {
         const currentTabKey = this.activeTabKey || this.findUniqueKeyByFileName(this.activeTab);
         const currentTab = currentTabKey ? this.tabs.get(currentTabKey) : this.getTabByFileName(this.activeTab);
         if (!currentTab) return;
+        if (currentTab.externalModified) {
+            logInfo('文件已被外部修改，跳过切标签前的自动保存:', currentTab.filePath);
+            return;
+        }
 
         const content = this.getTabContentForSave(currentTab);
         if (typeof content === 'string') {
@@ -2192,38 +2196,30 @@ class TabManager {
             }
         }
 
-        if (tab.filePath && window.electronIPC) {
+        if (tab.filePath && window.electronAPI?.readFileContent) {
             logInfo('从文件系统重新读取文件:', tab.filePath);
             tab.isLoading = true; // 设置加载标志
-            window.electronIPC.send('read-file-content', tab.filePath);
+            window.electronAPI.readFileContent(tab.filePath).then((content) => {
+                tab.isLoading = false; // 清除加载标志
+                logInfo('文件内容读取成功，直接设置到当前编辑器');
+                this.setEditorContent(content, true); // 标记为已保存
+                tab.content = content;
+                tab.modified = false; // 从文件系统加载的内容标记为未修改
 
-            const handleFileRead = (event, filePath, content, error) => {
-                if (filePath === tab.filePath) {
-                    tab.isLoading = false; // 清除加载标志
-                    if (error) {
-                        logError('读取文件失败:', error);
-                        logWarn('[TabReadFileErrorSuppressed]', '无法读取文件: ' + error);
-                        if (tab.content !== undefined) {
-                            this.setEditorContent(tab.content);
-                        }
-                    } else {
-                        logInfo('文件内容读取成功，直接设置到当前编辑器');
-                        this.setEditorContent(content, true); // 标记为已保存
-                        tab.content = content;
-                        tab.modified = false; // 从文件系统加载的内容标记为未修改
-
-                        if (this.monacoEditorManager && this.monacoEditorManager.currentEditor) {
-                            const editor = this.monacoEditorManager.currentEditor;
-                            if (editor.updateFileName) {
-                                editor.updateFileName(fileName, false);
-                            }
-                        }
+                if (this.monacoEditorManager && this.monacoEditorManager.currentEditor) {
+                    const editor = this.monacoEditorManager.currentEditor;
+                    if (editor.updateFileName) {
+                        editor.updateFileName(fileName, false);
                     }
-                    window.electronIPC.ipcRenderer.removeListener('file-content-read', handleFileRead);
                 }
-            };
-
-            window.electronIPC.on('file-content-read', handleFileRead);
+            }).catch((error) => {
+                tab.isLoading = false;
+                logError('读取文件失败:', error);
+                logWarn('[TabReadFileErrorSuppressed]', '无法读取文件: ' + (error?.message || error));
+                if (tab.content !== undefined) {
+                    this.setEditorContent(tab.content);
+                }
+            });
         } else {
             const content = tab.content || this.getDefaultContentForFile(fileName);
             this.setEditorContent(content, !tab.modified); // 根据修改状态决定是否标记为已保存
@@ -4626,7 +4622,7 @@ class TabManager {
         }
 
         const modifiedEntries = Array.from(this.tabs.entries()).filter(([, tabData]) => {
-            return tabData && tabData.modified && !tabData.isTempFile && tabData.viewType !== 'pdf';
+            return tabData && tabData.modified && !tabData.isTempFile && tabData.viewType !== 'pdf' && !tabData.externalModified;
         });
 
         if (modifiedEntries.length === 0) {
@@ -4672,26 +4668,27 @@ class TabManager {
             if (!result) return;
         }
 
+        // this.tabs 的 key 是 uniqueKey（文件路径），必须用 closeTabByUniqueKey 关闭。
         const tabsToClose = [...this.tabs.keys()];
-        tabsToClose.forEach(fileName => {
-            this.closeTab(fileName, { skipCloseConfirm: true });
+        tabsToClose.forEach(key => {
+            this.closeTabByUniqueKey(key, { skipCloseConfirm: true });
         });
     }
 
     closeOtherTabs() {
-        if (!this.activeTab) return;
+        const currentKey = this.activeTabKey || this.findUniqueKeyByFileName(this.activeTab);
+        if (!currentKey) return;
 
-        const currentTab = this.activeTab;
-        const tabsToClose = [...this.tabs.keys()].filter(fileName => fileName !== currentTab);
+        const tabsToClose = [...this.tabs.keys()].filter(key => key !== currentKey);
 
-        const modifiedTabs = tabsToClose.filter(fileName => this.tabs.get(fileName).modified);
+        const modifiedTabs = tabsToClose.filter(key => this.tabs.get(key)?.modified);
         if (modifiedTabs.length > 0) {
             const result = confirm(`有 ${modifiedTabs.length} 个文件未保存，确定要关闭其他标签页吗？`);
             if (!result) return;
         }
 
-        tabsToClose.forEach(fileName => {
-            this.closeTab(fileName, { skipCloseConfirm: true });
+        tabsToClose.forEach(key => {
+            this.closeTabByUniqueKey(key, { skipCloseConfirm: true });
         });
     }
 
@@ -4957,15 +4954,24 @@ class TabManager {
         return unsavedFiles;
     }
 
-    saveFile(fileName) {
+    async saveFile(fileName) {
         const tab = this.getTabByFileName(fileName);
-        if (tab) {
-            tab.modified = false;
-            this.refreshTabLabels();
-
-            if (this.monacoEditorManager) {
-                this.monacoEditorManager.saveFile(fileName);
+        if (!tab) return false;
+        const uniqueKey = tab.uniqueKey || this.findUniqueKeyByFileName(fileName);
+        try {
+            const result = await this.monacoEditorManager?.saveFile?.(fileName);
+            if (result && result.success === false) {
+                throw new Error(result.error || '保存失败');
             }
+            if (uniqueKey) {
+                this.markTabAsSavedByUniqueKey(uniqueKey);
+            } else {
+                this.markTabAsSaved(fileName);
+            }
+            return true;
+        } catch (e) {
+            logError('保存文件失败:', e);
+            return false;
         }
     }
 
@@ -5149,19 +5155,7 @@ void hello() {
         }
 
         const fileName = this.generateNewFileName();
-        let tabId = tabData.tabId;
-        if (!tabId && uniqueKey) {
-            try {
-                if (this.monacoEditorManager && this.monacoEditorManager.generateTabId) {
-                    const fname = tabData.fileName || uniqueKey.split('/').pop();
-                    tabId = this.monacoEditorManager.generateTabId(fname, uniqueKey);
-                } else {
-                    tabId = uniqueKey.replace(/[\/:]/g, '_'); // 兜底旧逻辑
-                }
-            } catch (_) {
-                tabId = uniqueKey.replace(/[\/:]/g, '_');
-            }
-        }
+        this.openFile(fileName, content, true);
     }
 
     displayWelcomePage() {
@@ -5445,6 +5439,19 @@ void hello() {
     }
 
 
+
+    updateTabPathsUnderDirectory(oldDir, newDir) {
+        const norm = (p) => String(p || '').replace(/\\/g, '/');
+        const oldPrefix = norm(oldDir).replace(/\/+$/, '') + '/';
+        const newPrefix = norm(newDir).replace(/\/+$/, '') + '/';
+        const entries = Array.from(this.tabs.entries());
+        for (const [, tab] of entries) {
+            const oldPath = norm(tab.filePath || '');
+            if (!oldPath.startsWith(oldPrefix)) continue;
+            const newPath = newPrefix + oldPath.slice(oldPrefix.length);
+            this.updateTabPathBySource(oldPath, newPath, newPath.split('/').pop());
+        }
+    }
 
     setFilePath(fileName, filePath) {
         const tab = this.getTabByFileName(fileName);

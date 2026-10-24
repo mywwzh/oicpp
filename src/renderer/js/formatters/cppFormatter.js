@@ -92,6 +92,8 @@
         let indentLevel = 0;
         let blankCount = 0;
         let inPreprocessorContinuation = false;
+        // 跨行原始字符串：遇到 R"(" 未在同一行闭合时记录结束符，后续行原样保留。
+        let rawStringTerminator = null;
 
         const mkIndent = (level) => insertSpaces ? ' '.repeat(level * indentWidth) : '\t'.repeat(level);
 
@@ -210,6 +212,9 @@
                         const delimiter = s.substring(i + 2, delimEnd);
                         const terminator = ')' + delimiter + '"';
                         const closeIdx = s.indexOf(terminator, delimEnd + 1);
+                        if (closeIdx === -1) {
+                            rawStringTerminator = terminator;
+                        }
                         const stop = closeIdx === -1 ? s.length : closeIdx + terminator.length;
                         pushLiteral(prefix + s.substring(i, stop));
                         i = stop;
@@ -508,7 +513,8 @@
             const normalize = (text) => {
                 let t = text;
                 t = t.replace(/\b(if|for|while|switch|catch)\s*\(/g, '$1 (');
-                t = t.replace(/\bcase\s+([^:]+?)\s*:\s*/g, 'case $1: ');
+                // 不能用 [^:]+?，否则 case Color::Red: 会被拆成 case Color: :Red :
+                t = t.replace(/\bcase\s+(.+?)\s*(?<!:):(?!:)\s*/g, 'case $1: ');
                 t = t.replace(/\bdefault\s*:\s*/g, 'default: ');
                 const kw = new Set(['if', 'for', 'while', 'switch', 'catch']);
                 t = t.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\s+\(/g, (m, name) => {
@@ -517,8 +523,8 @@
                 t = t.replace(/([\]\>])\s+\(/g, '$1(');
                 t = t.replace(/[ \t]+$/g, '');
                 t = t.replace(/}\n\s*;/g, '};');
-                // 还原被占位符保护的字面量（字符串、字符、注释）
-                return restoreLiterals(t);
+                // 保留占位符：缩进统计必须基于占位文本，否则字面量里的 {} 会污染缩进。
+                return t;
             };
 
             if (out.length > 0) segments.push(out);
@@ -531,12 +537,22 @@
                 });
             });
 
-            return { segments: expanded, open, close, noIndent: false };
+            return { segments: expanded, open, close, noIndent: false, restore: restoreLiterals };
         }
 
         for (let idx = 0; idx < rawLines.length; idx++) {
             let line = rawLines[idx];
             line = line.replace(/[ \t]+$/g, '');
+
+            // 跨行原始字符串内部的行必须原样保留（任何 trim/缩进都会改变字符串内容）。
+            if (rawStringTerminator) {
+                out.push(line);
+                blankCount = 0;
+                if (line.includes(rawStringTerminator)) {
+                    rawStringTerminator = null;
+                }
+                continue;
+            }
 
             const trimmedLeft = line.replace(/^[\t ]+/, '');
             if (inPreprocessorContinuation || trimmedLeft.startsWith('#')) {
@@ -583,7 +599,7 @@
                         if (!indentCaseLabels && segLevel > 0) segLevel -= 1;
                         text = text.trimEnd();
                     }
-                    out.push(mkIndent(segLevel) + text);
+                    out.push(mkIndent(segLevel) + (typeof res.restore === 'function' ? res.restore(text) : text));
 
                     const opens = (seg.match(/\{/g) || []).length;
                     const closes = (seg.match(/\}/g) || []).length;

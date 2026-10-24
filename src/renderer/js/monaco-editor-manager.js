@@ -4120,29 +4120,48 @@ class MonacoEditorManager {
                     }
                 } catch (_) {}
                 window.electronIPC.send('save-file', filePath, content);
-                const handleFileSaved = (event, savedPath, error) => {
-                    if (savedPath === filePath) {
+                return await new Promise((resolve) => {
+                    let settled = false;
+                    let offFileSaved = null;
+                    const finish = (result) => {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timer);
+                        try { if (typeof offFileSaved === 'function') offFileSaved(); } catch (_) { }
+                        resolve(result);
+                    };
+                    const handleFileSaved = (event, savedPath, error) => {
+                        if (savedPath !== filePath) return;
                         if (error) {
                             logError('保存失败:', error);
+                            finish({ success: false, error: error?.message || String(error) });
                         } else {
                             this.markFileSaved(filePath);
+                            finish({ success: true });
                         }
-                        if (typeof offFileSaved === 'function') {
-                            offFileSaved();
-                        } else {
-                            window.electronIPC.ipcRenderer.removeListener('file-saved', handleFileSaved);
-                        }
-                    }
-                };
-                const offFileSaved = window.electronIPC.on('file-saved', handleFileSaved);
+                    };
+                    offFileSaved = window.electronIPC.on('file-saved', handleFileSaved);
+                    // 主进程未回复时不能永久挂起；超时视为已提交，避免阻塞用户。
+                    const timer = setTimeout(() => {
+                        logWarn('等待保存确认超时:', filePath);
+                        finish({ success: true, timeout: true });
+                    }, 10000);
+                });
             } else {
                 logWarn('无法保存: 无文件路径或非Electron环境');
+                return { success: false, error: 'no-path' };
             }
         }
+        return { success: false, error: 'no-editor' };
     }
 
     markFileSaved(filePath) {
         if (window.tabManager) {
+            const key = String(filePath || '').replace(/\\/g, '/');
+            if (key && typeof window.tabManager.markTabAsSavedByUniqueKey === 'function' && window.tabManager.tabs?.has?.(key)) {
+                window.tabManager.markTabAsSavedByUniqueKey(key);
+                return;
+            }
             const fileName = this.getFileNameFromPath(filePath);
             window.tabManager.markTabAsSaved(fileName);
         }
@@ -4194,6 +4213,10 @@ class MonacoEditorManager {
     }
 
     async createDiffEditor(tabId, options = {}) {
+        let container = null;
+        let originalModel = null;
+        let modifiedModel = null;
+        let diffEditor = null;
         try {
             const existing = this.editors.get(tabId);
             if (existing && existing.__isDiffEditor) {
@@ -4209,7 +4232,7 @@ class MonacoEditorManager {
 
             editorArea.querySelectorAll('.monaco-editor-container').forEach(c => (c.style.display = 'none'));
 
-            const container = document.createElement('div');
+            container = document.createElement('div');
             container.className = 'monaco-editor-container diff-editor-container';
             container.dataset.tabId = tabId;
             container.dataset.groupId = groupId;
@@ -4230,17 +4253,13 @@ class MonacoEditorManager {
             const originalLanguage = this.getLanguageFromFileName(originalFileName);
             const modifiedLanguage = this.getLanguageFromFileName(modifiedFileName);
 
-            const originalUri = originalPath
-                ? monaco.Uri.file(originalPath)
-                : monaco.Uri.parse(`inmemory://diff/${tabId}/original`);
-            const modifiedUri = modifiedPath
-                ? monaco.Uri.file(modifiedPath)
-                : monaco.Uri.parse(`inmemory://diff/${tabId}/modified`);
+            const originalUri = monaco.Uri.parse(`inmemory://diff/${tabId}/original`);
+            const modifiedUri = monaco.Uri.parse(`inmemory://diff/${tabId}/modified`);
 
-            const originalModel = monaco.editor.createModel(options.originalContent || '', originalLanguage, originalUri);
-            const modifiedModel = monaco.editor.createModel(options.modifiedContent || '', modifiedLanguage, modifiedUri);
+            originalModel = monaco.editor.createModel(options.originalContent || '', originalLanguage, originalUri);
+            modifiedModel = monaco.editor.createModel(options.modifiedContent || '', modifiedLanguage, modifiedUri);
 
-            const diffEditor = monaco.editor.createDiffEditor(container, {
+            diffEditor = monaco.editor.createDiffEditor(container, {
                 renderSideBySide: true,
                 automaticLayout: true,
                 'semanticHighlighting.enabled': true,
@@ -4298,6 +4317,11 @@ class MonacoEditorManager {
             return diffEditor;
         } catch (error) {
             logError('创建 Diff 编辑器失败:', error);
+            // 失败时回滚已创建的容器与模型，避免出现打不开的空白 diff 标签和资源泄漏。
+            try { if (diffEditor) diffEditor.dispose(); } catch (_) { }
+            try { if (originalModel) originalModel.dispose(); } catch (_) { }
+            try { if (modifiedModel) modifiedModel.dispose(); } catch (_) { }
+            try { if (container && container.parentNode) container.parentNode.removeChild(container); } catch (_) { }
             return null;
         }
     }

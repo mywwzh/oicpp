@@ -6597,6 +6597,12 @@ async function readDirectory(dirPath) {
 }
 
 function copyDirectorySync(src, dest) {
+    // 目标位于源目录内部时，遍历会不断把新建的目标目录也读进来，导致无限递归。
+    const rel = path.relative(path.resolve(src), path.resolve(dest));
+    if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) {
+        throw new Error('不能把文件夹复制到自身或其子目录');
+    }
+
     if (!fs.existsSync(dest)) {
         fs.mkdirSync(dest, { recursive: true });
     }

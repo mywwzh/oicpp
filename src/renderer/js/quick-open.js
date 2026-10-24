@@ -39,7 +39,7 @@
             results.appendChild(empty);
             return;
         }
-        list.slice(0, 200).forEach((item, idx) => {
+        list.forEach((item, idx) => {
             const row = document.createElement('div');
             row.className = 'quick-open-item';
             if (idx === activeIndex) row.classList.add('active');
@@ -62,13 +62,19 @@
     }
 
     function search(query) {
-        if (!query) { render(allFiles.slice(0, 100)); return; }
+        if (!query) {
+            lastList = allFiles.slice(0, 100);
+            activeIndex = lastList.length ? 0 : -1;
+            render(lastList);
+            return;
+        }
         const ranked = allFiles.map(f => ({ ...f, __s: fuzzyScore(query, f.path) }))
             .filter(x => x.__s > 0)
             .sort((a, b) => b.__s - a.__s || a.path.length - b.path.length);
-        lastList = ranked;
-        activeIndex = ranked.length ? 0 : -1;
-        render(ranked);
+        // 渲染与键盘导航必须使用同一份截断后的列表，否则会越界或打开不可见项。
+        lastList = ranked.slice(0, 200);
+        activeIndex = lastList.length ? 0 : -1;
+        render(lastList);
     }
 
     async function ensureIndex() {
@@ -131,7 +137,7 @@
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') { e.preventDefault(); close(); }
         if (e.key === 'Enter') {
-            const list = lastList && lastList.length ? lastList : allFiles;
+            const list = lastList;
             if (list.length > 0) {
                 const idx = activeIndex >= 0 && activeIndex < list.length ? activeIndex : 0;
                 openFile(list[idx]);
@@ -139,16 +145,16 @@
         }
         if (e.key === 'ArrowDown') {
             e.preventDefault();
-            const list = lastList && lastList.length ? lastList : allFiles;
+            const list = lastList;
             if (list.length) {
-                activeIndex = Math.min((activeIndex < 0 ? 0 : activeIndex) + 1, list.length - 1);
+                activeIndex = Math.min((activeIndex < 0 ? -1 : activeIndex) + 1, list.length - 1);
                 render(list);
                 ensureActiveVisible();
             }
         }
         if (e.key === 'ArrowUp') {
             e.preventDefault();
-            const list = lastList && lastList.length ? lastList : allFiles;
+            const list = lastList;
             if (list.length) {
                 activeIndex = Math.max((activeIndex < 0 ? 0 : activeIndex) - 1, 0);
                 render(list);
@@ -161,6 +167,7 @@
         const items = results.querySelectorAll('.quick-open-item');
         if (!items || !items.length || activeIndex < 0) return;
         const el = items[activeIndex];
+        if (!el) return;
         const rTop = results.scrollTop;
         const rBottom = rTop + results.clientHeight;
         const eTop = el.offsetTop;
