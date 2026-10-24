@@ -6755,6 +6755,29 @@ let editorSettingsWindow = null;
 let codeTemplatesWindow = null;
 let backupSettingsWindow = null;
 
+function localizedSettingWindowTitle(key) {
+    const lang = String(settings?.language || 'zh-cn').toLowerCase();
+    const en = lang.startsWith('en');
+    const titles = {
+        compiler: en ? 'Compiler Settings' : '编译器设置',
+        editor: en ? 'Editor Settings' : '编辑器设置',
+        templates: en ? 'Code Template Settings' : '代码模板设置',
+        backup: en ? 'Settings Backup' : '设置备份设置'
+    };
+    return titles[key] || '';
+}
+
+function lockSettingsWindowTitle(win, key) {
+    if (!win) return;
+    const title = localizedSettingWindowTitle(key);
+    if (title) win.setTitle(title);
+    // 页面 <title> 会覆盖窗口标题；阻止它，避免英文环境下闪现中文标题。
+    win.on('page-title-updated', (event) => event.preventDefault());
+    win.webContents.on('did-finish-load', () => {
+        if (title && !win.isDestroyed()) win.setTitle(title);
+    });
+}
+
 function openCompilerSettings() {
     if (compilerSettingsWindow) {
         compilerSettingsWindow.focus();
@@ -6775,9 +6798,10 @@ function openCompilerSettings() {
             sandbox: false,
             webSecurity: false
         },
-        title: '编译器设置',
+        title: localizedSettingWindowTitle('compiler'),
         icon: getUserIconPath()
     });
+    lockSettingsWindowTitle(compilerSettingsWindow, 'compiler');
 
     compilerSettingsWindow.loadFile('src/renderer/settings/compiler.html');
 
@@ -6809,9 +6833,10 @@ function openEditorSettings() {
             sandbox: false,
             webSecurity: false
         },
-        title: '编辑器设置',
+        title: localizedSettingWindowTitle('editor'),
         icon: getUserIconPath()
     });
+    lockSettingsWindowTitle(editorSettingsWindow, 'editor');
 
     editorSettingsWindow.loadFile('src/renderer/settings/editor.html', { query: { theme: settings.theme } });
 
@@ -6849,9 +6874,10 @@ function openCodeTemplates() {
             sandbox: false,
             webSecurity: false
         },
-        title: '代码模板设置',
+        title: localizedSettingWindowTitle('templates'),
         icon: getUserIconPath()
     });
+    lockSettingsWindowTitle(codeTemplatesWindow, 'templates');
 
     codeTemplatesWindow.loadFile('src/renderer/settings/templates.html');
 
@@ -6880,9 +6906,10 @@ function openBackupSettings() {
             sandbox: false,
             webSecurity: false
         },
-        title: '设置备份设置',
+        title: localizedSettingWindowTitle('backup'),
         icon: getUserIconPath()
     });
+    lockSettingsWindowTitle(backupSettingsWindow, 'backup');
 
     backupSettingsWindow.loadFile('src/renderer/settings/backup.html', { query: { theme: settings.theme } });
 

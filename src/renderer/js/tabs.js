@@ -2281,10 +2281,10 @@ class TabManager {
                 }
             };
 
-            const safeName = escapeHtml(tabData.fileName || fileName || '当前文件');
+            const safeName = tabData.fileName || fileName || '当前文件';
             const message = tabData.isTempFile
-                ? `临时文件 “${safeName}” 未保存。<br><br>请选择如何处理临时文件。`
-                : `标签页 “${safeName}” 有未保存修改。<br><br>请选择如何处理这些修改。`;
+                ? `临时文件 “${safeName}” 未保存。\n\n请选择如何处理临时文件。`
+                : `标签页 “${safeName}” 有未保存修改。\n\n请选择如何处理这些修改。`;
 
             const proceedSave = async () => {
                 try {

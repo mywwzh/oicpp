@@ -324,6 +324,7 @@
     "gotoLine": "跳转到行号",
     "gotoLinePlaceholder": "请输入行号",
     "newFileDialogTitle": "新建文件",
+    "newFileDialogErrorTitle": "新建文件 - 错误",
     "newFileDialogPlaceholder": "请输入文件名（如：main.cpp, test.py, data.txt）",
     "newFileDialogError": "错误: {msg}\n请输入文件名（如：main.cpp, test.py, data.txt）",
     "newFolderDialogTitle": "新建文件夹",

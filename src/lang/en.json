@@ -341,6 +341,7 @@
     "gotoLine": "Go to Line",
     "gotoLinePlaceholder": "Enter line number",
     "newFileDialogTitle": "New File",
+    "newFileDialogErrorTitle": "New File - Error",
     "newFileDialogPlaceholder": "Enter file name",
     "newFileDialogError": "Error: {msg}\nPlease enter a file name (e.g. main.cpp, test.py, data.txt)",
     "newFolderDialogTitle": "New Folder",

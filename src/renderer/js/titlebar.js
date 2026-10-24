@@ -177,11 +177,11 @@ class TitlebarManager {
             const moreCount = Math.max(0, unsavedFiles.length - shown.length);
 
             const listHtml = shown
-                .map(name => `- ${this._escapeHtml(name)}`)
-                .join('<br>');
-            const moreHtml = moreCount > 0 ? `<br>${window.i18n ? window.i18n.t('dialog.unsavedFilesMore', { count: moreCount }) : '... 还有 ' + moreCount + ' 个文件'}` : '';
+                .map(name => `- ${String(name ?? '')}`)
+                .join('\n');
+            const moreHtml = moreCount > 0 ? `\n${window.i18n ? window.i18n.t('dialog.unsavedFilesMore', { count: moreCount }) : '... 还有 ' + moreCount + ' 个文件'}` : '';
 
-            const message = window.i18n ? window.i18n.t('dialog.unsavedFiles', { count: unsavedFiles.length, list: listHtml, more: moreHtml }) : `检测到 ${unsavedFiles.length} 个未保存文件：<br>${listHtml}${moreHtml}<br><br>请选择如何处理这些修改。`;
+            const message = window.i18n ? window.i18n.t('dialog.unsavedFiles', { count: unsavedFiles.length, list: listHtml, more: moreHtml }) : `检测到 ${unsavedFiles.length} 个未保存文件：\n${listHtml}${moreHtml}\n\n请选择如何处理这些修改。`;
             const result = await window.dialogManager.showActionDialog(window.i18n ? window.i18n.t('dialog.confirmQuit') : '确认退出', message, [
                 { id: 'save', label: window.i18n ? window.i18n.t('dialog.save') : '保存', className: 'dialog-btn-confirm' },
                 { id: 'discard', label: window.i18n ? window.i18n.t('dialog.discard') : '丢弃', className: 'dialog-btn-cancel' },
@@ -219,10 +219,10 @@ class TitlebarManager {
         const tempFiles = Array.from(window.tabManager?.tabs?.values?.() || [])
             .filter((tab) => tab?.isTempFile && tab.viewType !== 'pdf');
         for (const tab of tempFiles) {
-            const fileName = this._escapeHtml(tab.fileName || '临时文件');
+            const fileName = tab.fileName || '临时文件';
             const result = await window.dialogManager?.showActionDialog?.(
                 '确认丢弃临时文件',
-                `临时文件“${fileName}”未保存。<br><br>请选择如何处理临时文件。`,
+                `临时文件“${fileName}”未保存。\n\n请选择如何处理临时文件。`,
                 [
                     { id: 'save', label: '保存', className: 'dialog-btn-confirm' },
                     { id: 'discard', label: '丢弃', className: 'dialog-btn-cancel' },

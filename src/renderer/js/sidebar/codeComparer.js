@@ -1796,7 +1796,7 @@ class CodeComparer {
             ? (errorResult.input || '')
             : (outputType === 'std' ? (errorResult.stdOutput || '') : (errorResult.testOutput || ''));
         const sizeMbText = this.getOutputSizeMbText(output);
-        const message = `当前输出大小约 ${sizeMbText} MB。<br><br>过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`;
+        const message = `当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`;
 
         let shouldExpand = false;
         try {

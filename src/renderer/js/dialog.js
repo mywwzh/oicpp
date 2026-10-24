@@ -66,13 +66,16 @@ class DialogManager {
             const overlay = document.getElementById('dialog-overlay');
             const container = document.getElementById('dialog-container');
 
+            const safeTitle = this.escapeHtml(String(title ?? ''));
+            const safePlaceholder = this.escapeAttribute(String(placeholder ?? ''));
+
             container.innerHTML = `
                 <div class="dialog-header">
-                    <h3>${title}</h3>
+                    <h3>${safeTitle}</h3>
                     <button class="dialog-close" onclick="dialogManager.hideDialog()">&times;</button>
                 </div>
                 <div class="dialog-body">
-                    <input type="text" id="dialog-input" placeholder="${placeholder}" value="${defaultValue}" spellcheck="false" autocapitalize="none" autocomplete="off" autocorrect="off" />
+                    <input type="text" id="dialog-input" placeholder="${safePlaceholder}" value="" spellcheck="false" autocapitalize="none" autocomplete="off" autocorrect="off" />
                 </div>
                 <div class="dialog-footer">
                     <button class="dialog-btn dialog-btn-cancel" onclick="dialogManager.hideDialog()">${window.i18n ? window.i18n.t('dialog.cancel') : '取消'}</button>
@@ -83,6 +86,9 @@ class DialogManager {
             overlay.style.display = 'flex';
 
             const input = document.getElementById('dialog-input');
+            if (input) {
+                input.value = String(defaultValue ?? '');
+            }
 
             setTimeout(() => {
                 if (input) {
@@ -130,11 +136,11 @@ class DialogManager {
 
             container.innerHTML = `
                 <div class="dialog-header">
-                    <h3>${title}</h3>
+                    <h3>${this.escapeHtml(String(title ?? ''))}</h3>
                     <button class="dialog-close" onclick="dialogManager.hideDialog()">&times;</button>
                 </div>
                 <div class="dialog-body">
-                    <p>${message}</p>
+                    <p>${this.formatMessage(message)}</p>
                 </div>
                 <div class="dialog-footer">
                     <button class="dialog-btn dialog-btn-cancel" onclick="dialogManager.cancelDialog()">${window.i18n ? window.i18n.t('dialog.cancel') : '取消'}</button>
@@ -166,11 +172,11 @@ class DialogManager {
 
             container.innerHTML = `
                 <div class="dialog-header">
-                    <h3>${title}</h3>
+                    <h3>${this.escapeHtml(String(title ?? ''))}</h3>
                     <button class="dialog-close" onclick="dialogManager.hideDialog()">&times;</button>
                 </div>
                 <div class="dialog-body">
-                    <p>${message}</p>
+                    <p>${this.formatMessage(message)}</p>
                 </div>
                 <div class="dialog-footer">
                     ${buttonsHtml}
@@ -340,18 +346,42 @@ class DialogManager {
     }
 
     showGotoLineDialog() {
-        return this.showInputDialog('跳转到行号', '1', '请输入行号');
+        return this.showInputDialog(
+            window.i18n ? window.i18n.t('dialog.gotoLine') : '跳转到行号',
+            '1',
+            window.i18n ? window.i18n.t('dialog.gotoLinePlaceholder') : '请输入行号'
+        );
     }
 
     showNewFileDialog(errorMessage = '', defaultName = 'untitled.cpp') {
-        const title = errorMessage ? '新建文件 - 错误' : '新建文件';
-        const placeholder = errorMessage ? `错误: ${errorMessage}\n请输入文件名（如：main.cpp, test.py, data.txt）` : '请输入文件名（如：main.cpp, test.py, data.txt）';
+        const errorTitle = window.i18n ? window.i18n.t('dialog.newFileDialogErrorTitle') : '新建文件 - 错误';
+        const title = errorMessage ? errorTitle : (window.i18n ? window.i18n.t('dialog.newFileDialogTitle') : '新建文件');
+        const placeholder = errorMessage
+            ? (window.i18n ? window.i18n.t('dialog.newFileDialogError', { msg: errorMessage }) : `错误: ${errorMessage}\n请输入文件名（如：main.cpp, test.py, data.txt）`)
+            : (window.i18n ? window.i18n.t('dialog.newFileDialogPlaceholder') : '请输入文件名（如：main.cpp, test.py, data.txt）');
         const initial = defaultName && typeof defaultName === 'string' ? defaultName : 'untitled.cpp';
         return this.showInputDialog(title, initial, placeholder);
     }
 
     showNewFolderDialog() {
-        return this.showInputDialog('新建文件夹', 'new-folder', '请输入文件夹名');
+        return this.showInputDialog(
+            window.i18n ? window.i18n.t('dialog.newFolderDialogTitle') : '新建文件夹',
+            'new-folder',
+            window.i18n ? window.i18n.t('dialog.newFolderDialogPlaceholder') : '请输入文件夹名'
+        );
+    }
+
+    escapeAttribute(text) {
+        return this.escapeHtml(String(text ?? ''))
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    // 对消息做 HTML 转义，但允许调用方使用 \n 换行（以及历史遗留的 <br>）。
+    formatMessage(message) {
+        return this.escapeHtml(String(message ?? ''))
+            .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
+            .replace(/\r?\n/g, '<br>');
     }
 
     showError(message) {

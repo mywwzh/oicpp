@@ -1414,7 +1414,7 @@ class SampleTester {
                 return totalBytes > thresholdBytes;
             }).length;
 
-            const previewMessage = `识别到 ${pairs.length} 组可导入样例。<br>识别文件数：${importPlan.recognizedCount}，未配对文件：${importPlan.unmatchedCount}。<br>大样例组（>${Math.floor(thresholdBytes / 1024)}KB）：${largePairCount}。<br><br>是否继续导入？`;
+            const previewMessage = `识别到 ${pairs.length} 组可导入样例。\n识别文件数：${importPlan.recognizedCount}，未配对文件：${importPlan.unmatchedCount}。\n大样例组（>${Math.floor(thresholdBytes / 1024)}KB）：${largePairCount}。\n\n是否继续导入？`;
             let shouldImport = true;
             if (window.dialogManager?.showActionDialog) {
                 const action = await window.dialogManager.showActionDialog((window.i18n ? window.i18n.t('dialog.importPreview') : '导入样例预览'), previewMessage, [
