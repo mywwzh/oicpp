@@ -63,6 +63,13 @@ function registerApprovedPath(targetPath) {
     if (!targetPath || typeof targetPath !== 'string') return;
     try {
         approvedWritePaths.add(path.resolve(targetPath));
+        // 允许在同一目录下保存/编译（例如单独打开一个文件后的输出）。
+        try {
+            const stat = fs.existsSync(targetPath) ? fs.statSync(targetPath) : null;
+            if (stat && stat.isFile()) {
+                approvedWritePaths.add(path.dirname(path.resolve(targetPath)));
+            }
+        } catch (_) { }
         if (approvedWritePaths.size > 200) {
             const first = approvedWritePaths.values().next().value;
             approvedWritePaths.delete(first);
@@ -89,7 +96,7 @@ function getWorkspaceRoot() {
 
 function isPathInWorkspace(targetPath) {
     const root = getWorkspaceRoot();
-    if (!root) return true; // 没有工作区时不阻断（新建文件/临时编译等）
+    if (!root) return false;
     return isSameOrWithin(targetPath, root);
 }
 
@@ -4892,6 +4899,9 @@ function setupIPC() {
 
     ipcMain.handle('compile-file', async (event, options) => {
         try {
+            if (options && typeof options === 'object' && options.outputFile) {
+                assertWriteAllowed(options.outputFile);
+            }
             const result = await compileFile(options);
             return result;
         } catch (error) {
