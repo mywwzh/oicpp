@@ -125,6 +125,8 @@
     font-size: 11px;
     font-weight: 500;
     cursor: pointer;
+    flex: 0 0 auto;
+    white-space: nowrap;
     transition: background-color 0.2s;
 }
 
@@ -154,7 +156,8 @@
 .config-item {
     display: flex;
     align-items: center;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 6px 8px;
     margin-bottom: 8px;
 }
 
@@ -198,6 +201,7 @@
     gap: 8px;
     align-items: center;
     flex: 1;
+    min-width: 0;
 }
 
 .file-input-group .config-input {
@@ -208,7 +212,7 @@
 .testlib-spj-row {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 6px 12px;
     flex-wrap: wrap;
 }
 
@@ -218,23 +222,33 @@
     gap: 6px;
     min-width: auto;
     white-space: nowrap;
+    flex: 0 0 auto;
 }
 
 .spj-section {
     display: flex;
     align-items: center;
-    gap: 8px;
-    flex: 1;
-    min-width: 200px;
+    gap: 6px 8px;
+    flex: 1 1 200px;
+    /* 关键：允许在窄侧栏里收缩，否则 min-width:200px 会把按钮挤出面板 */
+    min-width: 0;
+    flex-wrap: wrap;
 }
 
 .spj-label {
     min-width: auto;
     white-space: nowrap;
+    flex: 0 0 auto;
 }
 
 .spj-input {
-    flex: 1;
+    flex: 1 1 120px;
+    min-width: 0;
+}
+
+.spj-input .config-input {
+    width: auto;
+    min-width: 0;
 }
 
 .compare-freopen-row {
