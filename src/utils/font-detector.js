@@ -79,11 +79,15 @@ class FontDetector {
                 <div class="font-warning-icon" data-ui-icon="warning"></div>
                 <div class="font-warning-text">
                     <strong>字体不可用</strong><br>
-                    系统中未找到字体 "${fontName}"，已自动切换到 "${this.defaultFont}"
+                    <span class="font-warning-detail"></span>
                 </div>
                 <button class="font-warning-close" onclick="this.parentElement.parentElement.remove()">×</button>
             </div>
         `;
+        const detail = message.querySelector('.font-warning-detail');
+        if (detail) {
+            detail.textContent = `系统中未找到字体 "${fontName}"，已自动切换到 "${this.defaultFont}"`;
+        }
         
         message.style.cssText = `
             position: fixed;

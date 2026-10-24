@@ -3268,17 +3268,34 @@ ${data.message || '程序已加载，等待开始执行'}
         callStack.forEach((frame, index) => {
             const frameElement = document.createElement('div');
             frameElement.className = 'callstack-item';
-            frameElement.innerHTML = `
-                <div class="frame-info">
-                    <span class="frame-index">#${index}</span>
-                    <span class="frame-function">${frame.function || '未知函数'}</span>
-                </div>
-                <div class="frame-location">
-                    <span class="frame-file">${frame.file || '未知文件'}</span>
-                    ${frame.line ? `<span class="frame-line">:${frame.line}</span>` : ''}
-                </div>
-            `;
-            
+
+            const info = document.createElement('div');
+            info.className = 'frame-info';
+            const idx = document.createElement('span');
+            idx.className = 'frame-index';
+            idx.textContent = `#${index}`;
+            const fn = document.createElement('span');
+            fn.className = 'frame-function';
+            fn.textContent = frame.function || '未知函数';
+            info.appendChild(idx);
+            info.appendChild(document.createTextNode(' '));
+            info.appendChild(fn);
+
+            const loc = document.createElement('div');
+            loc.className = 'frame-location';
+            const fileEl = document.createElement('span');
+            fileEl.className = 'frame-file';
+            fileEl.textContent = frame.file || '未知文件';
+            loc.appendChild(fileEl);
+            if (frame.line) {
+                const lineEl = document.createElement('span');
+                lineEl.className = 'frame-line';
+                lineEl.textContent = `:${frame.line}`;
+                loc.appendChild(lineEl);
+            }
+
+            frameElement.appendChild(info);
+            frameElement.appendChild(loc);
             container.appendChild(frameElement);
         });
     }

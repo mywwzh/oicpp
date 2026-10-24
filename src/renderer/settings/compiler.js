@@ -480,18 +480,23 @@ class CompilerSettings {
                 const compilerDiv = document.createElement('div');
                 compilerDiv.className = `compiler-item ${isDownloaded ? 'downloaded' : ''} ${isSelected ? 'selected' : ''}`;
                 
+                const safeName = this.escapeHtml(compiler.name);
+                const safeVersion = this.escapeHtml(compiler.version);
+                const safePlatform = this.escapeHtml(compiler.platform);
+                const safeUrl = this.escapeAttribute(compiler.download_url);
+                const safeVersionAttr = this.escapeAttribute(compiler.version);
                 compilerDiv.innerHTML = `
                     <div class="compiler-info">
-                        <h4>${compiler.name}</h4>
-                        <p><span data-i18n="compiler.versionSelectedPrefix">Version:</span> ${compiler.version}</p>
-                        <span class="platform"><span data-i18n="compiler.platformPrefix">Platform:</span> ${compiler.platform}</span>
+                        <h4>${safeName}</h4>
+                        <p><span data-i18n="compiler.versionSelectedPrefix">Version:</span> ${safeVersion}</p>
+                        <span class="platform"><span data-i18n="compiler.platformPrefix">Platform:</span> ${safePlatform}</span>
                     </div>
                     <div class="compiler-actions">
                         ${isSelected ? 
                             '<span class="status selected-status">' + (window.i18n ? window.i18n.t('compiler.selected') : 'Selected') + '</span>' :
                             isDownloaded ? 
-                                '<button class="select-btn" data-version="' + compiler.version + '">' + (window.i18n ? window.i18n.t('compiler.select') : 'Select') + '</button>' :
-                                '<button class="download-btn" data-url="' + compiler.download_url + '" data-version="' + compiler.version + '" data-name="' + compiler.name + '">' + (window.i18n ? window.i18n.t('compiler.download') : 'Download') + '</button>'
+                                '<button class="select-btn" data-version="' + safeVersionAttr + '">' + (window.i18n ? window.i18n.t('compiler.select') : 'Select') + '</button>' :
+                                '<button class="download-btn" data-url="' + safeUrl + '" data-version="' + safeVersionAttr + '" data-name="' + safeName + '">' + (window.i18n ? window.i18n.t('compiler.download') : 'Download') + '</button>'
                         }
                         ${isDownloaded ? '<span class="status downloaded-status">' + (window.i18n ? window.i18n.t('compiler.downloaded') : 'Downloaded') + '</span>' : ''}
                     </div>
@@ -508,7 +513,7 @@ class CompilerSettings {
             compilerList.innerHTML = `
                 <div class="error-message">
                     <p>${window.i18n ? window.i18n.t('compiler.networkError') : 'Network error: could not fetch compiler list'}</p>
-                    <p class="error-detail">${error.message}</p>
+                    <p class="error-detail">${this.escapeHtml(error?.message || String(error))}</p>
                     <button class="retry-btn" data-i18n="compiler.retry">Retry</button>
                 </div>
             `;
@@ -652,6 +657,18 @@ class CompilerSettings {
             logError('检查编译器选中状态失败:', error);
         }
         return false;
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = String(text ?? '');
+        return div.innerHTML;
+    }
+
+    escapeAttribute(text) {
+        return this.escapeHtml(text)
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     addCompilerItemListeners(compilerDiv, compiler) {
@@ -1199,19 +1216,24 @@ class CompilerSettings {
                 const sizeLabel = window.i18n
                     ? window.i18n.t('compiler.testlibSize', { size: testlib.file_size_mb })
                     : 'Size: ' + testlib.file_size_mb + 'MB';
+                const safeName = this.escapeHtml(testlib.name);
+                const safeVersion = this.escapeHtml(testlib.version);
+                const safeDescription = this.escapeHtml(testlib.description || '');
+                const safeUrl = this.escapeAttribute(downloadUrl);
+                const safeVersionAttr = this.escapeAttribute(testlib.version);
                 testlibDiv.innerHTML = `
                     <div class="compiler-info">
-                        <h4>${testlib.name}</h4>
-                        <p>${versionLabel} ${testlib.version}</p>
-                        <p>${testlib.description}</p>
+                        <h4>${safeName}</h4>
+                        <p>${versionLabel} ${safeVersion}</p>
+                        <p>${safeDescription}</p>
                         <span class="platform">${sizeLabel}</span>
                     </div>
                     <div class="compiler-actions">
                         ${isSelected ? 
                             '<span class="status selected-status">' + (window.i18n ? window.i18n.t('compiler.selected') : 'Selected') + '</span>' :
                             isDownloaded ? 
-                                '<button class="select-btn" data-version="' + testlib.version + '">' + (window.i18n ? window.i18n.t('compiler.select') : 'Select') + '</button>' :
-                                '<button class="download-btn" data-url="' + downloadUrl + '" data-version="' + testlib.version + '" data-name="' + testlib.name + '">' + (window.i18n ? window.i18n.t('compiler.download') : 'Download') + '</button>'
+                                '<button class="select-btn" data-version="' + safeVersionAttr + '">' + (window.i18n ? window.i18n.t('compiler.select') : 'Select') + '</button>' :
+                                '<button class="download-btn" data-url="' + safeUrl + '" data-version="' + safeVersionAttr + '" data-name="' + safeName + '">' + (window.i18n ? window.i18n.t('compiler.download') : 'Download') + '</button>'
                         }
                         ${isDownloaded ? '<span class="status downloaded-status">' + (window.i18n ? window.i18n.t('compiler.downloaded') : 'Downloaded') + '</span>' : ''}
                     </div>
@@ -1227,7 +1249,7 @@ class CompilerSettings {
             testlibList.innerHTML = `
                 <div class="error-message">
                     <p>${window.i18n ? window.i18n.t('compiler.networkError') : 'Network error: could not fetch list'}</p>
-                    <p class="error-detail">${error.message}</p>
+                    <p class="error-detail">${this.escapeHtml(error?.message || String(error))}</p>
                     <button class="retry-btn" data-i18n="compiler.retry">Retry</button>
                 </div>
             `;

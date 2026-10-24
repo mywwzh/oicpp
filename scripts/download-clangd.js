@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const { path7za } = require('7zip-bin');
 const extractZip = require('extract-zip');
@@ -130,14 +131,54 @@ const downloadFile = (url, dest, token, retriesLeft = 3) => new Promise((resolve
     });
 });
 
-const ensureDownload = async (url, dest, token) => {
-    if (!fs.existsSync(dest)) {
-        console.log(`[clangd] Downloading to ${dest}`);
-        await downloadFile(url, dest, token);
-        return;
+const hashFileSha256 = (filePath) => new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+});
+
+const verifyAsset = async (filePath, asset) => {
+    if (!fs.existsSync(filePath)) return false;
+    try {
+        const stat = fs.statSync(filePath);
+        if (asset && Number.isFinite(asset.size) && asset.size > 0 && stat.size !== asset.size) {
+            console.warn(`[clangd] Cached file size mismatch (${stat.size}/${asset.size})`);
+            return false;
+        }
+        const expectedDigest = String(asset?.digest || '');
+        if (expectedDigest.startsWith('sha256:')) {
+            const expected = expectedDigest.slice('sha256:'.length).toLowerCase();
+            const actual = await hashFileSha256(filePath);
+            if (actual !== expected) {
+                console.warn('[clangd] Cached file sha256 mismatch');
+                return false;
+            }
+        }
+        return true;
+    } catch (_) {
+        return false;
+    }
+};
+
+const ensureDownload = async (url, dest, token, asset = null) => {
+    if (fs.existsSync(dest)) {
+        const valid = await verifyAsset(dest, asset);
+        if (valid) {
+            console.log('[clangd] Using cached download');
+            return;
+        }
+        console.log('[clangd] Cached download is invalid, re-downloading...');
+        try { fs.unlinkSync(dest); } catch (_) { }
     }
 
-    console.log('[clangd] Using cached download');
+    console.log(`[clangd] Downloading to ${dest}`);
+    await downloadFile(url, dest, token);
+    if (!(await verifyAsset(dest, asset))) {
+        try { fs.unlinkSync(dest); } catch (_) { }
+        throw new Error('下载的 clangd 归档校验失败（大小或 sha256 不匹配）');
+    }
 };
 
 const run7z = (argsList) => {
@@ -243,7 +284,7 @@ const main = async () => {
         await extractArchive(downloadPath, extractRoot);
     };
 
-    await ensureDownload(selected.browser_download_url, downloadPath, token || undefined);
+    await ensureDownload(selected.browser_download_url, downloadPath, token || undefined, selected);
 
     try {
         await extractWithRetry();
@@ -251,6 +292,9 @@ const main = async () => {
         console.log('[clangd] Cached archive failed to extract, re-downloading...');
         try { fs.unlinkSync(downloadPath); } catch (_) {}
         await downloadFile(selected.browser_download_url, downloadPath, token || undefined);
+        if (!(await verifyAsset(downloadPath, selected))) {
+            throw new Error('重新下载的 clangd 归档校验失败');
+        }
         await extractWithRetry();
     }
 

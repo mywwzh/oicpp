@@ -237,7 +237,8 @@ try {
     const hljs = require('highlight.js');
 
     md = new MarkdownIt({
-        html: true,
+        // 不允许原始 HTML：markdown-it 不做 sanitize，恶意 .md 可直接注入脚本。
+        html: false,
         linkify: true,
         typographer: true,
         highlight: function (str, lang) {
@@ -300,7 +301,13 @@ try {
 
 contextBridge.exposeInMainWorld('markdownAPI', {
     render: (text, filePath) => {
-        if (!md) return text;
+        const escapeHtmlText = (value) => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        if (!md) return escapeHtmlText(text);
         try {
             const normalizedText = normalizeMarkdownMath(text || '');
             const defaultImageRender = md.renderer.rules.image || function(tokens, idx, options, env, self) {
@@ -331,7 +338,7 @@ contextBridge.exposeInMainWorld('markdownAPI', {
             return md.render(normalizedText);
         } catch (err) {
             console.error('Markdown render error:', err);
-            return text;
+            return escapeHtmlText(text);
         }
     }
 });
@@ -371,7 +378,7 @@ try {
             if (href && !href.startsWith('#') && !href.toLowerCase().startsWith('javascript:') && (ev.ctrlKey || ev.metaKey)) {
                 try {
                     const resolvedUrl = new URL(href, window.location.href);
-                    if (!['http:', 'https:', 'mailto:', 'file:'].includes(resolvedUrl.protocol)) {
+                    if (!ALLOWED_EXTERNAL_PROTOCOLS.has(resolvedUrl.protocol)) {
                         return;
                     }
                     ev.preventDefault();
@@ -415,22 +422,98 @@ try {
     }, true);
 } catch (_) { }
 
-const safeIpcRenderer = {
-    send: (channel, ...args) => ipcRenderer.send(channel, ...args),
-    invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
-    on: (channel, listener) => ipcRenderer.on(channel, listener),
-    once: (channel, listener) => ipcRenderer.once(channel, listener),
-    removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener),
-    removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
+const IPC_SEND_CHANNELS = new Set([
+    'app-close-cancelled', 'app-close-confirmed', 'app-close-discard', 'check-updates-manual',
+    'create-file', 'create-folder', 'debug-add-breakpoint', 'debug-remove-breakpoint',
+    'debug-add-watch', 'debug-collapse-variable', 'debug-continue', 'debug-expand-variable',
+    'debug-load-more-variable', 'debug-remove-watch', 'debug-request-variables', 'debug-send-input',
+    'debug-step-into', 'debug-step-out', 'debug-step-over', 'delete-file', 'menu-open-settings',
+    'move-file', 'open-editor-settings', 'open-template-settings', 'paste-file', 'read-directory',
+    'rename-file', 'save-file', 'start-debug', 'stop-debug', 'window-close', 'window-close-discard',
+    'window-maximize', 'window-minimize', 'window-unmaximize'
+]);
+const IPC_INVOKE_CHANNELS = new Set([
+    'check-file-exists', 'check-gdb-availability', 'compile-file', 'get-all-settings', 'get-settings',
+    'open-backup-settings', 'open-compiler-settings', 'run-executable', 'update-settings',
+    'update-top-level-settings'
+]);
+const IPC_EVENT_CHANNELS = new Set([
+    'app-close-requested', 'compile-error', 'compile-result', 'debug-breakpoint-hit',
+    'debug-breakpoint-removed', 'debug-breakpoint-set', 'debug-callstack-updated', 'debug-error',
+    'debug-output', 'debug-program-exited', 'debug-ready-waiting', 'debug-running', 'debug-started',
+    'debug-stopped', 'debug-terminal-output', 'debug-variable-expanded', 'debug-variables-updated',
+    'directory-read', 'directory-read-error', 'file-content-read', 'file-created', 'file-deleted',
+    'file-moved', 'file-move-error', 'file-pasted', 'file-renamed', 'file-saved', 'folder-created',
+    'goto-source-location', 'language-changed', 'run-error', 'run-result', 'settings-changed',
+    'settings-imported', 'settings-loaded', 'settings-reset', 'theme-changed', 'window-maximized',
+    'window-unmaximized'
+]);
+
+function assertChannel(channel, allowed, kind) {
+    if (typeof channel !== 'string' || !allowed.has(channel)) {
+        // 不再把未白名单的通道交给主进程，防止任意 XSS 直接调用内部 IPC。
+        try { console.warn(`[preload] blocked ${kind} on unlisted channel:`, channel); } catch (_) { }
+        return false;
+    }
+    return true;
+}
+
+const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
+const BLOCKED_OPEN_EXTENSIONS = /\.(exe|bat|cmd|com|scr|ps1|vbs|vbe|js|jse|wsf|wsh|msi|lnk|reg|hta|jar)$/i;
+
+const safeOpenExternal = (url) => {
+    try {
+        const parsed = new URL(String(url || ''));
+        if (!ALLOWED_EXTERNAL_PROTOCOLS.has(parsed.protocol)) {
+            return Promise.reject(new Error('不允许的链接协议'));
+        }
+        return shell.openExternal(parsed.href);
+    } catch (err) {
+        return Promise.reject(err);
+    }
 };
 
+const safeOpenPath = (targetPath) => {
+    const value = String(targetPath || '');
+    if (BLOCKED_OPEN_EXTENSIONS.test(value)) {
+        return Promise.reject(new Error('不允许直接打开可执行文件'));
+    }
+    return shell.openPath(value);
+};
+
+const safeIpcRenderer = {
+    send: (channel, ...args) => {
+        if (!assertChannel(channel, IPC_SEND_CHANNELS, 'send')) return;
+        return ipcRenderer.send(channel, ...args);
+    },
+    invoke: (channel, ...args) => {
+        if (!assertChannel(channel, IPC_INVOKE_CHANNELS, 'invoke')) return Promise.reject(new Error('blocked channel'));
+        return ipcRenderer.invoke(channel, ...args);
+    },
+    on: (channel, listener) => {
+        if (!assertChannel(channel, IPC_EVENT_CHANNELS, 'on')) return () => { };
+        return ipcRenderer.on(channel, listener);
+    },
+    once: (channel, listener) => {
+        if (!assertChannel(channel, IPC_EVENT_CHANNELS, 'once')) return () => { };
+        return ipcRenderer.once(channel, listener);
+    },
+    removeListener: (channel, listener) => {
+        if (!assertChannel(channel, IPC_EVENT_CHANNELS, 'removeListener')) return;
+        return ipcRenderer.removeListener(channel, listener);
+    },
+    removeAllListeners: (channel) => {
+        if (!assertChannel(channel, IPC_EVENT_CHANNELS, 'removeAllListeners')) return;
+        return ipcRenderer.removeAllListeners(channel);
+    }
+};
 
 contextBridge.exposeInMainWorld('electron', {
     ipcRenderer: safeIpcRenderer,
     shell: {
-        openExternal: (url) => shell.openExternal(url),
+        openExternal: safeOpenExternal,
         showItemInFolder: (path) => shell.showItemInFolder(path),
-        openPath: (targetPath) => shell.openPath(targetPath)
+        openPath: safeOpenPath
     }
 });
 contextBridge.exposeInMainWorld('__electronRequireAvailable', true);
@@ -438,9 +521,9 @@ contextBridge.exposeInMainWorld('getElectronModule', () => {
     return {
         ipcRenderer: safeIpcRenderer,
         shell: {
-            openExternal: (url) => shell.openExternal(url),
+            openExternal: safeOpenExternal,
             showItemInFolder: (path) => shell.showItemInFolder(path),
-            openPath: (targetPath) => shell.openPath(targetPath)
+            openPath: safeOpenPath
         }
     };
 });
@@ -667,7 +750,7 @@ contextBridge.exposeInMainWorld('process', {
     }
 });
 
-contextBridge.exposeInMainWorld('Buffer', Buffer);
+// 不再向渲染进程暴露 Node Buffer（仅用于构造二进制内容，已有 btoa/FileReader 兜底）。
 
 const safeSendLog = (level, args) => {
     try {

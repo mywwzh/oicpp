@@ -755,9 +755,34 @@ class DebugPanel {
             const f = stack[i];
             const el = document.createElement('div');
             el.className = 'callstack-item';
-            el.innerHTML = `
-        <div class="frame-info"><span class="frame-index">#${i}</span><span class="frame-function">${f.function || (window.i18n ? window.i18n.t('debug.unknownFunction') : '未知函数')}</span></div>
-        <div class="frame-location"><span class="frame-file">${f.file || (window.i18n ? window.i18n.t('debug.unknownFile') : '未知文件')}</span>${f.line ? `<span class="frame-line">:${f.line}</span>` : ''}</div>`;
+
+            const info = document.createElement('div');
+            info.className = 'frame-info';
+            const idx = document.createElement('span');
+            idx.className = 'frame-index';
+            idx.textContent = `#${i}`;
+            const fn = document.createElement('span');
+            fn.className = 'frame-function';
+            fn.textContent = f.function || (window.i18n ? window.i18n.t('debug.unknownFunction') : '未知函数');
+            info.appendChild(idx);
+            info.appendChild(document.createTextNode(' '));
+            info.appendChild(fn);
+
+            const loc = document.createElement('div');
+            loc.className = 'frame-location';
+            const fileEl = document.createElement('span');
+            fileEl.className = 'frame-file';
+            fileEl.textContent = f.file || (window.i18n ? window.i18n.t('debug.unknownFile') : '未知文件');
+            loc.appendChild(fileEl);
+            if (f.line) {
+                const lineEl = document.createElement('span');
+                lineEl.className = 'frame-line';
+                lineEl.textContent = `:${f.line}`;
+                loc.appendChild(lineEl);
+            }
+
+            el.appendChild(info);
+            el.appendChild(loc);
             c.appendChild(el);
         }
     }

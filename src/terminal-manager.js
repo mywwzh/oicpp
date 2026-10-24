@@ -216,8 +216,19 @@ class IntegratedTerminalManager {
             return false;
         }
 
+        // 只允许常见 shell，避免 renderer 借 terminal-create 启动任意程序。
+        const baseName = path.basename(candidate).toLowerCase();
         if (process.platform === 'win32') {
+            const allowedWindowsShells = new Set(['powershell.exe', 'pwsh.exe', 'cmd.exe', 'bash.exe', 'wsl.exe']);
+            if (!allowedWindowsShells.has(baseName)) {
+                return false;
+            }
             return true;
+        }
+
+        const allowedUnixShells = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish']);
+        if (!allowedUnixShells.has(baseName)) {
+            return false;
         }
 
         if (!path.isAbsolute(candidate)) {

@@ -58,8 +58,18 @@ class BrowserManager {
      * @returns {HTMLElement} browserContainer
      */
     createBrowserContainer({ groupId, uniqueKey, url }) {
+        // 只接受 http(s)/about: 作为初始地址，防止被篡改的 lastOpenTabs 注入 file:/javascript:。
+        const normalizeInitialUrl = (raw) => {
+            const fallback = this._newTabPage;
+            const candidate = (raw && String(raw).trim()) ? String(raw).trim() : fallback;
+            try {
+                const parsed = new URL(candidate);
+                if (['http:', 'https:', 'about:'].includes(parsed.protocol)) return parsed.href;
+            } catch (_) { }
+            return fallback;
+        };
         // 未指定 URL 时使用内置新标签页
-        const initialUrl = (url && url.trim()) ? url.trim() : this._newTabPage;
+        const initialUrl = normalizeInitialUrl(url);
         // 主容器
         const container = document.createElement('div');
         container.className = 'browser-container';
@@ -358,6 +368,15 @@ class BrowserManager {
             }
         } catch (_) {}
         if (!url) return;
+        try {
+            const parsed = new URL(url);
+            if (!['http:', 'https:'].includes(parsed.protocol)) {
+                return;
+            }
+            url = parsed.href;
+        } catch (_) {
+            return;
+        }
         state.currentUrl = url;
         state.webview.loadURL(url).catch(() => {});
         state.urlInput.value = url;

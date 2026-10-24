@@ -66,27 +66,41 @@ class Logger {
         }
     }
 
-    static stringifyArgs(args, { level = 'info', maxLen = 2000 } = {}) {
-        const redactingReplacer = (key, value) => value;
-        const serializeError = (err) => {
-            try {
-                const base = {
-                    name: err?.name || 'Error',
-                    message: err?.message || String(err),
-                    stack: err?.stack || undefined,
-                };
-                ['code', 'errno', 'syscall', 'path', 'address', 'port'].forEach((k) => {
-                    if (err && err[k] !== undefined) base[k] = err[k];
-                });
-                if (err && err.cause) {
-                    base.cause = typeof err.cause === 'object' ? serializeError(err.cause) : String(err.cause);
-                }
-                if (err && err.data) base.data = err.data;
-                return base;
-            } catch (_) {
-                return { message: String(err) };
+    static serializeError(err) {
+        try {
+            const base = {
+                name: err?.name || 'Error',
+                message: err?.message || String(err),
+                stack: err?.stack || undefined,
+            };
+            ['code', 'errno', 'syscall', 'path', 'address', 'port'].forEach((k) => {
+                if (err && err[k] !== undefined) base[k] = err[k];
+            });
+            if (err && err.cause) {
+                base.cause = typeof err.cause === 'object' ? Logger.serializeError(err.cause) : String(err.cause);
             }
+            if (err && err.data) base.data = err.data;
+            return base;
+        } catch (_) {
+            return { message: String(err) };
+        }
+    }
+
+    static redactString(text) {
+        const REDACT_KEY_RE = /("?)(token|password|passwd|secret|authorization|cookie|credential|apikey|api_key|login_?token)("?\s*[:=]\s*["']?)([^"'\s,}]+)/gi;
+        return String(text ?? '')
+            .replace(REDACT_KEY_RE, '$1$2$3[REDACTED]')
+            .replace(/(Bearer\s+)[A-Za-z0-9._\-]+/gi, '$1[REDACTED]');
+    }
+
+    static stringifyArgs(args, { level = 'info', maxLen = 2000 } = {}) {
+        const REDACT_KEY_RE = /token|password|passwd|secret|authorization|cookie|credential|apikey|api_key/i;
+        const redactingReplacer = (key, value) => {
+            if (key && REDACT_KEY_RE.test(key)) return '[REDACTED]';
+            if (value instanceof Error) return Logger.serializeError(value);
+            return value;
         };
+        const serializeError = Logger.serializeError;
         const INFO_PER_ARG_LIMIT = 1200; // info 级别单参数最大字符串长度（超过则采样或截断）
         const clamp = (s, lim = INFO_PER_ARG_LIMIT) => {
             if (typeof s !== 'string') return s;
@@ -128,7 +142,7 @@ class Logger {
             if (v instanceof Error) return JSON.stringify(serializeError(v), null, 2);
             if (typeof v === 'string') return v;
             if (typeof v === 'object' && v && v.error instanceof Error && Object.keys(v).length === 1) {
-                return redactString(JSON.stringify({ error: serializeError(v.error) }, null, 2));
+                return Logger.redactString(JSON.stringify({ error: serializeError(v.error) }, null, 2));
             }
             try { return JSON.stringify(v, redactingReplacer, 2); } catch (_) { return String(v); }
         };

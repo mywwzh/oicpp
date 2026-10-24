@@ -263,11 +263,18 @@ class GDBDebugger extends EventEmitter {
         this._sendContinue('finish').catch(e => global.logWarn?.('[GDB] finish 失败:', e?.message || e));
     }
     async setBreakpoint(file, line) {
-        const loc = `${this._escapePath(file)}:${line}`;
+        const lineNum = Number.parseInt(line, 10);
+        if (!Number.isInteger(lineNum) || lineNum <= 0) {
+            throw new Error('无效的断点行号');
+        }
+        if (typeof file !== 'string' || !file.trim() || /[\r\n]/.test(file)) {
+            throw new Error('无效的断点文件路径');
+        }
+        const loc = `${this._escapePath(file)}:${lineNum}`;
         const output = await this._send(`break "${loc}"`);
         const m = /Breakpoint (\d+) at (0x[0-9A-Fa-f]+)/.exec(output || '');
         if (m) {
-            const bp = { number: parseInt(m[1], 10), file: this._normalizePath(file), line, address: m[2] };
+            const bp = { number: parseInt(m[1], 10), file: this._normalizePath(file), line: lineNum, address: m[2] };
             this._breakpoints.push(bp);
             this.emit('breakpoint-set', bp);
             return bp;
@@ -550,7 +557,9 @@ class GDBDebugger extends EventEmitter {
     _emitTargetOutput(text) { const c = String(text || '').replace(/^>+/, '').trim(); if (c) this.emit('target-output', c); }
     _escapePath(p) {
         const t = this._toDebuggerPath(p);
-        return os.platform() === 'win32' ? t.replace(/\\/g, '/') : t;
+        const escaped = os.platform() === 'win32' ? t.replace(/\\/g, '/') : t;
+        // 路径会放进 GDB 的双引号参数里，必须转义引号与换行。
+        return String(escaped).replace(/"/g, '\\"').replace(/[\r\n]/g, '');
     }
     _normalizePath(p) {
         if (!p) return p || '';
