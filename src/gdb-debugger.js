@@ -77,7 +77,18 @@ class GDBDebugger extends EventEmitter {
         }
         const line = entry.cmd + '\n';
         try { global.logInfo?.('[GDB<<]', line.trim()); } catch (_) { }
-        this.gdbProcess.stdin.write(line);
+        try {
+            if (!this.gdbProcess || !this.gdbProcess.stdin || this.gdbProcess.stdin.destroyed) {
+                throw new Error('GDB 进程已退出');
+            }
+            this.gdbProcess.stdin.write(line);
+        } catch (error) {
+            this._queueBusy = false;
+            this._currentCmd = null;
+            this._cmdQueue.shift();
+            try { entry.reject?.(error); } catch (_) { }
+            this._runQueue();
+        }
     }
     _send(cmd, opts = {}) { return this._queueCommand(cmd, opts); }
     _sendContinue(cmd, opts = {}) { return this._queueCommand(cmd, { ...opts, isContinue: true }); }
@@ -108,36 +119,68 @@ class GDBDebugger extends EventEmitter {
             this._programStopped = true; this._inferiorRunning = false;
             this.emit('exited', { code, signal });
         });
+        // spawn 失败（gdb 不存在/无权限）只会异步 emit 'error'。没有监听器时它是未捕获异常，
+        // 且初始化命令永远等不到提示符，start() 会永久挂起。
+        this.gdbProcess.on('error', (error) => {
+            const err = new Error(`GDB 启动失败: ${error?.message || String(error)}`);
+            this.isRunning = false;
+            this.programExited = true;
+            this._programStopped = true;
+            this._inferiorRunning = false;
+            const pending = this._cmdQueue.splice(0);
+            this._queueBusy = false;
+            this._currentCmd = null;
+            for (const entry of pending) {
+                try { entry.reject?.(err); } catch (_) { }
+            }
+            try { global.logError?.('[GDB]', err.message); } catch (_) { }
+            try { this.emit('error', err); } catch (_) { }
+        });
         const runInit = async (cmd) => {
             try { await this._send(cmd); } catch (e) { if (!relaxedInit) throw e; }
         };
-        await runInit(`set prompt ${FULL_GDB_PROMPT}`);
-        await runInit('show version');
-        await runInit('set confirm off');
-        await runInit('set width 0');
-        await runInit('set height 0');
-        await runInit('set breakpoint pending on');
-        await runInit('set print asm-demangle on');
-        await runInit('set unwindonsignal on');
-        await runInit(`set print elements ${options.printElements || 200}`);
-        await runInit('set filename-display absolute');
-        await runInit('set style enabled off');
-        await runInit('set print pretty on');
-        await runInit('set print array-indexes on');
-        if (process.platform === 'win32') {
-            await runInit(`set new-console ${options.noNewConsole ? 'off' : 'on'}`);
-        } else if (process.platform === 'linux') {
-            this._linuxTTYOptions = {
-                inferiorTTY: typeof options.inferiorTTY === 'string' ? options.inferiorTTY : undefined,
-                noNewConsole: !!options.noNewConsole,
-                consoleTerminalTemplate: typeof options.consoleTerminalTemplate === 'string' ? options.consoleTerminalTemplate : ''
-            };
-            await this._cleanupLinuxTTY();
-            if (this._linuxTTYOptions.inferiorTTY) this._ttyPath = this._linuxTTYOptions.inferiorTTY;
+        const initWatchdog = setTimeout(() => {
+            if (this.isRunning) return;
+            const err = new Error('GDB 启动超时');
+            const pending = this._cmdQueue.splice(0);
+            this._queueBusy = false;
+            this._currentCmd = null;
+            for (const entry of pending) {
+                try { entry.reject?.(err); } catch (_) { }
+            }
+            try { this.gdbProcess?.kill(); } catch (_) { }
+        }, 30000);
+        try {
+            await runInit(`set prompt ${FULL_GDB_PROMPT}`);
+            await runInit('show version');
+            await runInit('set confirm off');
+            await runInit('set width 0');
+            await runInit('set height 0');
+            await runInit('set breakpoint pending on');
+            await runInit('set print asm-demangle on');
+            await runInit('set unwindonsignal on');
+            await runInit(`set print elements ${options.printElements || 200}`);
+            await runInit('set filename-display absolute');
+            await runInit('set style enabled off');
+            await runInit('set print pretty on');
+            await runInit('set print array-indexes on');
+            if (process.platform === 'win32') {
+                await runInit(`set new-console ${options.noNewConsole ? 'off' : 'on'}`);
+            } else if (process.platform === 'linux') {
+                this._linuxTTYOptions = {
+                    inferiorTTY: typeof options.inferiorTTY === 'string' ? options.inferiorTTY : undefined,
+                    noNewConsole: !!options.noNewConsole,
+                    consoleTerminalTemplate: typeof options.consoleTerminalTemplate === 'string' ? options.consoleTerminalTemplate : ''
+                };
+                await this._cleanupLinuxTTY();
+                if (this._linuxTTYOptions.inferiorTTY) this._ttyPath = this._linuxTTYOptions.inferiorTTY;
+            }
+            await this._send(`file "${this._escapePath(executablePath)}"`);
+            this.isRunning = true;
+            this.emit('started', { executable: executablePath, sourceFile: sourcePath });
+        } finally {
+            clearTimeout(initWatchdog);
         }
-        await this._send(`file "${this._escapePath(executablePath)}"`);
-        this.isRunning = true;
-        this.emit('started', { executable: executablePath, sourceFile: sourcePath });
     }
     async stop() {
         if (!this.gdbProcess) return;
@@ -242,6 +285,9 @@ class GDBDebugger extends EventEmitter {
         await this._send(`delete breakpoints ${number}`);
         this._breakpoints = this._breakpoints.filter(b => b.number !== number);
         this.emit('breakpoint-removed', { number });
+    }
+    getBreakpoints() {
+        return this._breakpoints.map(b => ({ ...b }));
     }
     async addWatchVariable(expr) { this._watchExpressions.add(expr); await this.updateVariables(); }
     async removeWatchVariable(expr) { this._watchExpressions.delete(expr); delete this._variables.watches[expr]; this.emit('variables-updated', this._variables); }

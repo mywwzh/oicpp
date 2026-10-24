@@ -31,6 +31,30 @@ const recentExternalOpens = new Map();
 const compilerInfoCache = new Map();
 const compilerIncludeCache = new Map();
 
+// 终止进程树。Windows 上 child.kill() 只结束直接子进程（g++ 的 cc1plus 会残留），
+// POSIX 上若 spawn 时设置了 detached，则可以用负 PID 结束整个进程组。
+function killProcessTree(child, signal = 'SIGKILL') {
+    if (!child) return;
+    const pid = child.pid;
+    if (!pid) {
+        try { child.kill(signal); } catch (_) { }
+        return;
+    }
+    if (process.platform === 'win32') {
+        try {
+            const killer = spawn('taskkill', ['/T', '/F', '/PID', String(pid)], { stdio: 'ignore', windowsHide: true });
+            killer.on('error', () => { try { child.kill(signal); } catch (_) { } });
+            return;
+        } catch (_) { }
+    } else {
+        try {
+            process.kill(-pid, signal);
+            return;
+        } catch (_) { }
+    }
+    try { child.kill(signal); } catch (_) { }
+}
+
 function normalizeExternalOpenUrl(url) {
     const value = String(url || '').trim();
     if (!value) {
@@ -2807,14 +2831,34 @@ function getRequestPath(req) {
 }
 
 function readJsonBody(req, res, callback) {
-    let body = '';
+    const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2MB 限制（按字节计算）
+    const chunks = [];
+    let receivedBytes = 0;
+    let settled = false;
+
+    const rejectTooLarge = () => {
+        if (settled) return;
+        settled = true;
+        try { req.pause(); } catch (_) { }
+        try { writeJson(res, 413, { code: 413, message: 'Payload too large' }); } catch (_) { }
+        try { res.once('finish', () => { try { req.destroy(); } catch (_) { } }); } catch (_) { }
+    };
+
     req.on('data', chunk => {
-        body += chunk;
-        if (body.length > 2 * 1024 * 1024) {
-            req.destroy();
+        if (settled) return;
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        receivedBytes += buf.length;
+        if (receivedBytes > MAX_BODY_BYTES) {
+            rejectTooLarge();
+            return;
         }
-    }); // 2MB 限制
+        chunks.push(buf);
+    });
+    req.on('error', () => { settled = true; });
     req.on('end', () => {
+        if (settled) return;
+        settled = true;
+        const body = Buffer.concat(chunks).toString('utf8');
         let data = null;
         try { data = JSON.parse(body || '{}'); } catch (_) { }
         if (!data || typeof data !== 'object') {
@@ -2992,6 +3036,17 @@ function startSampleTesterServer() {
                 const requestPath = getRequestPath(req);
                 logger.logInfo('[SampleTesterAPI] 请求:', req.method, requestPath, '来自', req.socket?.remoteAddress || 'unknown');
             } catch (_) { }
+        });
+        sampleTesterServer.on('error', (err) => {
+            // 端口占用等错误必须被捕获，否则会变成未捕获异常，且服务永久不可用。
+            try {
+                if (err && err.code === 'EADDRINUSE') {
+                    logWarn(`[SampleTesterAPI] 端口 ${PORT} 被占用，样例测试器服务不可用`);
+                } else {
+                    logger.logerror('[SampleTesterAPI] 服务出错', err);
+                }
+            } catch (_) { }
+            sampleTesterServer = null;
         });
         sampleTesterServer.listen(PORT, '127.0.0.1', () => {
             logger.logInfo(`[SampleTesterAPI] 服务已启动 http://127.0.0.1:${PORT}`);
@@ -4162,6 +4217,7 @@ function setupIPC() {
         }
 
         let entry = fileWatchRegistry.get(normalized.key);
+        let created = false;
         if (!entry) {
             if (fileWatchRegistry.size >= MAX_ACTIVE_FILE_WATCHERS) {
                 // External-change prompts are optional. Keeping the main process
@@ -4198,6 +4254,7 @@ function setupIPC() {
                     lastKnownFingerprint: initialFingerprint
                 };
                 fileWatchRegistry.set(normalized.key, entry);
+                created = true;
             } catch (error) {
                 try { logger.logwarn('[FileWatch] 创建监听失败', { filePath: normalized.resolved, error: error?.message || String(error) }); } catch (_) { }
                 return { success: false, error: error?.message || String(error) };
@@ -4211,7 +4268,7 @@ function setupIPC() {
         info.count += 1;
         entry.subscribers.set(contentsId, info);
 
-        return { success: true, reason: 'stopped' };
+        return { success: true, reason: created ? 'started' : 'updated' };
     });
 
     ipcMain.handle('unwatch-file', async (event, filePath) => {
@@ -4650,21 +4707,24 @@ function setupIPC() {
                     stdio: ['pipe', 'pipe', 'pipe'],
                     env: runtimeEnv,
                     shell: true,
-                    cwd: workingDirectory
+                    cwd: workingDirectory,
+                    detached: process.platform !== 'win32'
                 });
             } else if (Array.isArray(args) && args.length > 0) {
                 childProcess = spawn(executablePath, args, {
                     stdio: ['pipe', 'pipe', 'pipe'],
                     env: runtimeEnv,
                     shell: false, // SPJ不需要shell
-                    cwd: workingDirectory
+                    cwd: workingDirectory,
+                    detached: process.platform !== 'win32'
                 });
             } else {
                 const absoluteExePath = path.resolve(executablePath);
                 childProcess = spawn(absoluteExePath, [], {
                     stdio: ['pipe', 'pipe', 'pipe'],
                     env: runtimeEnv,
-                    cwd: workingDirectory
+                    cwd: workingDirectory,
+                    detached: process.platform !== 'win32'
                 });
             }
 
@@ -4745,7 +4805,7 @@ function setupIPC() {
                             } catch (_) { }
                             try {
                                 if (childProcess && !childProcess.killed) {
-                                    childProcess.kill('SIGKILL');
+                                    killProcessTree(childProcess, 'SIGKILL');
                                 }
                             } catch (e) {
                                 logError('[主进程-程序调试] 终止进程(内存限制)出错:', e?.message || String(e));
@@ -4772,7 +4832,7 @@ function setupIPC() {
             const killTimer = useTimeouts ? setTimeout(() => {
                 try {
                     if (childProcess && !childProcess.killed) {
-                        childProcess.kill('SIGKILL');
+                        killProcessTree(childProcess, 'SIGKILL');
                     }
                 } catch (e) {
                     logError('[主进程-程序调试] 尝试终止进程时出错:', e.message);
@@ -4796,7 +4856,7 @@ function setupIPC() {
                 } catch (_) { }
                 try {
                     if (childProcess && !childProcess.killed) {
-                        childProcess.kill('SIGKILL');
+                        killProcessTree(childProcess, 'SIGKILL');
                     }
                 } catch (e) {
                     logError('[主进程-程序调试] 终止进程(输出限制)出错:', e?.message || String(e));
@@ -4956,7 +5016,8 @@ function setupIPC() {
                 resolve(errorResult);
             });
 
-            if (input && !(Array.isArray(args) && args.length > 0)) {
+            // 即使传了 args（SPJ 模式），被测程序仍可能需要从 stdin 读取数据。
+            if (input !== undefined && input !== null) {
                 childProcess.stdin.write(input);
             }
             childProcess.stdin.end();
@@ -7848,7 +7909,7 @@ async function compileFile(options) {
             }
         } catch (_) { }
         const parsedUserArgs = parseArgsPreservingQuotes(userArgsStr).filter(a => a && a.trim());
-    const compileCacheVersion = 1;
+    const compileCacheVersion = 2;
     const cacheMetadataPath = outputFile ? `${path.resolve(outputFile)}.oicpp-cache` : '';
     let compileCacheRecord = null;
 
@@ -7867,7 +7928,18 @@ async function compileFile(options) {
             compilerSize: compilerStats.size,
             compilerMtimeMs: compilerStats.mtimeMs,
             compilerArgs: parsedUserArgs,
-            workingDirectory: path.resolve(workingDirectory || process.cwd())
+            workingDirectory: path.resolve(workingDirectory || process.cwd()),
+            // testlib 会作为 include 目录参与编译，切换 testlib 后必须重新编译。
+            testlibPath: settings.testlibPath || '',
+            testlibMtimeMs: (() => {
+                try {
+                    return settings.testlibPath && fs.existsSync(settings.testlibPath)
+                        ? fs.statSync(settings.testlibPath).mtimeMs
+                        : null;
+                } catch (_) {
+                    return null;
+                }
+            })()
         };
         const signature = crypto.createHash('sha256')
             .update(JSON.stringify(payload))
@@ -8034,14 +8106,15 @@ async function compileFile(options) {
             cwd: workingDirectory,
             stdio: ['pipe', 'pipe', 'pipe'],
             env: compilerEnv,
-            shell: false // 禁用shell模式以避免路径解析问题
+            shell: false, // 禁用shell模式以避免路径解析问题
+            detached: process.platform !== 'win32'
         });
 
         let timedOut = false;
         const compilationTimeout = setTimeout(() => {
             timedOut = true;
             logWarn('[编译] 超过 120 秒，正在终止编译器进程:', inputFile);
-            try { compiler.kill(); } catch (_) { }
+            killProcessTree(compiler, 'SIGKILL');
         }, 120000);
 
         const stdoutChunks = [];
