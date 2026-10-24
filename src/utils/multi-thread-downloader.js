@@ -122,7 +122,12 @@ class MultiThreadDownloader {
                 }
 
                 if (response.status !== 206) {
-                    logWarn(`[多线程下载] 警告：分片 ${chunkIndex} 未收到206状态码，可能服务器不支持范围请求`);
+                    // 服务器忽略了 Range 头并返回完整文件。若继续写入，每个分片都会得到
+                    // 整份文件，合并后大小会变成 N 倍。必须中止并回退到单线程下载。
+                    const rangeError = new Error(`服务器未按范围请求返回数据（HTTP ${response.status}）`);
+                    rangeError.code = 'RANGE_NOT_SUPPORTED';
+                    try { response.body.destroy(); } catch (_) { }
+                    throw rangeError;
                 }
 
                 const writer = fs.createWriteStream(chunkFile);
@@ -157,6 +162,12 @@ class MultiThreadDownloader {
                             if (error) {
                                 reject(error);
                             } else {
+                                const expectedBytes = end - start + 1;
+                                if (downloadedBytes !== expectedBytes) {
+                                    const sizeError = new Error(`分片 ${chunkIndex} 大小异常（${downloadedBytes}/${expectedBytes}）`);
+                                    sizeError.code = 'RANGE_SIZE_MISMATCH';
+                                    return reject(sizeError);
+                                }
                                 logInfo(`[多线程下载] 分片 ${chunkIndex} 下载完成`);
                                 resolve({ chunkIndex, file: chunkFile, size: downloadedBytes });
                             }
@@ -182,6 +193,14 @@ class MultiThreadDownloader {
                 });
 
             } catch (error) {
+                // 服务器不支持/忽略 Range 时重试没有意义，直接向上抛出以便回退单线程。
+                if (error.code === 'RANGE_NOT_SUPPORTED' || error.code === 'RANGE_SIZE_MISMATCH') {
+                    if (fs.existsSync(chunkFile)) {
+                        try { fs.unlinkSync(chunkFile); } catch (_) { }
+                    }
+                    throw error;
+                }
+
                 retries++;
 
                 const isNetworkError = error.code === 'ECONNRESET' ||
@@ -550,6 +569,13 @@ class MultiThreadDownloader {
                 logInfo(`[多线程下载] 分片全部完成，准备合并 ${completedChunks.length} 个分片`);
                 await this.mergeChunks(completedChunks, outputFile);
 
+                // 合并后校验最终大小，避免静默产出损坏文件。
+                const mergedStats = fs.statSync(outputFile);
+                if (mergedStats.size !== fileSize) {
+                    try { fs.unlinkSync(outputFile); } catch (_) { }
+                    throw new Error(`合并后文件大小校验失败（${mergedStats.size}/${fileSize}）`);
+                }
+
                 try {
                     fs.rmSync(tempDir, { recursive: true, force: true });
                 } catch (error) {
@@ -563,6 +589,12 @@ class MultiThreadDownloader {
                     }
                 } catch (cleanupError) {
                     logWarn('[多线程下载] 清理临时目录失败:', cleanupError.message);
+                }
+                if (error && (error.code === 'RANGE_NOT_SUPPORTED' || error.code === 'RANGE_SIZE_MISMATCH')) {
+                    logWarn('[多线程下载] 服务器未正确支持范围请求，回退到单线程下载:', error.message);
+                    try { if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile); } catch (_) { }
+                    await this.downloadSingleThread(url, outputFile);
+                    return;
                 }
                 throw error;
             }
