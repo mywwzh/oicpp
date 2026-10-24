@@ -6488,7 +6488,8 @@ async function readFileContent(filePath) {
             const iconv = require('iconv-lite');
             return iconv.decode(buffer, 'gbk');
         } else {
-            return buffer.toString('utf8');
+            // UTF-8 BOM 不应出现在文本内容里，否则样例比较会多出一个不可见字符。
+            return buffer.toString('utf8').replace(/^\uFEFF/, '');
         }
     } catch (error) {
         throw error;

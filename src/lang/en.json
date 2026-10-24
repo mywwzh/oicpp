@@ -681,6 +681,7 @@
     "exited": "Exited",
     "notStarted": "Not started",
     "localVariables": "Local Variables",
+    "globalVariables": "Global Variables",
     "watchPlaceholder": "Add watch expression...",
     "sessionStarted": "Debug session started; program loaded",
     "startingSession": "Starting debug session...",

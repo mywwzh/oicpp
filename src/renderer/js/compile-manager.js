@@ -22,6 +22,7 @@ class CompilerManager {
         this.cloudProgressLine = null;
         this.cloudQueueLastCount = null;
         this.cloudCompileStartTime = null;
+        this.cloudCompileRunId = 0;
         this.analysisList = null;
         this.analysisEmptyState = null;
         this.activePane = 'raw';
@@ -278,6 +279,12 @@ class CompilerManager {
     }
 
     async compileCurrentFile(options = {}) {
+        if (this.isCompiling) {
+            this.showMessage(this.t('message.compilingInProgress', null, '正在编译，请稍候'), 'info');
+            return;
+        }
+        // 必须在任何 await 之前占位，避免 F9 连按并发启动多个编译器写同一输出文件。
+        this.isCompiling = true;
         try {
             await this.autoSaveCurrentFile();
             logInfo('compileCurrentFile 被调用，自动保存当前文件');
@@ -318,6 +325,7 @@ class CompilerManager {
                  }
             }
 
+            this.isCompiling = true;
             this.isCompiling = true;
             this.showOutput();
             this.setStatus(this.t('compileOutput.compiling', null, 'Compiling...'));
@@ -382,10 +390,13 @@ class CompilerManager {
         } catch (error) {
             logError('编译失败:', error);
             this.handleCompileError(error.message);
+        } finally {
+            this.isCompiling = false;
         }
     }
 
     async cloudCompileCurrentFile() {
+        const runId = ++this.cloudCompileRunId;
         try {
             if (!this.isWindowsPlatform()) {
                 this.showMessage(this.t('message.cloudCompileWindowsOnly', null, 'Cloud compilation is currently available only on Windows'), 'warning');
@@ -487,11 +498,14 @@ class CompilerManager {
                 throw new Error(`云编译服务响应异常 (HTTP ${response.status})`);
             }
 
+            // 等待响应期间可能已经启动了新一轮云编译，旧响应必须丢弃。
+            if (runId !== this.cloudCompileRunId) return;
+
             if (data.code === 200 && data.task_id) {
                 this.cloudCompileTaskId = data.task_id;
                 this.appendOutput(`云编译任务创建成功，任务编号: ${data.task_id}`, 'info');
                 this.setCloudProgressMessage('云编译任务已提交，正在等待排队结果...', 'info');
-                this.pollCloudCompilationResult(data.task_id, 0);
+                this.pollCloudCompilationResult(data.task_id, 0, runId);
                 return;
             }
 
@@ -522,6 +536,9 @@ class CompilerManager {
             this.showMessage(message, 'error');
             this.resetCloudCompileState();
         } catch (error) {
+            if (runId !== this.cloudCompileRunId) {
+                return;
+            }
             if (error?.name === 'AbortError') {
                 this.appendOutput('云编译请求已取消。', 'warning');
             } else {
@@ -654,7 +671,8 @@ class CompilerManager {
         }
     }
 
-    async pollCloudCompilationResult(taskId, attempt = 0) {
+    async pollCloudCompilationResult(taskId, attempt = 0, runId = this.cloudCompileRunId) {
+        if (runId !== this.cloudCompileRunId) return;
         if (!taskId || !this.isCloudCompiling) return;
         if (attempt >= 300) {
             this.setStatus('云编译超时');
@@ -684,10 +702,12 @@ class CompilerManager {
                 throw new Error(`云编译服务响应异常 (HTTP ${response.status})`);
             }
 
+            if (runId !== this.cloudCompileRunId) return;
+
             switch (data.code) {
                 case 200:
                     this.updateCloudQueueStatus(data.queueFrontCnt);
-                    this.scheduleCloudCompilationPoll(taskId, attempt + 1);
+                    this.scheduleCloudCompilationPoll(taskId, attempt + 1, runId);
                     break;
                 case 201:
                     this.handleCloudCompilationSuccess(data);
@@ -710,14 +730,15 @@ class CompilerManager {
             }
 
             this.appendOutput(`查询云编译状态失败 (${attempt + 1})：${error?.message || error}`, 'warning');
-            this.scheduleCloudCompilationPoll(taskId, attempt + 1);
+            this.scheduleCloudCompilationPoll(taskId, attempt + 1, runId);
         }
     }
 
-    scheduleCloudCompilationPoll(taskId, nextAttempt) {
+    scheduleCloudCompilationPoll(taskId, nextAttempt, runId = this.cloudCompileRunId) {
+        if (runId !== this.cloudCompileRunId) return;
         this.cancelCloudCompilationPolling();
         this.cloudCompilePollTimer = setTimeout(() => {
-            this.pollCloudCompilationResult(taskId, nextAttempt);
+            this.pollCloudCompilationResult(taskId, nextAttempt, runId);
         }, 2000);
     }
 
@@ -1280,6 +1301,8 @@ class CompilerManager {
 
     handleCompileError(error) {
         this.isCompiling = false;
+        // “编译并运行”在失败后不能把标记留给下一次普通编译。
+        this.shouldRunAfterCompile = false;
         this.setStatus(this.t('compileOutput.failSimple', null, 'Compilation failed'));
         const msg = this._stringifyError(error);
         this.appendOutput(`${this.t('compileOutput.failSimple', null, 'Compilation failed')}: ${msg}\n`, 'error');
@@ -1440,15 +1463,41 @@ class CompilerManager {
                 if (m) {
                     line.classList.add('output-link');
                     line.style.cursor = 'pointer';
-                    line.addEventListener('click', () => {
+                    line.addEventListener('click', async () => {
                         const [, file, lineNum, colNum] = m;
-                        const editor = window.editorManager?.getCurrentEditor?.();
-                        if (editor && editor.revealLineInCenter) {
-                            const ln = parseInt(lineNum, 10) || 1;
-                            const cn = colNum ? parseInt(colNum, 10) : 1;
-                            try { editor.revealLineInCenter(ln); } catch {}
-                            try { editor.setPosition({ lineNumber: ln, column: cn }); } catch {}
+                        const ln = parseInt(lineNum, 10) || 1;
+                        const cn = colNum ? parseInt(colNum, 10) : 1;
+                        const revealIn = (editor) => {
+                            if (!editor || !editor.revealLineInCenter) return;
+                            try { editor.revealLineInCenter(ln); } catch { }
+                            try { editor.setPosition({ lineNumber: ln, column: cn }); } catch { }
+                        };
+                        const currentEditor = window.editorManager?.getCurrentEditor?.();
+                        const norm = (p) => String(p || '').replace(/\\/g, '/');
+                        const currentPath = norm(currentEditor?.filePath || currentEditor?.getFilePath?.() || '');
+                        const targetPath = norm(file);
+                        const sameFile = !!currentPath && (
+                            currentPath === targetPath ||
+                            currentPath.endsWith('/' + targetPath.split('/').pop()) ||
+                            targetPath.endsWith('/' + currentPath.split('/').pop())
+                        );
+                        if (sameFile) {
+                            revealIn(currentEditor);
+                            return;
                         }
+                        // 跨文件错误：先打开错误所属文件，再定位。
+                        try {
+                            const content = await window.electronAPI?.readFileContent?.(file);
+                            if (typeof content === 'string') {
+                                const name = targetPath.split('/').pop() || file;
+                                await window.tabManager?.openFile?.(name, content, false, file);
+                                revealIn(window.editorManager?.getCurrentEditor?.());
+                                return;
+                            }
+                        } catch (e) {
+                            logWarn('[编译输出] 打开错误文件失败:', e);
+                        }
+                        revealIn(currentEditor);
                     });
                 }
             } catch {}

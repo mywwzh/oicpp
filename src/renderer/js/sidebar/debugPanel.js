@@ -70,10 +70,17 @@ class DebugPanel {
                 <div class="category-content"><div id="local-variables"><div class="waiting-debug-message" data-i18n="debug.waitingDebug">等待开始调试...</div></div></div>
               </div>
               <div class="variable-category">
+                <div class="category-header" data-cat="global"><span class="expand-arrow">▼</span> <span data-i18n="debug.globalVariables">全局变量</span></div>
+                <div class="category-content"><div id="global-variables"><div class="no-debug-message" data-i18n="debug.noItems">暂无</div></div></div>
+              </div>
+              <div class="variable-category">
                 <div class="category-header" data-cat="watch"><span class="expand-arrow">▼</span> <span data-i18n="debug.watch">监视</span></div>
                 <div class="category-content"><div id="watch-variables"><div class="no-debug-message" data-i18n="debug.noItems">暂无</div></div></div>
               </div>
             </div>
+          </div>
+          <div class="debug-section"><h4 class="debug-section-title" data-i18n="debug.callStack">调用栈</h4>
+            <div id="call-stack" class="call-stack"></div>
           </div>
         </div>
   </div>`;
@@ -247,8 +254,11 @@ class DebugPanel {
 
     _setToolbarEnabled(enabled) {
         if (!this.root) return;
-        ['#dbg-continue', '#dbg-step-over', '#dbg-step-into', '#dbg-step-out', '#dbg-stop', '#dbg-add-watch', '#dbg-start']
-            .forEach(sel => { const el = this.root.querySelector(sel); if (el) el.disabled = false; });
+        ['#dbg-continue', '#dbg-step-over', '#dbg-step-into', '#dbg-step-out', '#dbg-stop', '#dbg-add-watch']
+            .forEach(sel => { const el = this.root.querySelector(sel); if (el) el.disabled = !enabled; });
+        // 开始按钮在无调试会话时可用，调试进行中应禁用。
+        const startBtn = this.root.querySelector('#dbg-start');
+        if (startBtn) startBtn.disabled = !!enabled;
     }
 
     _handleVariableExpanded(payload) {
@@ -291,6 +301,7 @@ class DebugPanel {
             }
         }
         this._renderVariableGroup('#local-variables', this.variableCache.local, 'local');
+        this._renderVariableGroup('#global-variables', this.variableCache.global, 'global');
         this._renderVariableGroup('#watch-variables', this.variableCache.watches, 'watch');
     }
 
@@ -315,6 +326,7 @@ class DebugPanel {
         }
 
         this._renderVariableGroup('#local-variables', this.variableCache.local, 'local');
+        this._renderVariableGroup('#global-variables', this.variableCache.global, 'global');
         this._renderVariableGroup('#watch-variables', this.variableCache.watches, 'watch');
     }
 

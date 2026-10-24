@@ -20,6 +20,7 @@ class SampleTester {
         this.spjTempSequence = 0;
         this.interactiveTempSequence = 0;
         this.deferSpjTempCleanup = false;
+        this.isRunningAll = false;
         this.isOperating = false;
         this.editorChangeInterval = null;
         this.statusFilter = null;
@@ -147,7 +148,9 @@ class SampleTester {
         }
 
         const reserved = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
-        if (reserved.test(cleaned)) {
+        // Windows 保留设备名带任何扩展名仍然非法（con.cpp / nul.txt）。
+        const stem = cleaned.replace(/\.[^.]*$/, '');
+        if (reserved.test(stem)) {
             cleaned = `_${cleaned}`;
         }
 
@@ -277,7 +280,9 @@ class SampleTester {
 
             newRunAllBtn.addEventListener('click', () => {
                 logInfo('[样例测试器] 运行所有样例按钮被点击');
-                this.runAllSamples();
+                this.runAllSamples().catch((error) => {
+                    logError('[样例测试器] 运行所有样例失败:', error);
+                });
             });
         }
 
@@ -711,15 +716,21 @@ class SampleTester {
     }
 
     serializeSamplesForSave(samples) {
+        const MAX_PERSIST_CHARS = 64 * 1024;
         return (Array.isArray(samples) ? samples : []).map(sample => {
             const s = { ...sample };
             if (s.result) {
-                const fullOutput = s.result.rawOutput ?? s.result.output ?? '';
+                const fullOutput = String(s.result.rawOutput ?? s.result.output ?? '');
                 const { rawOutput, ...restResult } = s.result;
+                // 完整输出最大可达 256MB，绝不能写进样例 JSON（每次输入都会同步保存）。
+                const persistedOutput = fullOutput.length > MAX_PERSIST_CHARS
+                    ? fullOutput.slice(0, MAX_PERSIST_CHARS) + '\n... [输出过长，已截断]'
+                    : fullOutput;
                 s.result = {
                     ...restResult,
-                    output: fullOutput,
-                    outputExpanded: !!s.result.outputExpanded,
+                    output: persistedOutput,
+                    outputTruncated: fullOutput.length > MAX_PERSIST_CHARS,
+                    outputExpanded: false,
                     outputSizeBytes: Number.isFinite(s.result.outputSizeBytes) && s.result.outputSizeBytes > 0
                         ? s.result.outputSizeBytes
                         : this.getOutputSizeBytes(fullOutput)
@@ -741,7 +752,7 @@ class SampleTester {
                 samples: this.serializeSamplesForSave(samples),
                 globalSettings
             };
-            await window.electronAPI.saveFile(samplesFilePath, JSON.stringify(data, null, 2));
+            await window.electronAPI.saveFile(samplesFilePath, JSON.stringify(data));
         } catch (error) {
             logError('保存样例失败:', error);
         }
@@ -1314,7 +1325,8 @@ class SampleTester {
         }
 
         const reserved = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
-        if (reserved.test(safe)) {
+        const safeStem = safe.replace(/\.[^.]*$/, '');
+        if (reserved.test(safeStem)) {
             safe = `_${safe}`;
         }
 
@@ -1943,10 +1955,11 @@ class SampleTester {
         const button = document.getElementById(`run-btn-${id}`);
         if (!button || button.disabled) return;
 
-        await this.autoSaveCurrentFile();
-
+        // 必须在任何 await 之前占用按钮，否则双击会并发跑同一份样例。
         button.disabled = true;
         button.classList.add('running');
+
+        await this.autoSaveCurrentFile();
 
         try {
             button.textContent = window.i18n ? window.i18n.t('tester.compileStatus') : '编译中';
@@ -1989,13 +2002,21 @@ class SampleTester {
     }
 
     async runAllSamples() {
+        // 菜单/快捷键可绕过按钮禁用，因此必须在函数入口同步占位。
+        if (this.isRunningAll) {
+            logInfo('[样例测试器] 已有运行中的批次，忽略重复触发');
+            return;
+        }
+        this.isRunningAll = true;
+
         const runSamples = this.samples;
         const runSamplesFilePath = this.samplesFilePath;
         const runCurrentFile = this.currentFile;
 
-        if (runSamples.length === 0) return;
-
-        await this.autoSaveCurrentFile();
+        if (runSamples.length === 0) {
+            this.isRunningAll = false;
+            return;
+        }
 
         const runAllBtn = document.getElementById('run-all-samples-btn');
         if (runAllBtn) {
@@ -2017,6 +2038,7 @@ class SampleTester {
         this.deferSpjTempCleanup = true;
 
         try {
+            await this.autoSaveCurrentFile();
             const useTestlib = this.globalSettings.useTestlib;
             const useInteractive = !!this.globalSettings.useInteractive;
             const spjPath = this.globalSettings.spjPath;
@@ -2178,7 +2200,22 @@ class SampleTester {
             const samplesToPersist = this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile) ? this.samples : runSamples;
             await this.saveSamplesToPath(runSamplesFilePath, samplesToPersist, this.globalSettings);
 
+        } catch (error) {
+            logError('[样例测试器] 运行所有样例失败:', error);
+            const message = error?.message || String(error);
+            for (const sample of runSamples) {
+                sample.result = { status: 'CE', output: message, time: 0 };
+                if (this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile)) {
+                    this.updateSampleResult(sample.id, sample.result, sample);
+                }
+            }
+            try {
+                const samplesToPersist = this.isCurrentSamplesContext(runSamplesFilePath, runCurrentFile) ? this.samples : runSamples;
+                await this.saveSamplesToPath(runSamplesFilePath, samplesToPersist, this.globalSettings);
+            } catch (_) { }
+            this.showCompileOutputForResult('样例运行', { success: false, stderr: message });
         } finally {
+            this.isRunningAll = false;
             this.deferSpjTempCleanup = false;
             await this.cleanupSpjTempFiles();
             // 主程序编译结果会被缓存复用，这里不删除可执行文件。
@@ -2686,6 +2723,23 @@ class SampleTester {
             throw new Error(window.i18n ? window.i18n.t('tester.noActiveCppFile') : '没有活动的C++文件');
         }
 
+        // this.currentFile 依靠 1 秒轮询更新；切换标签后立刻运行会把新文件内容写进旧路径。
+        // 这里以编辑器的真实路径为准，发现不一致就拒绝，避免跨文件覆盖。
+        try {
+            const editorMgr = window.editorManager || window.monacoEditorManager;
+            const editorPath = editorMgr?.currentEditor?.getFilePath?.() || editorMgr?.currentEditor?.filePath || null;
+            const normPath = (p) => String(p || '').replace(/\\/g, '/');
+            if (editorPath && !String(editorPath).startsWith('untitled') && /\.(cpp|cc|cxx|c)$/i.test(String(editorPath))) {
+                if (normPath(editorPath) !== normPath(this.currentFile)) {
+                    this.refresh().catch((e) => logWarn('[样例测试器] 刷新当前文件失败:', e));
+                    throw new Error('当前编辑器文件已切换，请等待样例面板刷新后重试');
+                }
+            }
+        } catch (error) {
+            if (error && /已切换/.test(error.message || '')) throw error;
+            logWarn('[样例测试器] 校验当前文件路径失败:', error);
+        }
+
         const content = window.editorManager?.getCurrentContent() || '';
         logInfo('[样例测试器] 获取到的文件内容长度:', content.length);
         if (!content.trim()) {
@@ -2815,7 +2869,7 @@ class SampleTester {
 
     compareOutput(actual, expected) {
         const normalize = (str) => {
-            return String(str || '').replace(/\r\n?/g, '\n').split('\n')
+            return String(str || '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n')
                 .map(line => line.trimEnd())
                 .join('\n')
                 .replace(/\n+$/, '');
@@ -2910,33 +2964,6 @@ class SampleTester {
         return null;
     }
 
-    getDifferenceInfo(actual, expected) {
-        const actualLines = actual.split('\n');
-        const expectedLines = expected.split('\n');
-
-        for (let i = 0; i < Math.max(actualLines.length, expectedLines.length); i++) {
-            const actualLine = actualLines[i] || '';
-            const expectedLine = expectedLines[i] || '';
-
-            if (actualLine !== expectedLine) {
-                for (let j = 0; j < Math.max(actualLine.length, expectedLine.length); j++) {
-                    if (actualLine[j] !== expectedLine[j]) {
-                        return {
-                            line: i + 1,
-                            char: j + 1
-                        };
-                    }
-                }
-                return {
-                    line: i + 1,
-                    char: Math.min(actualLine.length, expectedLine.length) + 1
-                };
-            }
-        }
-
-        return null;
-    }
-
     escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
@@ -2944,14 +2971,13 @@ class SampleTester {
     }
 
     createHighlightedOutput(actual, expected) {
-        const safeActual = this.truncateOutput(actual || '');
-        const actualLines = safeActual.split('\n');
-        const expectedLines = expected.split('\n');
+        const actualLines = String(actual || '').split('\n');
+        const expectedLines = String(expected || '').split('\n');
         const maxLines = 100;
 
         let result = '';
         const maxCompareLines = Math.max(actualLines.length, expectedLines.length);
-        const displayLines = Math.min(maxLines, actualLines.length);
+        const displayLines = Math.min(maxLines, maxCompareLines);
 
         for (let i = 0; i < displayLines; i++) {
             const actualLine = actualLines[i] || '';
@@ -3054,7 +3080,9 @@ class SampleTester {
                         diffInfo.style.display = 'inline';
                     }
 
-                    const highlightedOutput = this.createHighlightedOutput(processedOutput, expectedOutput);
+                    // 高亮使用未截断的原始输出（但限制总量防止极端输出卡死界面）。
+                    const highlightSource = String(actualOutput || '').slice(0, 20000);
+                    const highlightedOutput = this.createHighlightedOutput(highlightSource, expectedOutput);
 
                     outputTextarea.style.display = 'none';
 
@@ -3449,10 +3477,12 @@ class SampleTester {
         try {
             const suffix = `${Date.now()}_${++this.spjTempSequence}`;
             const inputFile = await window.electronAPI.saveTempFile(`spj_input_${suffix}.txt`, inputData);
+            if (inputFile) this.spjTempFiles.add(inputFile);
             const actualFile = await window.electronAPI.saveTempFile(`spj_actual_${suffix}.txt`, actualOutput);
+            if (actualFile) this.spjTempFiles.add(actualFile);
             const expectedFile = await window.electronAPI.saveTempFile(`spj_expected_${suffix}.txt`, expectedOutput);
-            const tempFiles = [inputFile, actualFile, expectedFile];
-            tempFiles.forEach(file => this.spjTempFiles.add(file));
+            if (expectedFile) this.spjTempFiles.add(expectedFile);
+            const tempFiles = [inputFile, actualFile, expectedFile].filter(Boolean);
 
             try {
                 const workingDir = await window.electronAPI.pathDirname(spjExecutablePath);
@@ -3483,7 +3513,7 @@ class SampleTester {
             }
         } catch (error) {
             logError('SPJ判题失败:', error);
-            return { status: 'Error', output: error?.message || String(error) };
+            return { status: 'RE', output: `SPJ判题失败: ${error?.message || String(error)}` };
         }
     }
 

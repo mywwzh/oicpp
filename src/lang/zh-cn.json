@@ -653,6 +653,7 @@
     "restart": "重新启动",
     "variables": "变量",
     "localVariables": "局部变量",
+    "globalVariables": "全局变量",
     "callStack": "调用栈",
     "breakpoints": "断点",
     "watch": "监视",

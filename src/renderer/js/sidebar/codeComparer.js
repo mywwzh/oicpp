@@ -538,8 +538,6 @@ class CodeComparer {
     }
 
     async startComparison() {
-        await this.autoSaveCurrentFile();
-
         if (!this.testCodePath) {
             const task = this.getActiveTask();
             this.showTaskCompileError(task, 'general', window.i18n ? window.i18n.t('compare.selectTestCodeFirst') : 'Please select the code to compare first');
@@ -548,6 +546,16 @@ class CodeComparer {
 
         const task = this.getOrCreateTask(this.testCodePath);
         if (!task) return;
+
+        // 在入口同步占位：双击“开始”或“停止后立刻开始”会并发跑两轮同一任务。
+        if (task.state.starting || task.state.isRunning) {
+            this.showTaskCompileError(task, 'general', window.i18n ? window.i18n.t('compare.taskRunning') : 'A comparison task is already running for this file');
+            return;
+        }
+        task.state.starting = true;
+
+        try {
+        await this.autoSaveCurrentFile();
 
         this.syncInstanceConfigToTask(task);
 
@@ -617,6 +625,9 @@ class CodeComparer {
             logError('对拍过程出错:', error);
             this.showTaskCompileError(task, 'general', (window.i18n ? window.i18n.t('compare.compareError') : 'Comparison error: ') + (error?.message || String(error)));
         });
+        } finally {
+            task.state.starting = false;
+        }
     }
 
     async runTask(task, effectiveTimeLimit, workerCount, maxParallel) {
@@ -643,6 +654,15 @@ class CodeComparer {
     }
 
     async compilePrograms(task) {
+        const createdExes = [];
+        const cleanupCreated = async () => {
+            if (createdExes.length === 0) return;
+            for (const exe of createdExes) {
+                if (!exe) continue;
+                try { await window.electronAPI.deleteTempFile(exe); } catch (_) { }
+            }
+            createdExes.length = 0;
+        };
         try {
             const settings = await window.electronAPI.getAllSettings();
             const compilerPath = settings.compilerPath;
@@ -675,8 +695,10 @@ class CodeComparer {
                 compilerArgs: compilerArgs,
                 workingDirectory: await window.electronAPI.pathDirname(task.config.standardCodePath)
             });
+            createdExes.push(stdExe);
 
             if (!stdResult.success) {
+                await cleanupCreated();
                 this.showTaskCompileError(task, 'standard', stdResult.stderr || stdResult.stdout || '编译失败');
                 return null;
             }
@@ -689,8 +711,10 @@ class CodeComparer {
                 compilerArgs: compilerArgs,
                 workingDirectory: await window.electronAPI.pathDirname(task.config.testCodePath)
             });
+            createdExes.push(testExe);
 
             if (!testResult.success) {
+                await cleanupCreated();
                 this.showTaskCompileError(task, 'test', testResult.stderr || testResult.stdout || '编译失败');
                 return null;
             }
@@ -699,11 +723,13 @@ class CodeComparer {
             if (generatorIsPython) {
                 const interpreterPath = String(settings.pythonInterpreterPath || '').trim();
                 if (!interpreterPath) {
+                    await cleanupCreated();
                     await this.promptMissingPythonInterpreter(task);
                     return null;
                 }
                 const interpreterExists = await window.electronAPI.checkFileExists(interpreterPath);
                 if (!interpreterExists) {
+                    await cleanupCreated();
                     this.showTaskCompileError(task, 'settings', window.i18n ? window.i18n.t('compare.pythonPathInvalid') : 'Python interpreter path is invalid. Please reconfigure.');
                     try {
                         await window.electronAPI?.openCompilerSettings?.();
@@ -727,8 +753,10 @@ class CodeComparer {
                     compilerArgs: compilerArgs,
                     workingDirectory: await window.electronAPI.pathDirname(task.config.generatorPath)
                 });
+                createdExes.push(generatorExe);
 
                 if (!generatorResult.success) {
+                    await cleanupCreated();
                     this.showTaskCompileError(task, 'generator', generatorResult.stderr || generatorResult.stdout || '编译失败');
                     return null;
                 }
@@ -763,8 +791,10 @@ class CodeComparer {
                     compilerArgs: spjCompilerArgs,
                     workingDirectory: await window.electronAPI.pathDirname(task.config.spjPath)
                 });
+                createdExes.push(spjExe);
 
                 if (!spjResult.success) {
+                    await cleanupCreated();
                     this.showTaskCompileError(task, 'spj', spjResult.stderr || spjResult.stdout || '编译失败');
                     return null;
                 }
@@ -786,6 +816,7 @@ class CodeComparer {
             };
 
         } catch (error) {
+            await cleanupCreated();
             logError('编译程序失败:', error);
             this.showTaskCompileError(task, 'general', (window.i18n ? window.i18n.t('compare.compileError') : 'Compilation failed') + ': ' + error.message);
             return null;
@@ -975,6 +1006,7 @@ class CodeComparer {
                     this.updateTaskProgress(task);
 
                 } catch (error) {
+                    failedGenerations++;
                     logError(`第 ${i} 组测试出错:`, error);
                     continue;
                 }
@@ -1083,7 +1115,9 @@ class CodeComparer {
             ? { ...executablePath, skipPreKill: true }
             : { executablePath, skipPreKill: true };
         const result = await window.electronAPI.runProgram(execOptions, input, timeLimit);
-        const trimmedOutput = (result.output || '').trim();
+        // 不能 trim：生成器输出的前导空白属于测试数据，程序输出的前导空白也会影响判题。
+        const rawOutput = result.output || '';
+        const trimmedOutput = rawOutput.trim();
         const outputLimitExceeded = !!result.outputLimitExceeded;
         let errorMessage = '';
         if (outputLimitExceeded) {
@@ -1094,7 +1128,7 @@ class CodeComparer {
             errorMessage = trimmedOutput || result.stderr || `退出码: ${result.exitCode}`;
         }
         return {
-            output: trimmedOutput,
+            output: rawOutput,
             error: errorMessage,
             timeout: !!result.timeout,
             time: result.time,
@@ -1282,7 +1316,8 @@ class CodeComparer {
         const task = this.getActiveTask();
         if (!task) return;
         task.state.shouldStop = true;
-        task.state.isRunning = false;
+        // 保留 isRunning，直到 runTask 的 finally 复位；否则用户可立即再开始，
+        // 导致两轮并发共用临时目录/可执行文件。
         if (task.state.mode === 'running') {
             task.state.mode = 'idle';
         }
@@ -1308,10 +1343,10 @@ class CodeComparer {
         const stopBtn = document.getElementById('compare-stop-btn');
         const resetBtn = document.getElementById('compare-reset-btn');
 
-        const running = !!task?.state?.isRunning && task?.state?.mode === 'running';
+        const running = !!task?.state?.isRunning;
 
         if (startBtn) startBtn.disabled = running;
-        if (stopBtn) stopBtn.disabled = !running;
+        if (stopBtn) stopBtn.disabled = !running || !!task?.state?.shouldStop;
         if (resetBtn) resetBtn.disabled = running;
     }
 
@@ -1975,7 +2010,7 @@ class CodeComparer {
             }
         } catch (error) {
             logError('导出失败:', error);
-            this.showCompileError('general', '导出失败: ' + error.message);
+            this.showTaskCompileError(task, 'general', '导出失败: ' + (error?.message || String(error)));
         }
     }
 
