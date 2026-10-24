@@ -807,7 +807,10 @@ class CloudSyncPanel {
         }
         try {
             const data = await this.request('GET', '/cloudSync/download', { path: file.path });
-            const content = typeof data?.content === 'string' ? data.content : '';
+            if (typeof data?.content !== 'string') {
+                throw new Error('云端返回数据格式异常');
+            }
+            const content = data.content;
             const result = await window.electronAPI.showSaveDialog({
                 title: '保存云端文件',
                 defaultPath: file.name
@@ -1171,7 +1174,9 @@ class CloudSyncPanel {
     getRelativeLocalPath(filePath, rootPath) {
         const fileNorm = this.normalizeLocalPath(filePath);
         const rootNorm = this.normalizeLocalPath(rootPath);
-        if (!fileNorm.startsWith(rootNorm)) return '';
+        // 必须带路径分隔符比较，否则 proj-evil 会被当成 proj 的子目录。
+        if (!rootNorm) return '';
+        if (fileNorm !== rootNorm && !fileNorm.startsWith(rootNorm + '/')) return '';
         let rel = fileNorm.slice(rootNorm.length);
         if (rel.startsWith('/')) rel = rel.slice(1);
         return rel;

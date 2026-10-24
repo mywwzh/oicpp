@@ -1319,10 +1319,8 @@
                         e.preventDefault();
                         this.saveCurrentFile();
                         return;
-                    case 'k':
-                        e.preventDefault();
-                        this.openFolder();
-                        return;
+                    // Ctrl+K 在 Monaco 中是 chore 前缀（如 Ctrl+K Ctrl+C 注释），
+                    // 不能在编辑器内抢占，否则会破坏编辑器快捷键。
                 }
             }
 

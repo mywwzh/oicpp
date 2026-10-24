@@ -621,6 +621,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     onRequestSaveAll: (callback) => ipcRenderer.on('request-save-all', () => callback && callback()),
     notifySaveAllComplete: () => ipcRenderer.send('save-all-complete'),
+    notifySaveAllFailed: (payload) => ipcRenderer.send('save-all-failed', payload || {}),
 
     // === 内置浏览器 API ===
     browserResolveUrl: (url) => ipcRenderer.invoke('browser-resolve-url', url),
@@ -636,17 +637,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
 contextBridge.exposeInMainWorld('electronIPC', {
     ...safeIpcRenderer,
     ipcRenderer: safeIpcRenderer,
+    // 返回取消函数，避免调用方拿到包装函数后无法 removeListener（监听器泄漏）。
     on: (channel, listener) => {
-        if (channel === 'file-saved') {
-            return ipcRenderer.on('file-saved', (event, filePath, error) => listener(event, filePath, error));
-        }
-        return ipcRenderer.on(channel, listener);
+        const wrapped = channel === 'file-saved'
+            ? (event, filePath, error) => listener(event, filePath, error)
+            : listener;
+        ipcRenderer.on(channel, wrapped);
+        return () => {
+            try { ipcRenderer.removeListener(channel, wrapped); } catch (_) { }
+        };
     },
     once: (channel, listener) => {
-        if (channel === 'file-saved') {
-            return ipcRenderer.once('file-saved', (event, filePath, error) => listener(event, filePath, error));
-        }
-        return ipcRenderer.once(channel, listener);
+        const wrapped = channel === 'file-saved'
+            ? (event, filePath, error) => listener(event, filePath, error)
+            : listener;
+        ipcRenderer.once(channel, wrapped);
+        return () => {
+            try { ipcRenderer.removeListener(channel, wrapped); } catch (_) { }
+        };
     }
 });
 

@@ -81,13 +81,30 @@ async function initializeApp() {
         try {
             if (window.electronAPI && window.electronAPI.onRequestSaveAll) {
                 window.electronAPI.onRequestSaveAll(async () => {
+                    let result = { success: true, failures: [] };
                     try {
                         if (window.tabManager && typeof window.tabManager.saveAllFiles === 'function') {
-                            await window.tabManager.saveAllFiles();
+                            result = await window.tabManager.saveAllFiles();
                         } else if (window.oicppApp?.saveCurrentFile) {
-                            window.oicppApp.saveCurrentFile();
+                            await window.oicppApp.saveCurrentFile();
                         }
-                    } finally {
+                    } catch (e) {
+                        result = { success: false, failures: [{ fileName: '', error: e?.message || String(e) }] };
+                    }
+                    if (result && result.success === false) {
+                        const failures = Array.isArray(result.failures) ? result.failures : [];
+                        const detail = failures.slice(0, 8)
+                            .map(f => `- ${f.fileName || '未命名文件'}：${f.error || '保存失败'}`)
+                            .join('\n');
+                        const message = `以下文件保存失败，窗口保持打开，请处理后重试：\n${detail || '未知错误'}`;
+                        logError('[关闭前保存]', message);
+                        try {
+                            if (window.dialogManager?.showConfirmDialog) {
+                                window.dialogManager.showConfirmDialog('保存失败', message).catch(() => { });
+                            }
+                        } catch (_) { }
+                        try { window.electronAPI.notifySaveAllFailed({ failures }); } catch (_) { }
+                    } else {
                         window.electronAPI.notifySaveAllComplete();
                     }
                 });

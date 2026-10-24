@@ -123,6 +123,11 @@ class TitlebarManager {
         if (this._closeConfirmInProgress) return;
         if (!window.electronIPC) return;
 
+        // 立即占位，避免在多个 await 期间重复进入。
+        // 连点关闭否则会弹出多个对话框，且 DialogManager 单槽位会把前一个 Promise 永久挂起。
+        this._closeConfirmInProgress = true;
+        try {
+
         // 关闭前先持久化当前打开的标签页。标签页状态平时靠 2s 防抖保存，
         // 快速关闭时可能来不及写入，导致下次启动恢复成更早的旧会话。
         try {
@@ -167,9 +172,7 @@ class TitlebarManager {
             return;
         }
 
-        this._closeConfirmInProgress = true;
-        try {
-            const maxShow = 8;
+        const maxShow = 8;
             const shown = unsavedFiles.slice(0, maxShow);
             const moreCount = Math.max(0, unsavedFiles.length - shown.length);
 

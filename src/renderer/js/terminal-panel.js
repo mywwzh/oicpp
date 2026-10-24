@@ -514,7 +514,7 @@ class IntegratedTerminalPanel {
             if (key === 'tab' && !ctrl && !meta && !alt) {
                 event.preventDefault();
                 event.stopPropagation();
-                const seq = shift ? '\u001b[Z]' : '\t';
+                const seq = shift ? '\x1b[Z' : '\t';
                 sendInput(seq);
                 return;
             }

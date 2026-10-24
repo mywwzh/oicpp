@@ -4127,10 +4127,14 @@ class MonacoEditorManager {
                         } else {
                             this.markFileSaved(filePath);
                         }
-                        window.electronIPC.ipcRenderer.removeListener('file-saved', handleFileSaved);
+                        if (typeof offFileSaved === 'function') {
+                            offFileSaved();
+                        } else {
+                            window.electronIPC.ipcRenderer.removeListener('file-saved', handleFileSaved);
+                        }
                     }
                 };
-                window.electronIPC.on('file-saved', handleFileSaved);
+                const offFileSaved = window.electronIPC.on('file-saved', handleFileSaved);
             } else {
                 logWarn('无法保存: 无文件路径或非Electron环境');
             }

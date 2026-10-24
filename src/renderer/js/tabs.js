@@ -4971,34 +4971,91 @@ class TabManager {
 
     async saveAllFiles() {
         if (this.isDiscardCloseInProgress()) {
-            return;
+            return { success: true, failures: [] };
         }
+        const failures = [];
         const tasks = [];
+        const isCloudPath = (p) => {
+            if (window.oicppApp && typeof window.oicppApp.isCloudFilePath === 'function') {
+                return window.oicppApp.isCloudFilePath(p);
+            }
+            return typeof p === 'string' && /^cloud:/i.test(p);
+        };
+
         for (const [uniqueKey, tab] of this.tabs.entries()) {
             if (!tab || tab.viewType === 'pdf' || tab.viewType === 'markdown-preview') {
                 continue;
             }
             try {
                 const filePath = tab.filePath;
-                if (!filePath) continue;
                 const content = this.getTabContentForSave(tab);
                 if (typeof content !== 'string') continue;
-                if (window.electronAPI?.saveFile && typeof window.electronAPI.saveFile === 'function') {
+
+                // 未命名/临时标签不能静默跳过，否则用户选择“保存并退出”时会丢内容。
+                if (!filePath) {
+                    if (typeof window.electronAPI?.saveAsFile !== 'function') {
+                        failures.push({ fileName: tab.fileName, error: '保存接口不可用' });
+                        continue;
+                    }
+                    tasks.push((async () => {
+                        try {
+                            const savedPath = await window.electronAPI.saveAsFile(content);
+                            if (!savedPath) {
+                                failures.push({ fileName: tab.fileName, error: '未选择保存位置' });
+                                return;
+                            }
+                            const writeResult = await window.electronAPI.saveFile(savedPath, content);
+                            if (writeResult?.success === false) {
+                                throw new Error(writeResult?.error || '写入失败');
+                            }
+                            try {
+                                this.updateTabPathBySource(null, savedPath);
+                            } catch (_) { }
+                            this.markTabAsSavedByUniqueKey(uniqueKey);
+                        } catch (e) {
+                            failures.push({ fileName: tab.fileName, error: e?.message || String(e) });
+                        }
+                    })());
+                    continue;
+                }
+
+                if (isCloudPath(filePath)) {
+                    tasks.push((async () => {
+                        try {
+                            if (window.oicppApp && typeof window.oicppApp.saveCloudFileToServer === 'function') {
+                                const ok = await window.oicppApp.saveCloudFileToServer(filePath, content);
+                                if (!ok) throw new Error('云文件保存失败');
+                                this.markTabAsSavedByUniqueKey(uniqueKey);
+                            }
+                        } catch (e) {
+                            failures.push({ fileName: tab.fileName, error: e?.message || String(e) });
+                        }
+                    })());
+                    continue;
+                }
+
+                if (typeof window.electronAPI?.saveFile === 'function') {
                     tasks.push(
-                        window.electronAPI.saveFile(filePath, content).then(() => {
+                        window.electronAPI.saveFile(filePath, content).then((result) => {
+                            if (result?.success === false) {
+                                throw new Error(result?.error || '写入失败');
+                            }
                             this.markTabAsSavedByUniqueKey(uniqueKey);
                         }).catch((e) => {
+                            failures.push({ fileName: tab.fileName, error: e?.message || String(e) });
                             (window.logWarn || console.warn)('保存文件失败:', filePath, e);
                         })
                     );
                 } else {
-                    this.markTabAsSavedByUniqueKey(uniqueKey);
+                    failures.push({ fileName: tab.fileName, error: '保存接口不可用' });
                 }
             } catch (e) {
+                failures.push({ fileName: tab?.fileName, error: e?.message || String(e) });
                 (window.logWarn || console.warn)('保存标签失败:', tab?.fileName, e);
             }
         }
         try { await Promise.allSettled(tasks); } catch (_) { }
+        return { success: failures.length === 0, failures };
     }
 
     openFileDialog() {
@@ -5261,21 +5318,36 @@ void hello() {
 
     updateTabPathBySource(oldPath, newPath, newFileName = null) {
         try {
-            if (!oldPath || !newPath) return;
+            if (!newPath) return;
             const norm = (p) => String(p).replace(/\\/g, '/');
-            const oldKey = norm(oldPath);
+            const oldKey = oldPath ? norm(oldPath) : '';
             const newKey = norm(newPath);
 
-            let tabData = this.tabs.get(oldKey) || null;
+            let tabData = null;
             let actualOldKey = oldKey;
+            if (oldKey) {
+                tabData = this.tabs.get(oldKey) || null;
+                if (!tabData) {
+                    for (const [k, v] of this.tabs.entries()) {
+                        if (norm(v.filePath || '') === oldKey) { tabData = v; actualOldKey = k; break; }
+                    }
+                }
+            }
             if (!tabData) {
-                for (const [k, v] of this.tabs.entries()) {
-                    if (norm(v.filePath || '') === oldKey) { tabData = v; actualOldKey = k; break; }
+                // 未命名标签另存为时 oldPath 为 null，此时按当前激活标签定位。
+                const activeKey = this.activeTabKey || this.findUniqueKeyByFileName(this.activeTab);
+                if (activeKey && this.tabs.has(activeKey)) {
+                    tabData = this.tabs.get(activeKey);
+                    actualOldKey = activeKey;
                 }
             }
             if (!tabData) {
                 logWarn('未找到需要更新路径的标签页，oldPath=', oldPath);
                 return;
+            }
+
+            if (!newFileName || typeof newFileName !== 'string') {
+                newFileName = newKey.split('/').pop() || tabData.fileName;
             }
 
             if (this.tabs.has(newKey) && newKey !== actualOldKey) {
@@ -5298,6 +5370,28 @@ void hello() {
             }
             this.tabs.set(newKey, tabData);
 
+            // 保持所有指向旧 key 的引用同步，否则切换标签时取不到当前 tab，自动保存静默失效。
+            if (this.activeTabKey === actualOldKey) {
+                this.activeTabKey = newKey;
+            }
+            try {
+                const groupId = tabData.groupId;
+                const group = groupId ? this.groups.get(groupId) : null;
+                if (group) {
+                    if (group.activeTabKey === actualOldKey) {
+                        group.activeTabKey = newKey;
+                    }
+                    if (group.tabs && group.tabs.has(actualOldKey)) {
+                        group.tabs.delete(actualOldKey);
+                        group.tabs.set(newKey, tabData);
+                    }
+                    if (Array.isArray(group.tabOrder)) {
+                        const idx = group.tabOrder.indexOf(actualOldKey);
+                        if (idx !== -1) group.tabOrder[idx] = newKey;
+                    }
+                }
+            } catch (e) { logWarn('同步分组标签引用失败:', e); }
+
             try {
                 let tabEl = tabData.element;
                 if (!tabEl && tabData.tabId) {
@@ -5311,6 +5405,10 @@ void hello() {
                     tabData.element = tabEl;
                 }
             } catch (e) { logWarn('更新标签 DOM uniqueKey 失败:', e); }
+
+            try {
+                if (tabData.groupId) this.syncGroupTabs(tabData.groupId);
+            } catch (e) { logWarn('同步分组标签失败:', e); }
 
             if (newFileName && typeof newFileName === 'string') {
                 const tabOrderIndex = this.tabOrder.indexOf(previousFileName);

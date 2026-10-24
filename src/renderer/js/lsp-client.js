@@ -36,7 +36,11 @@ class LspClientBridge {
         if (this._readyPromise) {
             return this._readyPromise;
         }
-        this._readyPromise = this._startInternal(options);
+        this._readyPromise = this._startInternal(options).catch((err) => {
+            // 一次瞬态失败不能永久缓存 rejected Promise，否则 clangd 永远无法重试。
+            this._readyPromise = null;
+            throw err;
+        });
         return this._readyPromise;
     }
 

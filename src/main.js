@@ -2303,20 +2303,32 @@ function requestSaveAllAndClose(context = '关闭窗口') {
     }
     
     try {
-        mainWindow.webContents.send('request-save-all');
-        const timeout = setTimeout(() => {
-            try { logWarn(`[${context}] 保存超时，强制关闭窗口`); } catch (_) { }
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.close();
-            }
-        }, SAVE_ALL_TIMEOUT);
-        
-        ipcMain.once('save-all-complete', () => {
+        const onComplete = () => {
             clearTimeout(timeout);
+            cleanup();
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.close();
             }
-        });
+        };
+        const onFailed = () => {
+            clearTimeout(timeout);
+            cleanup();
+            // 保存失败时不能关窗，否则用户选择的“保存并退出”会静默丢掉修改。
+            try { logWarn(`[${context}] 保存失败，已取消关闭`); } catch (_) { }
+        };
+        const cleanup = () => {
+            try { ipcMain.removeListener('save-all-complete', onComplete); } catch (_) { }
+            try { ipcMain.removeListener('save-all-failed', onFailed); } catch (_) { }
+        };
+        const timeout = setTimeout(() => {
+            cleanup();
+            // 不再超时强制关闭：宁可保持窗口打开，也不静默丢弃未保存的修改。
+            try { logWarn(`[${context}] 等待保存完成超时，窗口保持打开`); } catch (_) { }
+        }, SAVE_ALL_TIMEOUT);
+
+        mainWindow.webContents.send('request-save-all');
+        ipcMain.once('save-all-complete', onComplete);
+        ipcMain.once('save-all-failed', onFailed);
     } catch (e) {
         try { logWarn(`[${context}] 发送保存请求失败，直接关闭:`, e?.message || String(e)); } catch (_) { }
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -3258,6 +3270,7 @@ function setupIPC() {
                 incomingSettings.compilerArgs = normalizeCompilerArgsForPlatform(incomingSettings.compilerArgs);
             }
 
+            const previousSettings = settings;
             settings = { ...settings, ...incomingSettings };
             
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -3266,7 +3279,10 @@ function setupIPC() {
                 }
             }
 
-            await saveSettings(); // 确保保存完成
+            if (!saveSettings()) {
+                settings = previousSettings;
+                return { success: false, error: '设置写入磁盘失败' };
+            }
             scheduleAutoSettingsBackup('update-settings');
             if (incomingSettings && Object.prototype.hasOwnProperty.call(incomingSettings, 'keybindings')) {
                 createMenuBar();
@@ -7559,12 +7575,15 @@ function saveSettings() {
     try {
         const settingsPath = getSettingsPath();
         fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+        return true;
     } catch (error) {
         logError('保存设置失败:', error);
+        return false;
     }
 }
 
 function updateSettings(settingsType, newSettings) {
+    const previousSettings = settings;
     try {
 
         const validKeys = [
@@ -7592,7 +7611,10 @@ function updateSettings(settingsType, newSettings) {
 
         normalizeSettingsRuntimeShape(settings);
 
-        saveSettings();
+        if (!saveSettings()) {
+            settings = previousSettings;
+            throw new Error('设置写入磁盘失败');
+        }
         scheduleAutoSettingsBackup('update-top-level-settings');
 
         if (newSettings && Object.prototype.hasOwnProperty.call(newSettings, 'keybindings')) {

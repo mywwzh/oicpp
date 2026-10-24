@@ -1637,8 +1637,18 @@ class EditorSettings {
 
         if (fontSelect) newSettings.font = fontSelect.value;
         if (themeSelect) newSettings.theme = themeSelect.value;
-        if (fontSizeInput) newSettings.fontSize = parseInt(fontSizeInput.value);
-        if (terminalFontSizeInput) newSettings.terminalFontSize = parseInt(terminalFontSizeInput.value);
+        if (fontSizeInput) {
+            const parsedFontSize = parseInt(fontSizeInput.value, 10);
+            if (Number.isFinite(parsedFontSize) && parsedFontSize > 0) {
+                newSettings.fontSize = parsedFontSize;
+            }
+        }
+        if (terminalFontSizeInput) {
+            const parsedTerminalFontSize = parseInt(terminalFontSizeInput.value, 10);
+            if (Number.isFinite(parsedTerminalFontSize) && parsedTerminalFontSize > 0) {
+                newSettings.terminalFontSize = parsedTerminalFontSize;
+            }
+        }
         const terminalStartupCommandInput = document.getElementById('editor-terminal-startup-command');
         if (terminalStartupCommandInput) newSettings.terminalStartupCommand = terminalStartupCommandInput.value.trim();
         if (lineHeightInput) {
