@@ -2048,7 +2048,7 @@ class SampleTester {
             runSamples.forEach(sample => {
                 const button = document.getElementById(`run-btn-${sample.id}`);
                 if (button) {
-                    button.textContent = '编译中';
+                    button.textContent = window.i18n ? window.i18n.t('tester.compileStatus') : '编译中';
                 }
             });
 
@@ -2158,7 +2158,7 @@ class SampleTester {
             runSamples.forEach(sample => {
                 const button = document.getElementById(`run-btn-${sample.id}`);
                 if (button) {
-                    button.textContent = '运行中';
+                    button.textContent = window.i18n ? window.i18n.t('tester.running') : '运行中';
                 }
             });
 
