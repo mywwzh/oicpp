@@ -207,9 +207,9 @@
                         }
                         const prefix = s.substring(prefixStart, i);
                         if (out.endsWith(prefix)) out = out.slice(0, out.length - prefix.length);
-                        let delimEnd = i + 2;
-                        while (delimEnd < s.length && s[delimEnd] !== '(') delimEnd++;
-                        const delimiter = s.substring(i + 2, delimEnd);
+                        // 当前分支已经确认前缀是 R"(，空定界符从括号前开始。
+                        const delimEnd = i + 1;
+                        const delimiter = s.substring(i + 1, delimEnd);
                         const terminator = ')' + delimiter + '"';
                         const closeIdx = s.indexOf(terminator, delimEnd + 1);
                         if (closeIdx === -1) {
