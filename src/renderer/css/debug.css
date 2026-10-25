@@ -74,6 +74,19 @@ body {
     overflow: hidden;
 }
 
+.debug-split {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+}
+
+.debug-split > .left {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: auto;
+}
+
 .sidebar-panel .debug-content {
     flex-direction: column;
     width: 100%;
