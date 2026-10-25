@@ -1549,7 +1549,7 @@ class EditorSettings {
             return;
         }
 
-        fontSelect.innerHTML = '<option value="">正在加载字体...</option>';
+        fontSelect.innerHTML = `<option value="">${window.i18n ? window.i18n.t('settings.loadingFonts') : '正在加载字体...'}</option>`;
 
         let availableFonts = [];
         if (window.fontDetector) {
