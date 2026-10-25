@@ -5015,9 +5015,9 @@ class TabManager {
                                 throw new Error(writeResult?.error || '写入失败');
                             }
                             try {
-                                this.updateTabPathBySource(null, savedPath);
+                                this.updateTabPathBySource(null, savedPath, null, uniqueKey);
                             } catch (_) { }
-                            this.markTabAsSavedByUniqueKey(uniqueKey);
+                            this.markTabAsSavedByUniqueKey(String(savedPath).replace(/\\/g, '/'));
                         } catch (e) {
                             failures.push({ fileName: tab.fileName, error: e?.message || String(e) });
                         }
@@ -5310,7 +5310,7 @@ void hello() {
     }
 
 
-    updateTabPathBySource(oldPath, newPath, newFileName = null) {
+    updateTabPathBySource(oldPath, newPath, newFileName = null, targetUniqueKey = null) {
         try {
             if (!newPath) return;
             const norm = (p) => String(p).replace(/\\/g, '/');
@@ -5319,7 +5319,12 @@ void hello() {
 
             let tabData = null;
             let actualOldKey = oldKey;
-            if (oldKey) {
+            const targetKey = targetUniqueKey ? norm(targetUniqueKey) : '';
+            if (targetKey && this.tabs.has(targetKey)) {
+                tabData = this.tabs.get(targetKey);
+                actualOldKey = targetKey;
+            }
+            if (!tabData && oldKey) {
                 tabData = this.tabs.get(oldKey) || null;
                 if (!tabData) {
                     for (const [k, v] of this.tabs.entries()) {
