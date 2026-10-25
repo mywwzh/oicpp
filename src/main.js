@@ -1928,7 +1928,7 @@ function isValidPendingUpdate(pending) {
     const installerDir = path.join(os.homedir(), '.oicpp');
     const base = path.basename(installerPath);
     return isSameOrWithin(installerPath, installerDir)
-        && /^OICPP-\d+\.\d+\.\d+-Setup\.(exe|deb|rpm|dmg|pkg|zip)$/i.test(base);
+        && /^OICPP-\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?-Setup\.(exe|deb|rpm|dmg|pkg|zip)$/i.test(base);
 }
 
 function armPendingUpdateSilentInstallOnQuit(reason = '退出应用') {
@@ -7334,7 +7334,7 @@ async function cleanupOldInstallers(keepFile = null) {
         
         // 匹配安装包文件名模式: OICPP-x.y.z-Setup.exe/.deb/.rpm/.dmg/.pkg/.zip
         // 使用更严格的版本号格式：主版本.次版本.修订号
-        const installerPattern = /^OICPP-\d+\.\d+\.\d+-Setup\.(exe|deb|rpm|dmg|pkg|zip)$/i;
+        const installerPattern = /^OICPP-\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?-Setup\.(exe|deb|rpm|dmg|pkg|zip)$/i;
         
         const deletePromises = [];
         
