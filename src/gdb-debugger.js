@@ -12,7 +12,7 @@ const GDB_PROMPT = 'oicpp_gdb:';
 const FULL_GDB_PROMPT = '>>>>>>' + GDB_PROMPT;
 const reThreadSwitch = /^\[Switching to thread .*\]#0[ \t]+(0x[A-Fa-f0-9]+) in (.*) from (.*)/;
 const reThreadSwitch2 = /^\[Switching to thread .*\]#0[ \t]+(0x[A-Fa-f0-9]+) in (.*) from (.*):(\d+)/;
-const reBreak = /\x1a*([A-Za-z]*[:]*)([^:]+):(\d+):\d+:[begmidl]+:(0x[0-9A-Fa-f]+)/;
+const reBreak = /^(.+):(\d+):\d+:[begmidl]+:(0x[0-9A-Fa-f]+)\r?$/;
 const reBreak2 = /^(0x[A-Fa-f0-9]+) in (.*) from (.*)/;
 const reBreak3 = /^(0x[A-Fa-f0-9]+) in (.*)/;
 const reCatchThrow = /^Catchpoint (\d+) \(exception thrown\), (0x[0-9a-f]+) in (.+) from (.+)$/;
@@ -524,8 +524,8 @@ class GDBDebugger extends EventEmitter {
         const m = reBreak.exec(line.replace(/^\x1a+/, ''));
         if (m) {
             this._manualBreakOnEntry = false;
-            this._cursor.file = process.platform === 'win32' ? (m[1] || '') + (m[2] || '') : (m[2] || '');
-            this._cursor.line = parseInt(m[3], 10); this._cursor.address = m[4]; this._cursor.changed = true;
+            this._cursor.file = m[1] || '';
+            this._cursor.line = parseInt(m[2], 10); this._cursor.address = m[3]; this._cursor.changed = true;
         } else { this._cursor.changed = true; }
     }
     _handleOtherBreakInfo(line) {
