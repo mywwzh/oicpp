@@ -434,7 +434,7 @@ const IPC_SEND_CHANNELS = new Set([
 ]);
 const IPC_INVOKE_CHANNELS = new Set([
     'check-file-exists', 'check-gdb-availability', 'compile-file', 'get-all-settings', 'get-settings',
-    'open-backup-settings', 'open-compiler-settings', 'run-executable', 'update-settings',
+    'open-backup-settings', 'open-compiler-settings', 'read-file-buffer', 'run-executable', 'update-settings',
     'update-top-level-settings'
 ]);
 const IPC_EVENT_CHANNELS = new Set([
@@ -534,7 +534,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
     saveAsFile: (content) => ipcRenderer.invoke('save-as-file', content),
     readFileContent: (filePath) => ipcRenderer.invoke('read-file-content', filePath),
-    readFileBuffer: (filePath) => ipcRenderer.invoke('read-file-buffer', filePath),
+    readFileBuffer: (filePath) => safeIpcRenderer.invoke('read-file-buffer', filePath),
     readZipTextFiles: (zipPath) => ipcRenderer.invoke('read-zip-text-files', zipPath),
     showItemInFolder: (filePath) => ipcRenderer.invoke('open-path', filePath, { reveal: true }),
     openPath: (targetPath, options = {}) => ipcRenderer.invoke('open-path', targetPath, options),
