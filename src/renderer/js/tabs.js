@@ -5010,10 +5010,6 @@ class TabManager {
                                 failures.push({ fileName: tab.fileName, error: '未选择保存位置' });
                                 return;
                             }
-                            const writeResult = await window.electronAPI.saveFile(savedPath, content);
-                            if (writeResult?.success === false) {
-                                throw new Error(writeResult?.error || '写入失败');
-                            }
                             try {
                                 this.updateTabPathBySource(null, savedPath, null, uniqueKey);
                             } catch (_) { }
