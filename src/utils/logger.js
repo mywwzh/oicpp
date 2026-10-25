@@ -70,16 +70,31 @@ class Logger {
         try {
             const base = {
                 name: err?.name || 'Error',
-                message: err?.message || String(err),
-                stack: err?.stack || undefined,
+                message: Logger.redactString(err?.message || String(err)),
+                stack: err?.stack ? Logger.redactString(err.stack) : undefined,
             };
             ['code', 'errno', 'syscall', 'path', 'address', 'port'].forEach((k) => {
-                if (err && err[k] !== undefined) base[k] = err[k];
+                if (err && err[k] !== undefined) {
+                    base[k] = typeof err[k] === 'string' ? Logger.redactString(err[k]) : err[k];
+                }
             });
             if (err && err.cause) {
-                base.cause = typeof err.cause === 'object' ? Logger.serializeError(err.cause) : String(err.cause);
+                base.cause = typeof err.cause === 'object'
+                    ? Logger.serializeError(err.cause)
+                    : Logger.redactString(String(err.cause));
             }
-            if (err && err.data) base.data = err.data;
+            if (err && err.data) {
+                try {
+                    base.data = JSON.parse(JSON.stringify(err.data, (key, value) => {
+                        if (key && /token|password|passwd|secret|authorization|cookie|credential|apikey|api_key/i.test(key)) {
+                            return '[REDACTED]';
+                        }
+                        return typeof value === 'string' ? Logger.redactString(value) : value;
+                    }));
+                } catch (_) {
+                    base.data = Logger.redactString(String(err.data));
+                }
+            }
             return base;
         } catch (_) {
             return { message: String(err) };
@@ -87,9 +102,9 @@ class Logger {
     }
 
     static redactString(text) {
-        const REDACT_KEY_RE = /("?)(token|password|passwd|secret|authorization|cookie|credential|apikey|api_key|login_?token)("?\s*[:=]\s*["']?)([^"'\s,}]+)/gi;
+        const REDACT_KEY_RE = /(["']?)(token|password|passwd|secret|authorization|cookie|credential|apikey|api_key|login_?token)\1(\s*(?::|=|\bis\b)\s*)(?:"[^"]*"|'[^']*'|Bearer\s+[^\s,}\]]+|[^,}\r\n]+)/gi;
         return String(text ?? '')
-            .replace(REDACT_KEY_RE, '$1$2$3[REDACTED]')
+            .replace(REDACT_KEY_RE, (_match, quote, key, separator) => `${quote}${key}${quote}${separator}[REDACTED]`)
             .replace(/(Bearer\s+)[A-Za-z0-9._\-]+/gi, '$1[REDACTED]');
     }
 
@@ -98,7 +113,7 @@ class Logger {
         const redactingReplacer = (key, value) => {
             if (key && REDACT_KEY_RE.test(key)) return '[REDACTED]';
             if (value instanceof Error) return Logger.serializeError(value);
-            return value;
+            return typeof value === 'string' ? Logger.redactString(value) : value;
         };
         const serializeError = Logger.serializeError;
         const INFO_PER_ARG_LIMIT = 1200; // info 级别单参数最大字符串长度（超过则采样或截断）
@@ -110,7 +125,7 @@ class Logger {
         const infoStringify = (v) => {
             if (v === null || v === undefined) return String(v);
             if (v instanceof Error) return JSON.stringify(serializeError(v), null, 2);
-            if (typeof v === 'string') return clamp(v, INFO_PER_ARG_LIMIT);
+            if (typeof v === 'string') return clamp(Logger.redactString(v), INFO_PER_ARG_LIMIT);
             try {
                 const full = JSON.stringify(v, redactingReplacer, 2);
                 if (full && full.length <= INFO_PER_ARG_LIMIT) return full;
@@ -132,7 +147,7 @@ class Logger {
                     return `{Object with ${keys.length} keys, sample}: ${clamp(sampleStr, INFO_PER_ARG_LIMIT)}${more}`;
                 }
 
-                return clamp(String(v), INFO_PER_ARG_LIMIT);
+                return clamp(Logger.redactString(String(v)), INFO_PER_ARG_LIMIT);
             } catch (_) {
                 try { return JSON.stringify(v, redactingReplacer); } catch (e2) { return String(v); }
             }
@@ -140,7 +155,7 @@ class Logger {
         const verbose = (v) => {
             if (v === null || v === undefined) return String(v);
             if (v instanceof Error) return JSON.stringify(serializeError(v), null, 2);
-            if (typeof v === 'string') return v;
+            if (typeof v === 'string') return Logger.redactString(v);
             if (typeof v === 'object' && v && v.error instanceof Error && Object.keys(v).length === 1) {
                 return Logger.redactString(JSON.stringify({ error: serializeError(v.error) }, null, 2));
             }
