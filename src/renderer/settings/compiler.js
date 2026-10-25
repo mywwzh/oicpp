@@ -481,6 +481,7 @@ class CompilerSettings {
                 compilerDiv.className = `compiler-item ${isDownloaded ? 'downloaded' : ''} ${isSelected ? 'selected' : ''}`;
                 
                 const safeName = this.escapeHtml(compiler.name);
+                const safeNameAttr = this.escapeAttribute(compiler.name);
                 const safeVersion = this.escapeHtml(compiler.version);
                 const safePlatform = this.escapeHtml(compiler.platform);
                 const safeUrl = this.escapeAttribute(compiler.download_url);
@@ -496,7 +497,7 @@ class CompilerSettings {
                             '<span class="status selected-status">' + (window.i18n ? window.i18n.t('compiler.selected') : 'Selected') + '</span>' :
                             isDownloaded ? 
                                 '<button class="select-btn" data-version="' + safeVersionAttr + '">' + (window.i18n ? window.i18n.t('compiler.select') : 'Select') + '</button>' :
-                                '<button class="download-btn" data-url="' + safeUrl + '" data-version="' + safeVersionAttr + '" data-name="' + safeName + '">' + (window.i18n ? window.i18n.t('compiler.download') : 'Download') + '</button>'
+                                '<button class="download-btn" data-url="' + safeUrl + '" data-version="' + safeVersionAttr + '" data-name="' + safeNameAttr + '">' + (window.i18n ? window.i18n.t('compiler.download') : 'Download') + '</button>'
                         }
                         ${isDownloaded ? '<span class="status downloaded-status">' + (window.i18n ? window.i18n.t('compiler.downloaded') : 'Downloaded') + '</span>' : ''}
                     </div>
@@ -1217,6 +1218,7 @@ class CompilerSettings {
                     ? window.i18n.t('compiler.testlibSize', { size: testlib.file_size_mb })
                     : 'Size: ' + testlib.file_size_mb + 'MB';
                 const safeName = this.escapeHtml(testlib.name);
+                const safeNameAttr = this.escapeAttribute(testlib.name);
                 const safeVersion = this.escapeHtml(testlib.version);
                 const safeDescription = this.escapeHtml(testlib.description || '');
                 const safeUrl = this.escapeAttribute(downloadUrl);
@@ -1233,7 +1235,7 @@ class CompilerSettings {
                             '<span class="status selected-status">' + (window.i18n ? window.i18n.t('compiler.selected') : 'Selected') + '</span>' :
                             isDownloaded ? 
                                 '<button class="select-btn" data-version="' + safeVersionAttr + '">' + (window.i18n ? window.i18n.t('compiler.select') : 'Select') + '</button>' :
-                                '<button class="download-btn" data-url="' + safeUrl + '" data-version="' + safeVersionAttr + '" data-name="' + safeName + '">' + (window.i18n ? window.i18n.t('compiler.download') : 'Download') + '</button>'
+                                '<button class="download-btn" data-url="' + safeUrl + '" data-version="' + safeVersionAttr + '" data-name="' + safeNameAttr + '">' + (window.i18n ? window.i18n.t('compiler.download') : 'Download') + '</button>'
                         }
                         ${isDownloaded ? '<span class="status downloaded-status">' + (window.i18n ? window.i18n.t('compiler.downloaded') : 'Downloaded') + '</span>' : ''}
                     </div>
