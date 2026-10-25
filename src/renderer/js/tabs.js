@@ -2298,21 +2298,42 @@ class TabManager {
                     };
 
                     if (tabData.isTempFile) {
-                        if (!window.electronAPI?.saveAsFile) return;
+                        if (!window.electronAPI?.saveAsFile) {
+                            throw new Error('临时文件保存接口不可用');
+                        }
                         const savedPath = await window.electronAPI.saveAsFile(content);
                         if (!savedPath) return;
                     } else if (path && typeof content === 'string') {
                         if (isCloudPath(path)) {
                             if (window.oicppApp && typeof window.oicppApp.saveCloudFileToServer === 'function') {
                                 const ok = await window.oicppApp.saveCloudFileToServer(path, content);
-                                if (!ok) return;
+                                if (!ok) throw new Error('云文件保存失败');
+                            } else {
+                                throw new Error('云文件保存接口不可用');
                             }
                         } else if (window.electronAPI?.saveFile) {
-                            await window.electronAPI.saveFile(path, content);
+                            const result = await window.electronAPI.saveFile(path, content);
+                            if (result?.success === false) {
+                                throw new Error(result?.error || '写入失败');
+                            }
+                        } else {
+                            throw new Error('文件保存接口不可用');
                         }
+                    } else {
+                        throw new Error(path ? '无法获取文件内容' : '文件路径不可用');
                     }
                 } catch (e) {
+                    const errorText = e?.message || String(e);
                     logWarn('关闭前保存失败:', e);
+                    const title = window.i18n ? window.i18n.t('message.saveFailed') : '保存失败';
+                    const errorMessage = `${title}: ${errorText}`;
+                    try {
+                        if (window.dialogManager?.showConfirmDialog) {
+                            await window.dialogManager.showConfirmDialog(title, errorMessage);
+                        } else if (typeof window.alert === 'function') {
+                            window.alert(errorMessage);
+                        }
+                    } catch (_) { }
                     return;
                 }
                 this.closeTab(fileName, { ...options, skipCloseConfirm: true, skipAutoSave: true });
