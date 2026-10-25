@@ -4141,10 +4141,10 @@ class MonacoEditorManager {
                         }
                     };
                     offFileSaved = window.electronIPC.on('file-saved', handleFileSaved);
-                    // 主进程未回复时不能永久挂起；超时视为已提交，避免阻塞用户。
+                    // 主进程未回复时不能永久挂起；超时必须视为失败，避免清除未保存标记。
                     const timer = setTimeout(() => {
                         logWarn('等待保存确认超时:', filePath);
-                        finish({ success: true, timeout: true });
+                        finish({ success: false, timeout: true, error: '保存确认超时' });
                     }, 10000);
                 });
             } else {
