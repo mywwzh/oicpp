@@ -2669,7 +2669,7 @@ function createWindow() {
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
 
-        mainWindow.webContents.send('settings-loaded', settings);
+        mainWindow.webContents.send('settings-loaded', getPublicSettingsSnapshot());
 
         (function autoOpenWorkspace() {
             if (skipAutoOpenWorkspace) {
@@ -3510,7 +3510,7 @@ function setupIPC() {
                 createMenuBar();
             }
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('settings-applied', settings);
+                mainWindow.webContents.send('settings-applied', getPublicSettingsSnapshot());
             }
 
             return { success: true };
@@ -3729,7 +3729,7 @@ function setupIPC() {
     });
 
     ipcMain.handle('get-top-level-settings', () => {
-        return settings;
+        return getPublicSettingsSnapshot();
     });
 
     ipcMain.handle('update-top-level-settings', (event, newSettings) => {
@@ -4884,10 +4884,10 @@ function setupIPC() {
                 saveSettings();
 
                 if (mainWindow) {
-                    mainWindow.webContents.send('settings-imported', settings);
+                    mainWindow.webContents.send('settings-imported', getPublicSettingsSnapshot());
                 }
 
-                return { success: true, settings };
+                return { success: true, settings: getPublicSettingsSnapshot() };
             }
 
             return { success: false, message: '用户取消操作' };
@@ -7974,7 +7974,7 @@ function updateSettings(settingsType, newSettings) {
         }
 
         if (mainWindow) {
-            mainWindow.webContents.send('settings-changed', null, settings);
+            mainWindow.webContents.send('settings-changed', null, getPublicSettingsSnapshot());
         }
 
         if (newSettings.theme) {
@@ -8042,11 +8042,11 @@ function resetSettings(settingsType = null) {
 
         if (mainWindow) {
 
-            mainWindow.webContents.send('settings-reset', settings);
+            mainWindow.webContents.send('settings-reset', getPublicSettingsSnapshot());
         }
 
         logInfo('所有设置已重置为默认值');
-        return { success: true, settings };
+        return { success: true, settings: getPublicSettingsSnapshot() };
     } catch (error) {
         logError('重置设置失败:', error);
         return { success: false, error: error.message };
@@ -8098,11 +8098,11 @@ function importSettings(filePath) {
         saveSettings();
 
         if (mainWindow) {
-            mainWindow.webContents.send('settings-imported', settings);
+            mainWindow.webContents.send('settings-imported', getPublicSettingsSnapshot());
         }
 
         logInfo('设置已导入自:', filePath);
-        return { success: true, settings: settings };
+        return { success: true, settings: getPublicSettingsSnapshot() };
     } catch (error) {
         logError('导入设置失败:', error);
         return { success: false, error: error.message };
@@ -9875,19 +9875,19 @@ function normalizeCloudSyncResponse(response) {
 
 function broadcastSettingsRefresh() {
     if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('settings-imported', settings);
+        mainWindow.webContents.send('settings-imported', getPublicSettingsSnapshot());
     }
     if (compilerSettingsWindow && !compilerSettingsWindow.isDestroyed()) {
-        compilerSettingsWindow.webContents.send('settings-imported', settings);
+        compilerSettingsWindow.webContents.send('settings-imported', getPublicSettingsSnapshot());
     }
     if (editorSettingsWindow && !editorSettingsWindow.isDestroyed()) {
-        editorSettingsWindow.webContents.send('settings-imported', settings);
+        editorSettingsWindow.webContents.send('settings-imported', getPublicSettingsSnapshot());
     }
     if (codeTemplatesWindow && !codeTemplatesWindow.isDestroyed()) {
-        codeTemplatesWindow.webContents.send('settings-imported', settings);
+        codeTemplatesWindow.webContents.send('settings-imported', getPublicSettingsSnapshot());
     }
     if (backupSettingsWindow && !backupSettingsWindow.isDestroyed()) {
-        backupSettingsWindow.webContents.send('settings-imported', settings);
+        backupSettingsWindow.webContents.send('settings-imported', getPublicSettingsSnapshot());
     }
 }
 
@@ -9941,7 +9941,7 @@ async function syncSettingsFromCloud() {
         }
         broadcastSettingsRefresh();
         if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('settings-applied', settings);
+            mainWindow.webContents.send('settings-applied', getPublicSettingsSnapshot());
         }
     } finally {
         suppressAutoBackup = prevSuppress;
