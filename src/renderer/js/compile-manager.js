@@ -396,7 +396,7 @@ class CompilerManager {
     }
 
     async cloudCompileCurrentFile() {
-        const runId = ++this.cloudCompileRunId;
+        let runId = null;
         try {
             if (!this.isWindowsPlatform()) {
                 this.showMessage(this.t('message.cloudCompileWindowsOnly', null, 'Cloud compilation is currently available only on Windows'), 'warning');
@@ -437,6 +437,7 @@ class CompilerManager {
                 return;
             }
 
+            runId = ++this.cloudCompileRunId;
             this.cancelCloudCompilationPolling();
             if (this.cloudCompileAbortController) {
                 try {
@@ -536,7 +537,7 @@ class CompilerManager {
             this.showMessage(message, 'error');
             this.resetCloudCompileState();
         } catch (error) {
-            if (runId !== this.cloudCompileRunId) {
+            if (runId === null || runId !== this.cloudCompileRunId) {
                 return;
             }
             if (error?.name === 'AbortError') {
