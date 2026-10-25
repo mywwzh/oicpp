@@ -2591,7 +2591,12 @@ function createWindow() {
         let allowed = false;
         try {
             const parsed = new URL(src);
-            if (parsed.protocol === 'about:') {
+            // 新标签页由 renderer 生成受控的 data:text/html 欢迎页。
+            // webview 本身没有 preload、Node 集成和不安全内容权限，允许该页不会扩大外部页面能力。
+            const isInternalDataPage = parsed.protocol === 'data:'
+                && /^text\/html(?:[;,]|$)/i.test(parsed.pathname || '')
+                && src.length <= 1024 * 1024;
+            if (isInternalDataPage || parsed.protocol === 'about:') {
                 allowed = true;
             } else if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
                 allowed = true;
