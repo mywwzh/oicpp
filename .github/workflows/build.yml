@@ -26,7 +26,7 @@ jobs:
         run: |
           VERSION="${INPUT_VERSION#v}"
           VERSION="${VERSION#V}"
-          if [[ ! "$VERSION" =~ ^[0-9]+.[0-9]+.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
             echo "Invalid version: $INPUT_VERSION" >&2
             exit 1
           fi
@@ -133,7 +133,7 @@ jobs:
         run: |
           VERSION="${INPUT_VERSION#v}"
           VERSION="${VERSION#V}"
-          if [[ ! "$VERSION" =~ ^[0-9]+.[0-9]+.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
             echo "Invalid version: $INPUT_VERSION" >&2
             exit 1
           fi
@@ -218,8 +218,24 @@ jobs:
           if ($version.StartsWith('v') -or $version.StartsWith('V')) {
             $version = $version.Substring(1)
           }
-          if ($version -notmatch '^\d+\.\d+\.\d+(?:[+-][0-9A-Za-z.-]+)?
-
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:[+-][0-9A-Za-z.-]+)?$') {
+            throw "Invalid version: $($env:INPUT_VERSION)"
+          }
+          $env:VERSION = $version
+          @'
+          const fs = require("fs");
+          const version = process.env.VERSION;
+          for (const file of ["package.json", "package-lock.json"]) {
+            if (!fs.existsSync(file)) continue;
+            const data = JSON.parse(fs.readFileSync(file, "utf8"));
+            data.version = version;
+            if (file === "package-lock.json" && data.packages && data.packages[""]) {
+              data.packages[""].version = version;
+            }
+            fs.writeFileSync(file, JSON.stringify(data, null, 2) + "\n");
+          }
+          '@ | node
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -393,7 +409,7 @@ jobs:
         run: |
           VERSION="${INPUT_VERSION#v}"
           VERSION="${VERSION#V}"
-          if [[ ! "$VERSION" =~ ^[0-9]+.[0-9]+.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
             echo "Invalid version: $INPUT_VERSION" >&2
             exit 1
           fi
