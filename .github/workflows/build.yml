@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag name to release (e.g., v1.0.0)"
+        description: "Version to release (with or without leading v, e.g., 1.6.0-beta1)"
         required: true
 
 permissions:
@@ -21,13 +21,31 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set version
+        env:
+          INPUT_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.tag }}"
-          else
-            VERSION="${{ github.ref_name }}"
+          VERSION="${INPUT_VERSION#v}"
+          VERSION="${VERSION#V}"
+          if [[ ! "$VERSION" =~ ^[0-9]+.[0-9]+.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: $INPUT_VERSION" >&2
+            exit 1
           fi
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          export VERSION
+          node <<'NODE'
+          const fs = require('fs');
+          const files = ['package.json', 'package-lock.json'];
+          const version = process.env.VERSION;
+          for (const file of files) {
+            if (!fs.existsSync(file)) continue;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            data.version = version;
+            if (file === 'package-lock.json' && data.packages && data.packages['']) {
+              data.packages[''].version = version;
+            }
+            fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+          }
+          NODE
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -110,13 +128,31 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set version
+        env:
+          INPUT_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.tag }}"
-          else
-            VERSION="${{ github.ref_name }}"
+          VERSION="${INPUT_VERSION#v}"
+          VERSION="${VERSION#V}"
+          if [[ ! "$VERSION" =~ ^[0-9]+.[0-9]+.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: $INPUT_VERSION" >&2
+            exit 1
           fi
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          export VERSION
+          node <<'NODE'
+          const fs = require('fs');
+          const files = ['package.json', 'package-lock.json'];
+          const version = process.env.VERSION;
+          for (const file of files) {
+            if (!fs.existsSync(file)) continue;
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            data.version = version;
+            if (file === 'package-lock.json' && data.packages && data.packages['']) {
+              data.packages[''].version = version;
+            }
+            fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+          }
+          NODE
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -175,13 +211,226 @@ jobs:
 
       - name: Set version
         shell: powershell
+        env:
+          INPUT_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
         run: |
-          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
-            $version = "${{ github.event.inputs.tag }}"
-          } else {
-            $version = "${{ github.ref_name }}"
+          $version = $env:INPUT_VERSION.Trim()
+          if ($version.StartsWith('v') -or $version.StartsWith('V')) {
+            $version = $version.Substring(1)
           }
-          $version = $version.Substring(1)
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:[+-][0-9A-Za-z.-]+)?
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install NSIS
+        shell: powershell
+        run: |
+          choco install nsis -y --no-progress
+          if (Test-Path "C:\Program Files (x86)\NSIS\makensis.exe") {
+            Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files (x86)\NSIS"
+          } elseif (Test-Path "C:\Program Files\NSIS\makensis.exe") {
+            Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files\NSIS"
+          }
+          # Verify makensis is accessible
+          $nsisPath = (Get-Command makensis -ErrorAction SilentlyContinue).Source
+          if (-not $nsisPath) {
+            Write-Warning "makensis not found on PATH, trying explicit lookup"
+            $candidates = @(
+              "C:\Program Files (x86)\NSIS\makensis.exe",
+              "C:\Program Files\NSIS\makensis.exe"
+            )
+            $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if ($found) {
+              Add-Content -Path $env:GITHUB_PATH -Value (Split-Path $found -Parent)
+              Write-Host "Added NSIS path: $(Split-Path $found -Parent)"
+            } else {
+              Write-Error "NSIS installation failed - makensis.exe not found"
+            }
+          } else {
+            Write-Host "makensis found at: $nsisPath"
+          }
+
+      - name: Install dependencies
+        run: |
+          npm install --include=optional
+          node -e "try { require('sharp'); console.log('sharp ok'); } catch (e) { console.log('sharp unavailable, will use committed png icons fallback'); }"
+
+      - name: Prepare clangd bundle
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run prebuild:clangd
+
+      - name: Verify node-pty windows binary
+        shell: powershell
+        run: |
+          @'
+          const fs = require("fs");
+          const path = require("path");
+          const pkg = path.dirname(require.resolve("node-pty/package.json"));
+          const platformDir = `win32-${process.arch}`;
+          const candidates = [
+            path.join(pkg, "prebuilds", platformDir, "pty.node"),
+            path.join(pkg, "build", "Release", "pty.node"),
+            path.join(pkg, "build", "Debug", "pty.node")
+          ];
+          console.log("node-pty path:", pkg);
+          console.log("check candidates:", candidates);
+          if (!fs.existsSync(path.join(pkg, "lib", "index.js"))) {
+            throw new Error("node-pty lib/index.js missing; terminal will be unavailable in Windows package.");
+          }
+          if (!candidates.some((file) => fs.existsSync(file))) {
+            throw new Error("node-pty windows native binary missing; terminal will be unavailable in Windows package.");
+          }
+          '@ | node
+
+      - name: Build Windows app for NSIS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm run prebuild:buildinfo
+          npm run prebuild:icons
+          npx electron-builder --win dir
+
+      - name: Verify packaged language files
+        shell: powershell
+        run: |
+          @'
+          const fs = require("fs");
+          const path = require("path");
+          const asar = require("@electron/asar");
+          const archive = path.join(process.cwd(), "dist", "win-unpacked", "resources", "app.asar");
+          const languageFiles = ["src\\lang\\index.js", "src\\lang\\en.json", "src\\lang\\zh-cn.json"];
+          if (!fs.existsSync(archive)) throw new Error(`Missing packaged app archive: ${archive}`);
+          for (const file of languageFiles) {
+            const content = asar.extractFile(archive, file).toString("utf8");
+            if (!content) throw new Error(`Packaged language file is empty: ${file}`);
+            if (file.endsWith(".json")) JSON.parse(content);
+            console.log(`Verified packaged language file: ${file}`);
+          }
+          '@ | node
+
+      - name: Verify packaged node-pty in app.asar.unpacked
+        shell: powershell
+        run: |
+          @'
+          const fs = require("fs");
+          const path = require("path");
+          const root = path.join(process.cwd(), "dist", "win-unpacked", "resources", "app.asar.unpacked", "node_modules", "node-pty");
+          const platformDir = `win32-${process.arch}`;
+          const indexFile = path.join(root, "lib", "index.js");
+          const nativeCandidates = [
+            path.join(root, "prebuilds", platformDir, "pty.node"),
+            path.join(root, "build", "Release", "pty.node"),
+            path.join(root, "build", "Debug", "pty.node")
+          ];
+          const sidecarCandidates = [
+            path.join(root, "prebuilds", platformDir, "winpty-agent.exe"),
+            path.join(root, "prebuilds", platformDir, "conpty", "OpenConsole.exe")
+          ];
+          console.log("packaged node-pty root:", root);
+          if (!fs.existsSync(indexFile)) {
+            throw new Error("packaged node-pty lib/index.js missing in app.asar.unpacked. Ensure asarUnpack includes node_modules/node-pty/**/*.");
+          }
+          if (!nativeCandidates.some((file) => fs.existsSync(file))) {
+            throw new Error("packaged node-pty native binary missing in app.asar.unpacked.");
+          }
+          if (!sidecarCandidates.some((file) => fs.existsSync(file))) {
+            throw new Error("packaged node-pty runtime sidecar missing in app.asar.unpacked.");
+          }
+          '@ | node
+
+      - name: Prepare and Build Installer
+        shell: powershell
+        run: |
+          $version = $env:VERSION
+          Write-Host "Building version: $version"
+          $nsiPath = "installer.nsi"
+          $content = Get-Content $nsiPath -Raw
+
+          $content = $content -replace '!define PRODUCT_VERSION ".*"', "!define PRODUCT_VERSION ""$version"""
+          $content = $content -replace 'OutFile "OICPP-.*-Setup.exe"', "OutFile ""OICPP-$version-Setup.exe"""
+          $content | Set-Content $nsiPath -Encoding UTF8
+
+          Copy-Item "ConsolePauser.exe" -Destination "dist\win-unpacked\"
+          Copy-Item "oicpp.ico" -Destination "dist\win-unpacked\"
+
+          makensis installer.nsi
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: OICPP-*-Setup.exe
+
+      - name: Upload Windows installer to remote
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          UPLOAD_API: ${{ secrets.UPLOAD_API }}
+          UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+        shell: bash
+        run: |
+          VERSION=$VERSION
+          echo "Looking for installer for version: $VERSION"
+          FILE=$(ls OICPP-*-Setup.exe | head -n 1)
+          if [ -z "$FILE" ]; then echo "No installer found, skipping upload"; exit 0; fi
+          echo "Uploading $FILE to $UPLOAD_API"
+          curl -s -X POST -H "Authorization: Bearer $UPLOAD_TOKEN" -F "file=@$FILE" -F "version=$VERSION" -F "platform=windows" "$UPLOAD_API"
+
+  release:
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Set release version
+        id: release-version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+        run: |
+          VERSION="${INPUT_VERSION#v}"
+          VERSION="${VERSION#V}"
+          if [[ ! "$VERSION" =~ ^[0-9]+.[0-9]+.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: $INPUT_VERSION" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-artifacts"
+          merge-multiple: true
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.release-version.outputs.tag }}
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+) {
+            throw "Invalid version: $($env:INPUT_VERSION)"
+          }
+          $env:VERSION = $version
+          @'
+          const fs = require("fs");
+          const version = process.env.VERSION;
+          for (const file of ["package.json", "package-lock.json"]) {
+            if (!fs.existsSync(file)) continue;
+            const data = JSON.parse(fs.readFileSync(file, "utf8"));
+            data.version = version;
+            if (file === "package-lock.json" && data.packages && data.packages[""]) {
+              data.packages[""].version = version;
+            }
+            fs.writeFileSync(file, JSON.stringify(data, null, 2) + "\n");
+          }
+          '@ | node
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
       - name: Setup Node.js
