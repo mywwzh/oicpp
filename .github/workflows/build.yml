@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Version to release (with or without leading v, e.g., 1.6.0-beta1)"
+        description: "Version to release (with or without leading v, e.g., 1.6.0-beta2)"
         required: true
 
 permissions:
