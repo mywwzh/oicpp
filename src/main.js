@@ -8749,14 +8749,14 @@ async function runExecutable(options) {
                 reject(new Error('未找到consolepauser.exe，无法启动程序。请确保%userprofile%/.oicpp/consolepauser.exe已正确生成。'));
                 return;
             }
+            command = 'cmd';
             const absoluteExePath = path.resolve(executablePath);
             const absoluteConsolePauserPath = path.resolve(consolePauserPath);
+
             logInfo('绝对路径 - ConsolePauser:', absoluteConsolePauserPath);
             logInfo('绝对路径 - 可执行文件:', absoluteExePath);
 
-            // 直接 spawn ConsolePauser，不再经 cmd start（避免 shell 展开与引号语义问题）。
-            command = absoluteConsolePauserPath;
-            args = [absoluteExePath];
+            args = ['/c', `start "Program Running" "${absoluteConsolePauserPath}" "${absoluteExePath}"`];
 
             let runEnv = { ...process.env };
             const compilerPath = settings && settings.compilerPath;
@@ -8780,7 +8780,7 @@ async function runExecutable(options) {
                 cwd: workingDirectory,
                 detached: true,
                 stdio: 'ignore',
-                shell: false,
+                shell: true,
                 env: runEnv
             };
         } else {
