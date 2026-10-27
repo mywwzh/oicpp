@@ -93,18 +93,31 @@ jobs:
             dist/*.AppImage
 
       - name: Upload Linux packages to remote
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch'
         env:
           UPLOAD_API: ${{ secrets.UPLOAD_API }}
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
         run: |
-          VERSION=$VERSION
-          VERSION=${VERSION#v}
-          echo "Uploading packages for version $VERSION to $UPLOAD_API"
-          for f in dist/*.deb dist/*.rpm dist/*.AppImage; do
-            [ -f "$f" ] || continue
+          if [ -z "$UPLOAD_API" ] || [ -z "$UPLOAD_TOKEN" ]; then
+            echo "UPLOAD_API/UPLOAD_TOKEN is not configured" >&2
+            exit 1
+          fi
+          VERSION="${VERSION#v}"
+          shopt -s nullglob
+          files=(dist/*.deb dist/*.rpm dist/*.AppImage)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No Linux packages found in dist" >&2
+            exit 1
+          fi
+          echo "Uploading ${#files[@]} Linux package(s) for version $VERSION to $UPLOAD_API"
+          for f in "${files[@]}"; do
             echo "Uploading $f"
-            curl -sS -X POST -H "Authorization: Bearer $UPLOAD_TOKEN" -F "file=@$f" -F "version=$VERSION" -F "platform=linux" "$UPLOAD_API"
+            curl --fail --location --silent --show-error --retry 3 \
+              -H "Authorization: Bearer $UPLOAD_TOKEN" \
+              -F "file=@$f" \
+              -F "version=$VERSION" \
+              -F "platform=linux" \
+              "$UPLOAD_API"
           done
 
   build-macos:
@@ -161,18 +174,31 @@ jobs:
           path: dist/*.dmg
 
       - name: Upload macOS package to remote
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch'
         env:
           UPLOAD_API: ${{ secrets.UPLOAD_API }}
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
         run: |
-          VERSION=$VERSION
-          VERSION=${VERSION#v}
-          echo "Uploading packages for version $VERSION to $UPLOAD_API"
-          for f in dist/*.dmg; do
-            [ -f "$f" ] || continue
+          if [ -z "$UPLOAD_API" ] || [ -z "$UPLOAD_TOKEN" ]; then
+            echo "UPLOAD_API/UPLOAD_TOKEN is not configured" >&2
+            exit 1
+          fi
+          VERSION="${VERSION#v}"
+          shopt -s nullglob
+          files=(dist/*.dmg)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No macOS package found in dist" >&2
+            exit 1
+          fi
+          echo "Uploading ${#files[@]} macOS package(s) for version $VERSION to $UPLOAD_API"
+          for f in "${files[@]}"; do
             echo "Uploading $f"
-            curl -sS -X POST -H "Authorization: Bearer $UPLOAD_TOKEN" -F "file=@$f" -F "version=$VERSION" -F "platform=macos" "$UPLOAD_API"
+            curl --fail --location --silent --show-error --retry 3 \
+              -H "Authorization: Bearer $UPLOAD_TOKEN" \
+              -F "file=@$f" \
+              -F "version=$VERSION" \
+              -F "platform=macos" \
+              "$UPLOAD_API"
           done
 
   build-windows:
@@ -343,18 +369,33 @@ jobs:
           path: OICPP-*-Setup.exe
 
       - name: Upload Windows installer to remote
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch'
         env:
           UPLOAD_API: ${{ secrets.UPLOAD_API }}
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
         shell: bash
         run: |
-          VERSION=$VERSION
-          echo "Looking for installer for version: $VERSION"
-          FILE=$(ls OICPP-*-Setup.exe | head -n 1)
-          if [ -z "$FILE" ]; then echo "No installer found, skipping upload"; exit 0; fi
-          echo "Uploading $FILE to $UPLOAD_API"
-          curl -s -X POST -H "Authorization: Bearer $UPLOAD_TOKEN" -F "file=@$FILE" -F "version=$VERSION" -F "platform=windows" "$UPLOAD_API"
+          if [ -z "$UPLOAD_API" ] || [ -z "$UPLOAD_TOKEN" ]; then
+            echo "UPLOAD_API/UPLOAD_TOKEN is not configured" >&2
+            exit 1
+          fi
+          VERSION="${VERSION#v}"
+          shopt -s nullglob
+          files=(OICPP-*-Setup.exe)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No Windows installer found" >&2
+            exit 1
+          fi
+          echo "Uploading ${#files[@]} Windows installer(s) for version $VERSION to $UPLOAD_API"
+          for f in "${files[@]}"; do
+            echo "Uploading $f"
+            curl --fail --location --silent --show-error --retry 3 \
+              -H "Authorization: Bearer $UPLOAD_TOKEN" \
+              -F "file=@$f" \
+              -F "version=$VERSION" \
+              -F "platform=windows" \
+              "$UPLOAD_API"
+          done
 
   release:
     needs: [build-linux, build-macos, build-windows]
