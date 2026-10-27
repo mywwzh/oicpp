@@ -403,7 +403,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Set release version
-        id: release-version
+        id: release_version
         shell: bash
         env:
           INPUT_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
@@ -427,7 +427,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.release-version.outputs.tag }}
+          tag_name: ${{ steps.release_version.outputs.tag }}
           files: artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
