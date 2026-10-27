@@ -47,6 +47,8 @@
     this.supportedDropTextExtensions = new Set(['cpp', 'c', 'cc', 'cxx', 'h', 'hpp', 'hh', 'txt', 'in', 'out', 'ans', 'md', 'json']);
         this._isWindowsPlatform = undefined;
         this._isMacPlatform = undefined;
+        this._pendingCtrlKFolderTimer = null;
+        this._ctrlKChordPending = false;
     }
 
     t(key, params, fallback) {
@@ -1271,8 +1273,29 @@
         }
     }
 
+    clearPendingCtrlKFolder() {
+        if (this._pendingCtrlKFolderTimer !== null) {
+            clearTimeout(this._pendingCtrlKFolderTimer);
+            this._pendingCtrlKFolderTimer = null;
+        }
+        this._ctrlKChordPending = false;
+    }
+
+    scheduleCtrlKFolderOpen() {
+        this.clearPendingCtrlKFolder();
+        this._ctrlKChordPending = true;
+        this._pendingCtrlKFolderTimer = setTimeout(() => {
+            this._pendingCtrlKFolderTimer = null;
+            this._ctrlKChordPending = false;
+            this.openFolder();
+        }, 600);
+    }
+
     handleKeyDown(e) {
         const key = (e.key || '').toLowerCase();
+        if (this._ctrlKChordPending && !((e.ctrlKey || e.metaKey) && !e.altKey && key === 'k')) {
+            this.clearPendingCtrlKFolder();
+        }
         const activeElement = document.activeElement;
         const isInTerminal = !!(
             e.target?.closest?.('#integrated-terminal-panel') ||
@@ -1305,9 +1328,19 @@
         
         if (isInEditor) {
             if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+                if (e.shiftKey && key === 's') {
+                    e.preventDefault();
+                    this.saveFileAs();
+                    return;
+                }
                 if (e.shiftKey && key === 'n') {
                     e.preventDefault();
                     this.createNewTempFile();
+                    return;
+                }
+                if (!e.shiftKey && key === 'k') {
+                    // Ctrl+K 先交给 Monaco 识别组合键；没有后续按键时再打开文件夹。
+                    this.scheduleCtrlKFolderOpen();
                     return;
                 }
                 switch (key) {
@@ -1319,8 +1352,6 @@
                         e.preventDefault();
                         this.saveCurrentFile();
                         return;
-                    // Ctrl+K 在 Monaco 中是 chore 前缀（如 Ctrl+K Ctrl+C 注释），
-                    // 不能在编辑器内抢占，否则会破坏编辑器快捷键。
                 }
             }
 
@@ -1368,6 +1399,11 @@
         }
         
         if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+            if (e.shiftKey && key === 's') {
+                e.preventDefault();
+                this.saveFileAs();
+                return;
+            }
             if (e.shiftKey && key === 'n') {
                 e.preventDefault();
                 this.createNewTempFile();
