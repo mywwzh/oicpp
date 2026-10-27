@@ -1325,7 +1325,13 @@
             // Keep terminal-native key handling (history, completion, readline shortcuts).
             return;
         }
-        
+
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && key === 'i') {
+            e.preventDefault();
+            this.openBuiltinBrowser();
+            return;
+        }
+
         if (isInEditor) {
             if ((e.ctrlKey || e.metaKey) && !e.altKey) {
                 if (e.shiftKey && key === 's') {
