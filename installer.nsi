@@ -4,7 +4,7 @@
 !define PRODUCT_NAME "OICPP IDE"
 !define PRODUCT_VERSION "1.6.0-beta2"
 !define PRODUCT_PUBLISHER "mywwzh"
-!define PRODUCT_WEB_SITE "https://oicpp.mywwzh.top"
+!define PRODUCT_WEB_SITE "https://oicppide.com"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\OICPP IDE.exe"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 !define PRODUCT_UNINST_ROOT_KEY "HKCU"

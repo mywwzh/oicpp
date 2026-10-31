@@ -6,7 +6,7 @@
     "name": "mywwzh",
     "email": "mywwzh@163.com"
   },
-  "homepage": "https://oicpp.mywwzh.top/",
+  "homepage": "https://oicppide.com/",
   "license": "GPL-3.0-only",
   "main": "src/main.js",
   "scripts": {

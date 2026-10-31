@@ -45,7 +45,7 @@
 
 ## 下载
 
-您可以在[官网](https://oicpp.mywwzh.top)下载或在右侧 release 中下载最新版本安装包。
+您可以在[官网](https://oicppide.com)下载或在右侧 release 中下载最新版本安装包。
 
 ## 反馈建议 📢
 

@@ -34,7 +34,7 @@ class CloudSyncPanel {
         this.quotaHelpBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            const faqUrl = 'https://oicpp.mywwzh.top/faqs.html';
+            const faqUrl = 'https://oicppide.com/faqs.html';
             try {
                 await window.electronAPI?.openExternal?.(faqUrl);
             } catch (_) {

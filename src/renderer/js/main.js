@@ -3815,7 +3815,7 @@ ${data.message || '程序已加载，等待开始执行'}
                         <p><strong>${this.t('app.developer', null, 'Developer')}:</strong> ${buildInfo.author}</p>
                         <p><strong>${this.t('app.description', null, 'Description')}:</strong> ${this.t('app.descriptionText', null, 'C++ development environment optimized for OI competitors')}</p>
                         <p><strong>${this.t('app.qqGroup', null, 'QQ Group')}:</strong> 931577836</p>
-                        <p><strong>${this.t('app.website', null, 'Website')}:</strong> https://oicpp.mywwzh.top</p>
+                        <p><strong>${this.t('app.website', null, 'Website')}:</strong> https://oicppide.com</p>
                     </div>
                 </div>
                 <div  class="about-footer">

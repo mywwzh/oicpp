@@ -440,7 +440,7 @@ class CompilerSettings {
         compilerList.innerHTML = '<div class="loading">' + (window.i18n ? window.i18n.t('compiler.fetchingList') : 'Fetching compiler list...') + '</div>';
         
         try {
-            const response = await fetch('https://oicpp.mywwzh.top/api/getAvailableCompilerList');
+            const response = await fetch('https://oicppide.com/api/getAvailableCompilerList');
             
             if (!response.ok) {
                 throw new Error(`Network error: ${response.status} ${response.statusText}`);
@@ -1185,7 +1185,7 @@ class CompilerSettings {
         testlibList.innerHTML = '<div class="loading">正在获取Testlib列表...</div>';
         
         try {
-            const response = await fetch('https://oicpp.mywwzh.top/api/getAvailableTestlibList');
+            const response = await fetch('https://oicppide.com/api/getAvailableTestlibList');
             
             if (!response.ok) {
                 throw new Error(`Network error: ${response.status} ${response.statusText}`);
@@ -1211,7 +1211,7 @@ class CompilerSettings {
                 
                 const downloadUrl = testlib.downloadUrl.startsWith('http') 
                     ? testlib.downloadUrl 
-                    : `https://oicpp.mywwzh.top${testlib.downloadUrl}`;
+                    : `https://oicppide.com${testlib.downloadUrl}`;
                 
                 const versionLabel = window.i18n ? window.i18n.t('compiler.versionSelected').split(' ')[0] : 'Version:';
                 const sizeLabel = window.i18n
@@ -1296,7 +1296,7 @@ class CompilerSettings {
             if (window.electronAPI && window.electronAPI.downloadTestlib) {
                 const fullUrl = testlib.downloadUrl.startsWith('http') 
                     ? testlib.downloadUrl 
-                    : `https://oicpp.mywwzh.top${testlib.downloadUrl}`;
+                    : `https://oicppide.com${testlib.downloadUrl}`;
                 
                 const result = await window.electronAPI.downloadTestlib({
                     url: fullUrl,

@@ -479,7 +479,7 @@ class CompilerManager {
                 payload.login_token = loginToken;
             }
 
-            const response = await fetch(`https://oicpp.mywwzh.top/api/cloudCompilation`, {
+            const response = await fetch(`https://oicppide.com/api/cloudCompilation`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -685,7 +685,7 @@ class CompilerManager {
         }
 
         try {
-            const response = await fetch(`https://oicpp.mywwzh.top/api/getCloudCompilationResult?task_id=${encodeURIComponent(taskId)}`, {
+            const response = await fetch(`https://oicppide.com/api/getCloudCompilationResult?task_id=${encodeURIComponent(taskId)}`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json'

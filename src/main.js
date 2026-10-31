@@ -5800,7 +5800,7 @@ function setupIPC() {
 
     ipcMain.handle('download-compiler', async (event, { url, version, name }) => {
         if (process.platform !== 'win32') {
-            return { success: false, error: '非 Windows 平台已禁用内置编译器下载，请访问官网获取: https://oicpp.mywwzh.top/' };
+            return { success: false, error: '非 Windows 平台已禁用内置编译器下载，请访问官网获取: https://oicppide.com/' };
         }
         logInfo('[编译器下载] 开始下载请求:', { version, name });
 
@@ -7265,7 +7265,7 @@ async function checkForUpdates(isManual = false) {
         logInfo('开始检查更新...');
         logInfo('检查类型:', isManual ? '手动检查' : '自动检查');
 
-        const response = await fetch('https://oicpp.mywwzh.top/api/checkUpdate');
+        const response = await fetch('https://oicppide.com/api/checkUpdate');
         logInfo('请求更新API状态码:', response.status);
 
         if (!response.ok) {
@@ -7424,7 +7424,7 @@ async function downloadAndInstallUpdate(updateInfo = null, options = {}) {
         let updateDescription = updateInfo?.description || '';
         if (!latestVersion) {
             try {
-                const versionResponse = await fetch('https://oicpp.mywwzh.top/api/checkUpdate');
+                const versionResponse = await fetch('https://oicppide.com/api/checkUpdate');
                 if (versionResponse.ok) {
                     const versionInfo = await versionResponse.json();
                     latestVersion = versionInfo.latestVersion;
@@ -7449,7 +7449,7 @@ async function downloadAndInstallUpdate(updateInfo = null, options = {}) {
         let filelist = null;
         for (const sysParam of systemCandidates) {
             try {
-                const filelistResp = await fetch(`https://oicpp.mywwzh.top/api/getUpdateFilelist?version=${encodeURIComponent(latestVersion)}&sys=${sysParam}`);
+                const filelistResp = await fetch(`https://oicppide.com/api/getUpdateFilelist?version=${encodeURIComponent(latestVersion)}&sys=${sysParam}`);
                 if (!filelistResp.ok) {
                     continue;
                 }
@@ -9532,8 +9532,8 @@ function generateEncodedToken(username = '') {
     return Buffer.from(tokenData).toString('base64');
 }
 
-const CLOUD_SYNC_BASE = 'https://oicpp.mywwzh.top/api';
-const CLIENT_LOG_UPLOAD_URL = 'https://oicpp.mywwzh.top/api/uploadClientLog';
+const CLOUD_SYNC_BASE = 'https://oicppide.com/api';
+const CLIENT_LOG_UPLOAD_URL = 'https://oicppide.com/api/uploadClientLog';
 const SETTINGS_BACKUP_PATTERN = /^OICPP_user_(\d{8}_\d{6})_(.+?)_settings\.cpp$/i;
 const SETTINGS_BACKUP_DIR = '';
 const AUTO_BACKUP_COOLDOWN_MS = 15000;
@@ -10148,7 +10148,7 @@ async function sendHeartbeat(type = 'heartbeat', username = '') {
             data.cpu_id = device.cpuId;
         }
 
-        const response = await fetch('https://oicpp.mywwzh.top/api/heartbeat', {
+        const response = await fetch('https://oicppide.com/api/heartbeat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
