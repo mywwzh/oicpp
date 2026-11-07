@@ -22,7 +22,29 @@ const IntegratedTerminalManager = require('./terminal-manager');
 const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
-const APP_VERSION = '1.6.0-beta1';
+// 版本号必须跟随 package.json（发版时只改 package.json / version.txt）。
+// 曾经硬编码为 '1.6.0-beta1' 而没有随发版同步，导致 beta2 的安装包仍把自己
+// 当成 beta1，于是每次检查更新都认为有新版本，退出时反复提示安装（issue #547）。
+function resolveAppVersion() {
+    try {
+        const pkg = require('../package.json');
+        if (pkg && pkg.version) return String(pkg.version).trim();
+    } catch (_) { }
+    try {
+        const buildInfoPath = path.join(__dirname, 'build-info.json');
+        if (fs.existsSync(buildInfoPath)) {
+            const info = JSON.parse(fs.readFileSync(buildInfoPath, 'utf8'));
+            if (info && info.version) return String(info.version).trim();
+        }
+    } catch (_) { }
+    try {
+        const version = app.getVersion();
+        if (version) return String(version).trim();
+    } catch (_) { }
+    return '0.0.0';
+}
+
+const APP_VERSION = resolveAppVersion();
 const SAVE_ALL_TIMEOUT = 4000;
 const EXTERNAL_OPEN_DEDUP_WINDOW_MS = 800;
 const recentExternalOpens = new Map();
@@ -1901,6 +1923,8 @@ let pendingInstallerLaunch = null; // 退出后待启动的安装程序
 let pendingInstallerLaunchArmed = false;
 let pendingUpdateQuitPromptInProgress = false;
 let allowQuitForPendingUpdateInstall = false;
+let quitAbortedForUpdatePrompt = false;
+let installerLaunchOnQuitHooked = false;
 
 function hasPendingUpdateToInstall() {
     const pending = settings?.pendingUpdate;
@@ -1979,6 +2003,7 @@ function showPostInstallNoticeIfNeeded() {
     // 安装程序在升级后会被删除。若本次启动的版本已匹配，必须同时撤销
     // 启动阶段可能已注册的旧安装包启动任务，避免下次退出时再次尝试运行它。
     pendingInstallerLaunch = null;
+    pendingInstallerLaunchArmed = false;
     delete settings.postInstallNotice;
     if (settings.pendingUpdate && String(settings.pendingUpdate.version || '') === String(APP_VERSION)) {
         delete settings.pendingUpdate;
@@ -1996,7 +2021,8 @@ function promptForPendingUpdateInstallQuit() {
     }
 
     pendingUpdateQuitPromptInProgress = true;
-    dialog.showMessageBox({
+    const ownerWindow = (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : undefined;
+    dialog.showMessageBox(ownerWindow, {
         type: 'info',
         title: '即将安装更新',
         message: 'OICPP 将在退出后自动安装更新',
@@ -2008,19 +2034,59 @@ function promptForPendingUpdateInstallQuit() {
     }).then((result) => {
         pendingUpdateQuitPromptInProgress = false;
         if (result.response !== 0) {
+            handleCancelledUpdateQuitPrompt();
             return;
         }
-
-        allowQuitForPendingUpdateInstall = true;
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            armAllowMainWindowClose(SAVE_ALL_TIMEOUT + 10000);
-            requestSaveAllAndClose('更新安装');
-        } else {
-            app.quit();
-        }
+        quitForPendingUpdateInstall('更新安装');
     }).catch(() => {
         pendingUpdateQuitPromptInProgress = false;
+        handleCancelledUpdateQuitPrompt();
     });
+}
+
+// 用户取消“退出并安装更新”时必须让应用回到可用状态。
+// 旧实现只把退出流程 preventDefault 掉，窗口早已关闭、进程却留在后台，
+// 还继续占用单实例锁，导致再次双击图标毫无反应（issue #547）。
+function handleCancelledUpdateQuitPrompt() {
+    allowQuitForPendingUpdateInstall = false;
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        try {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.show();
+            mainWindow.focus();
+        } catch (_) { }
+        return;
+    }
+
+    // 已经没有窗口可恢复，继续留着进程只会变成后台僵尸，直接退出（不安装更新）。
+    pendingInstallerLaunch = null;
+    pendingInstallerLaunchArmed = false;
+    allowQuitForPendingUpdateInstall = true;
+    try { logWarn('[更新] 已取消退出安装且无可用窗口，直接退出应用'); } catch (_) { }
+    try { app.quit(); } catch (_) { }
+}
+
+// 确认退出安装：先让渲染进程保存，再退出触发 will-quit 启动安装程序；
+// 同时加一层兜底，避免退出流程被卡住时进程残留在后台。
+function quitForPendingUpdateInstall(reason = '更新安装') {
+    allowQuitForPendingUpdateInstall = true;
+    pendingUpdateQuitPromptInProgress = false;
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        armAllowMainWindowClose(SAVE_ALL_TIMEOUT + 10000);
+        requestSaveAllAndClose(reason);
+    } else {
+        try { app.quit(); } catch (_) { }
+    }
+
+    setTimeout(() => {
+        try {
+            logWarn('[更新] 退出超时，强制结束进程以完成更新安装');
+            flushPendingInstallerLaunch();
+            app.exit(0);
+        } catch (_) { }
+    }, SAVE_ALL_TIMEOUT + 15000);
 }
 
 function notifyUser(title, body, level = 'info') {
@@ -2465,7 +2531,7 @@ ipcMain.handle('get-build-info', () => {
     } catch (error) {
         logger.logwarn('读取构建信息失败:', error);
     }
-    return { version: '1.6.0-beta1 (v50)', buildTime: '未知', author: 'mywwzh' };
+    return { version: `${APP_VERSION} (v50)`, buildTime: '未知', author: 'mywwzh' };
 });
 
 function requestSaveAllAndClose(context = '关闭窗口') {
@@ -2728,6 +2794,18 @@ function createWindow() {
                 return;
             }
             e.preventDefault();
+
+            // 有待安装更新时，在窗口还存活的情况下询问是否退出安装，
+            // 这样用户选择“取消”可以直接继续使用，不会留下后台僵尸进程（#547）。
+            const needsInstallPrompt = process.platform === 'win32'
+                && !allowQuitForPendingUpdateInstall
+                && settings?.pendingUpdate?.autoInstallOnQuit === true
+                && hasPendingUpdateToInstall();
+            if (needsInstallPrompt) {
+                promptForPendingUpdateInstallQuit();
+                return;
+            }
+
             requestRendererCloseConfirmation('关闭窗口');
         } catch (err) {
             try { logWarn('[关闭窗口] close 事件拦截失败，已阻止关闭:', err?.message || String(err)); } catch (_) { }
@@ -3324,13 +3402,16 @@ app.on('before-quit', (event) => {
 
     if (shouldPromptForInstallQuit && !allowQuitForPendingUpdateInstall) {
         try { event?.preventDefault(); } catch (_) { }
+        quitAbortedForUpdatePrompt = true;
         if (!pendingUpdateQuitPromptInProgress) {
-            try { app.hide && app.hide(); } catch (_) { }
+            // 不再调用 app.hide()：窗口已被关闭时隐藏操作只是把进程变成后台
+            // 僵尸，用户无法再把它叫出来（issue #547）。
             promptForPendingUpdateInstallQuit();
         }
         return;
     }
 
+    quitAbortedForUpdatePrompt = false;
     allowQuitForPendingUpdateInstall = false;
     pendingUpdateQuitPromptInProgress = false;
 
@@ -7437,6 +7518,14 @@ async function downloadAndInstallUpdate(updateInfo = null, options = {}) {
         }
         if (!latestVersion) return;
 
+        if (!compareVersions(APP_VERSION, latestVersion, settings.receiveBetaUpdates === true)) {
+            logInfo('[更新] 目标版本不高于当前版本，跳过下载:', {
+                latestVersion,
+                appVersion: APP_VERSION
+            });
+            return;
+        }
+
         if (currentDownloadingVersion === latestVersion) {
             logInfo('[更新] 同版本正在下载，跳过');
             return;
@@ -7586,20 +7675,33 @@ function launchInstallerDetached(installerPath, installerArgs = []) {
 function armInstallerLaunchOnQuit(installerPath, installerArgs = []) {
     if (!installerPath || process.platform !== 'win32') return;
     pendingInstallerLaunch = { installerPath, installerArgs, requestedAt: Date.now() };
-    if (pendingInstallerLaunchArmed) return;
     pendingInstallerLaunchArmed = true;
-    app.once('will-quit', () => {
-        const launchInfo = pendingInstallerLaunch;
-        pendingInstallerLaunch = null;
-        pendingInstallerLaunchArmed = false;
-        if (!launchInfo || !launchInfo.installerPath) return;
-        try {
-            launchInstallerDetached(launchInfo.installerPath, launchInfo.installerArgs || []);
-            logInfo('[更新] 应用退出后已尝试启动安装程序');
-        } catch (err) {
-            logError('[更新] 退出后启动安装程序失败:', err?.message || err);
-        }
+    ensureInstallerLaunchOnQuitHook();
+}
+
+function ensureInstallerLaunchOnQuitHook() {
+    if (installerLaunchOnQuitHooked) return;
+    installerLaunchOnQuitHooked = true;
+    app.on('will-quit', () => {
+        flushPendingInstallerLaunch();
     });
+}
+
+function flushPendingInstallerLaunch() {
+    const launchInfo = pendingInstallerLaunch;
+    pendingInstallerLaunch = null;
+    pendingInstallerLaunchArmed = false;
+    if (!launchInfo || !launchInfo.installerPath) return;
+    if (!fs.existsSync(launchInfo.installerPath)) {
+        try { logWarn('[更新] 安装程序已不存在，跳过自动安装:', launchInfo.installerPath); } catch (_) { }
+        return;
+    }
+    try {
+        launchInstallerDetached(launchInfo.installerPath, launchInfo.installerArgs || []);
+        logInfo('[更新] 应用退出后已尝试启动安装程序');
+    } catch (err) {
+        logError('[更新] 退出后启动安装程序失败:', err?.message || err);
+    }
 }
 
 function runInstaller(installerPath) {
@@ -7702,6 +7804,30 @@ function checkPendingUpdate() {
             saveSettings();
             return;
         }
+
+        // 安装包版本不比当前版本新（例如刚完成升级、或版本号写错）时，
+        // 继续保留它只会让每次退出都提示“安装更新”（issue #547）。
+        if (!compareVersions(APP_VERSION, pendingUpdate.version, true)) {
+            logInfo('[更新] 待安装更新版本不高于当前版本，已丢弃:', {
+                pendingVersion: pendingUpdate.version,
+                appVersion: APP_VERSION
+            });
+            const staleInstaller = pendingUpdate.installerPath;
+            delete settings.pendingUpdate;
+            delete settings.postInstallNotice;
+            saveSettings();
+            try {
+                if (staleInstaller && fs.existsSync(staleInstaller)) {
+                    fs.unlinkSync(staleInstaller);
+                    logInfo('[更新] 已删除过期的安装包:', staleInstaller);
+                }
+            } catch (err) {
+                logWarn('[更新] 删除过期安装包失败:', err?.message || err);
+            }
+            broadcastUpdateDownloadState();
+            return;
+        }
+
         logInfo('发现待安装的更新:', pendingUpdate);
 
         if (process.platform === 'win32' && pendingUpdate.autoInstallOnQuit !== true) {
@@ -8056,7 +8182,7 @@ function resetSettings(settingsType = null) {
 function exportSettings(filePath) {
     try {
         const exportData = {
-            version: '1.6.0-beta1 (v50)',
+            version: APP_VERSION,
             timestamp: new Date().toISOString(),
             settings: settings
         };
@@ -8984,11 +9110,8 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-    const shouldPromptForInstallQuit = process.platform === 'win32'
-        && hasPendingUpdateToInstall()
-        && settings?.pendingUpdate?.autoInstallOnQuit === true;
-
-    if (shouldPromptForInstallQuit && !allowQuitForPendingUpdateInstall) {
+    // 退出流程被“安装更新”确认框拦住时，不做任何清理，应用继续运行。
+    if (quitAbortedForUpdatePrompt) {
         return;
     }
 
