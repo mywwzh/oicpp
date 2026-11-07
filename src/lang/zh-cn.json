@@ -1042,5 +1042,18 @@
     "insecure": "连接不安全",
     "secure": "连接安全",
     "defaultTitle": "内置浏览器"
+  },
+  "fileHistory": {
+    "title": "文件历史",
+    "close": "关闭",
+    "stats": "共 {count} 个文件",
+    "empty": "暂无文件历史记录",
+    "clear": "清除历史记录",
+    "confirmClear": "确定要清除所有文件历史记录吗？",
+    "unknownFile": "未知文件",
+    "justNow": "刚刚",
+    "minutesAgo": "{count} 分钟前",
+    "hoursAgo": "{count} 小时前",
+    "daysAgo": "{count} 天前"
   }
 }

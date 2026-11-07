@@ -1042,5 +1042,18 @@
     "insecure": "Insecure connection",
     "secure": "Secure connection",
     "defaultTitle": "Browser"
+  },
+  "fileHistory": {
+    "title": "File History",
+    "close": "Close",
+    "stats": "{count} files",
+    "empty": "No file history yet",
+    "clear": "Clear History",
+    "confirmClear": "Are you sure you want to clear all file history?",
+    "unknownFile": "Unknown file",
+    "justNow": "Just now",
+    "minutesAgo": "{count} min ago",
+    "hoursAgo": "{count} h ago",
+    "daysAgo": "{count} d ago"
   }
 }

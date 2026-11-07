@@ -4423,12 +4423,14 @@ ${data.message || '程序已加载，等待开始执行'}
         // 标题栏
         const titleBar = document.createElement('div');
         titleBar.className = 'file-history-titlebar';
-        titleBar.innerHTML = '<span class="file-history-title">文件历史</span>';
+
+        const titleEl = document.createElement('span');
+        titleEl.className = 'file-history-title';
+        titleBar.appendChild(titleEl);
 
         const closeBtn = document.createElement('button');
         closeBtn.className = 'file-history-close-btn';
         closeBtn.innerHTML = '&times;';
-        closeBtn.setAttribute('aria-label', '关闭');
         closeBtn.addEventListener('click', () => overlay.remove());
         titleBar.appendChild(closeBtn);
         dialog.appendChild(titleBar);
@@ -4437,7 +4439,6 @@ ${data.message || '程序已加载，等待开始执行'}
         if (history.length > 0) {
             const stats = document.createElement('div');
             stats.className = 'file-history-stats';
-            stats.textContent = `共 ${history.length} 个文件`;
             dialog.appendChild(stats);
         }
 
@@ -4448,7 +4449,6 @@ ${data.message || '程序已加载，等待开始执行'}
         if (history.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'file-history-empty';
-            empty.textContent = '暂无文件历史记录';
             listContainer.appendChild(empty);
         } else {
             for (const item of history) {
@@ -4465,7 +4465,6 @@ ${data.message || '程序已加载，等待开始执行'}
 
                 const name = document.createElement('div');
                 name.className = 'file-history-name';
-                name.textContent = item.name || '未知文件';
                 name.title = item.name || '';
 
                 const pathEl = document.createElement('div');
@@ -4478,12 +4477,6 @@ ${data.message || '程序已加载，等待开始执行'}
 
                 const time = document.createElement('div');
                 time.className = 'file-history-time';
-                try {
-                    const date = new Date(item.lastOpened);
-                    time.textContent = this.formatHistoryTime(date);
-                } catch (_) {
-                    time.textContent = '';
-                }
 
                 row.appendChild(icon);
                 row.appendChild(info);
@@ -4507,12 +4500,12 @@ ${data.message || '程序已加载，等待开始执行'}
 
             const clearBtn = document.createElement('button');
             clearBtn.className = 'file-history-clear-btn';
-            clearBtn.textContent = '清除历史记录';
             clearBtn.addEventListener('click', async () => {
+                const confirmText = this.t('fileHistory.confirmClear', null, 'Are you sure you want to clear all file history?');
                 if (!window.dialogManager || typeof window.dialogManager.showConfirm !== 'function') {
-                    if (!confirm('确定要清除所有文件历史记录吗？')) return;
+                    if (!confirm(confirmText)) return;
                 } else {
-                    const confirmed = await window.dialogManager.showConfirm('确定要清除所有文件历史记录吗？');
+                    const confirmed = await window.dialogManager.showConfirm(confirmText);
                     if (!confirmed) return;
                 }
                 await window.electronAPI.clearFileHistory();
@@ -4527,9 +4520,64 @@ ${data.message || '程序已加载，等待开始执行'}
         overlay.appendChild(dialog);
         document.body.appendChild(overlay);
 
+        // 应用文案（含动态参数的文本无法由 data-i18n 自动更新，统一在此处理）
+        this.applyFileHistoryDialogTexts(overlay, history);
+
+        // 语言切换时刷新对话框文案
+        if (window.i18n && typeof window.i18n.onChange === 'function') {
+            const unsubscribe = window.i18n.onChange(() => {
+                if (!document.body.contains(overlay)) {
+                    unsubscribe();
+                    return;
+                }
+                this.applyFileHistoryDialogTexts(overlay, history);
+            });
+        }
+
         // 点击外部关闭
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) overlay.remove();
+        });
+    }
+
+    applyFileHistoryDialogTexts(root, history) {
+        const setText = (selector, text) => {
+            const el = root.querySelector(selector);
+            if (el) el.textContent = text;
+        };
+
+        setText('.file-history-title', this.t('fileHistory.title', null, 'File History'));
+
+        const closeBtn = root.querySelector('.file-history-close-btn');
+        if (closeBtn) {
+            closeBtn.setAttribute('aria-label', this.t('fileHistory.close', null, 'Close'));
+        }
+
+        if (history.length > 0) {
+            setText('.file-history-stats', this.t('fileHistory.stats', { count: history.length }, `${history.length} files`));
+        } else {
+            setText('.file-history-empty', this.t('fileHistory.empty', null, 'No file history yet'));
+        }
+
+        setText('.file-history-clear-btn', this.t('fileHistory.clear', null, 'Clear History'));
+
+        root.querySelectorAll('.file-history-item').forEach((row, index) => {
+            const item = history[index];
+            if (!item) return;
+
+            const nameEl = row.querySelector('.file-history-name');
+            if (nameEl) {
+                nameEl.textContent = item.name || this.t('fileHistory.unknownFile', null, 'Unknown file');
+            }
+
+            const timeEl = row.querySelector('.file-history-time');
+            if (timeEl) {
+                try {
+                    timeEl.textContent = this.formatHistoryTime(new Date(item.lastOpened));
+                } catch (_) {
+                    timeEl.textContent = '';
+                }
+            }
         });
     }
 
@@ -4541,10 +4589,10 @@ ${data.message || '程序已加载，等待开始执行'}
             const diffHour = Math.floor(diffMs / 3600000);
             const diffDay = Math.floor(diffMs / 86400000);
 
-            if (diffMin < 1) return '刚刚';
-            if (diffMin < 60) return `${diffMin} 分钟前`;
-            if (diffHour < 24) return `${diffHour} 小时前`;
-            if (diffDay < 7) return `${diffDay} 天前`;
+            if (diffMin < 1) return this.t('fileHistory.justNow', null, 'Just now');
+            if (diffMin < 60) return this.t('fileHistory.minutesAgo', { count: diffMin }, `${diffMin} min ago`);
+            if (diffHour < 24) return this.t('fileHistory.hoursAgo', { count: diffHour }, `${diffHour} h ago`);
+            if (diffDay < 7) return this.t('fileHistory.daysAgo', { count: diffDay }, `${diffDay} d ago`);
 
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, '0');
