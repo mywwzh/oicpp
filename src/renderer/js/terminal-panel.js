@@ -1,3 +1,32 @@
+// 终端渲染 oh-my-posh 等主题时需要 Nerd Font 图标字体。
+// 这些字体不一定安装，浏览器会自动跳过不可用的字体，因此可以安全地作为回退链使用。
+// 仅使用单宽（Mono）变体，避免图标按双宽渲染导致提示符错位。
+const TERMINAL_NERD_FONT_FALLBACKS = [
+    'Symbols Nerd Font Mono',
+    'CaskaydiaCove NFM',
+    'CaskaydiaCove Nerd Font Mono',
+    'Cascadia Mono NF',
+    'JetBrainsMono NFM',
+    'JetBrainsMono Nerd Font Mono',
+    'MesloLGS NF',
+    'MesloLGM Nerd Font Mono',
+    'Hack NFM',
+    'Hack Nerd Font Mono',
+    'FiraCode NFM',
+    'FiraCode Nerd Font Mono',
+    'SauceCodePro NFM',
+    'SauceCodePro Nerd Font Mono',
+    'UbuntuMono NFM',
+    'UbuntuMono Nerd Font Mono',
+    'NotoMono NFM',
+    'NotoMono Nerd Font Mono',
+    'DejaVuSansMono NFM',
+    'DejaVuSansMono Nerd Font Mono',
+    'VictorMono NFM',
+    'SpaceMono NFM',
+    'RobotoMono NFM'
+];
+
 class IntegratedTerminalPanel {
     constructor(options = {}) {
         this.getApp = typeof options.getApp === 'function' ? options.getApp : () => null;
@@ -198,14 +227,48 @@ class IntegratedTerminalPanel {
     resolveTerminalFontOptions() {
         const app = this.getApp ? this.getApp() : null;
         const settings = app?.settings || {};
-        const fontFamily = (typeof settings.font === 'string' && settings.font.trim())
+        const editorFont = (typeof settings.font === 'string' && settings.font.trim())
             ? settings.font.trim()
             : 'Consolas';
         const configuredFontSize = Number(settings.terminalFontSize);
         const fontSize = Number.isFinite(configuredFontSize) && configuredFontSize > 0
             ? Math.round(configuredFontSize)
             : this.fixedTerminalFontSize;
-        return { fontFamily, fontSize };
+        return { fontFamily: this.buildTerminalFontFamily(editorFont), fontSize };
+    }
+
+    normalizeFontFamilyList(value) {
+        if (typeof value !== 'string') {
+            return [];
+        }
+        return value
+            .split(',')
+            .map((item) => item.trim().replace(/^["']|["']$/g, '').trim())
+            .filter(Boolean);
+    }
+
+    buildTerminalFontFamily(baseFont) {
+        const families = [];
+        const pushFamily = (name) => {
+            const normalized = String(name || '').replace(/^["']|["']$/g, '').trim();
+            if (!normalized) {
+                return;
+            }
+            if (families.some((item) => item.toLowerCase() === normalized.toLowerCase())) {
+                return;
+            }
+            families.push(normalized);
+        };
+
+        // 用户/编辑器字体优先，保证文字部分与编辑器观感一致。
+        this.normalizeFontFamilyList(baseFont).forEach(pushFamily);
+        // 追加 Nerd Font 回退，避免 oh-my-posh 的 Powerline 图标显示为方块。
+        TERMINAL_NERD_FONT_FALLBACKS.forEach(pushFamily);
+        pushFamily('monospace');
+
+        return families
+            .map((name) => (name.includes(' ') ? `"${name}"` : name))
+            .join(', ');
     }
 
     getCurrentThemeName() {
@@ -341,6 +404,10 @@ class IntegratedTerminalPanel {
             cursorBlink: true,
             fontSize: fontOptions.fontSize,
             fontFamily: fontOptions.fontFamily,
+            fontWeight: 'normal',
+            fontWeightBold: 'bold',
+            letterSpacing: 0,
+            lineHeight: 1,
             convertEol: true,
             scrollback: 8000,
             allowTransparency: true,
@@ -572,7 +639,12 @@ class IntegratedTerminalPanel {
             const shell = String(session?.shell || '').toLowerCase();
             let initCmd = 'chcp 65001 > nul\r';
             if (shell.includes('powershell') || shell.includes('pwsh')) {
-                initCmd = '[Console]::InputEncoding=[System.Text.UTF8Encoding]::new($false);[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);chcp 65001 > $null\r';
+                // oh-my-posh 等主题会输出大量 UTF-8 图标与中文，需要同时修正控制台代码页、
+                // 控制台输入输出编码以及管道输出编码，否则会显示为乱码。
+                initCmd = 'chcp 65001 > $null;'
+                    + '[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);'
+                    + '[Console]::InputEncoding=[Console]::OutputEncoding;'
+                    + '$OutputEncoding=[Console]::OutputEncoding\r';
             }
             try {
                 await window.electronAPI.writeTerminal(terminalId, initCmd);

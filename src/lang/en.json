@@ -119,6 +119,7 @@
     "fontSize": "Font Size",
     "terminalFontSize": "Terminal Font Size",
     "terminalFontSizeDesc": "Only affects the integrated terminal.",
+    "terminalNerdFontHint": "For terminal themes such as oh-my-posh, installing a Nerd Font is recommended. The integrated terminal automatically falls back to any Nerd Font installed on the system.",
     "terminalStartupCommand": "Terminal Startup Command",
     "terminalStartupCommandPlaceholder": "e.g. conda activate base",
     "terminalStartupCommandDesc": "Auto-executed command after terminal startup.",
