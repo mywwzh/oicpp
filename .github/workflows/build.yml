@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -94,6 +94,7 @@ jobs:
 
       - name: Upload Linux packages to remote
         if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch'
+        continue-on-error: ${{ vars.ALLOW_REMOTE_UPLOAD_FAILURE == 'true' }}
         env:
           UPLOAD_API: ${{ secrets.UPLOAD_API }}
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
@@ -175,6 +176,7 @@ jobs:
 
       - name: Upload macOS package to remote
         if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch'
+        continue-on-error: ${{ vars.ALLOW_REMOTE_UPLOAD_FAILURE == 'true' }}
         env:
           UPLOAD_API: ${{ secrets.UPLOAD_API }}
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
@@ -370,6 +372,7 @@ jobs:
 
       - name: Upload Windows installer to remote
         if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch'
+        continue-on-error: ${{ vars.ALLOW_REMOTE_UPLOAD_FAILURE == 'true' }}
         env:
           UPLOAD_API: ${{ secrets.UPLOAD_API }}
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
