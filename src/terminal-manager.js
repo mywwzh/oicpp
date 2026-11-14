@@ -337,6 +337,14 @@ class IntegratedTerminalManager {
         }
 
         nextEnv.TERM = 'xterm-256color';
+        // 告知 shell 与终端工具链支持 24 位真彩色，oh-my-posh 等主题依赖该变量输出彩色提示符。
+        if (!nextEnv.COLORTERM) {
+            nextEnv.COLORTERM = 'truecolor';
+        }
+        if (process.platform !== 'darwin') {
+            nextEnv.TERM_PROGRAM = 'oicpp';
+            nextEnv.TERM_PROGRAM_VERSION = 'embedded';
+        }
         return nextEnv;
     }
 

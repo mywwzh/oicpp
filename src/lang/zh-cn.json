@@ -102,6 +102,7 @@
     "fontSize": "字体大小",
     "terminalFontSize": "终端字号",
     "terminalFontSizeDesc": "仅影响内置终端，不影响编辑器字体。",
+    "terminalNerdFontHint": "使用 oh-my-posh 等终端主题时，建议安装 Nerd Font 图标字体，内置终端会自动回退到系统中已安装的 Nerd Font。",
     "terminalStartupCommand": "终端启动命令",
     "terminalStartupCommandPlaceholder": "例如: conda activate base",
     "terminalStartupCommandDesc": "终端启动后自动执行的命令。留空则不执行额外命令。",
