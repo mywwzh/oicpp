@@ -1814,13 +1814,23 @@ class EditorSettings {
 
                 Object.assign(this.settings, newSettings);
 
-                this.showMessage('编辑器设置保存成功！', 'success');
+                this.showMessage(
+                    window.i18n ? window.i18n.t('settings.saveSuccess') : '编辑器设置保存成功！',
+                    'success'
+                );
 
 
                 // 不再自动关闭窗口
             } else {
-                const errorMsg = result ? (result.error || '未知错误') : '设置 API 不可用';
-                this.showMessage('保存设置失败：' + errorMsg, 'error');
+                const errorMsg = result
+                    ? (result.error || (window.i18n ? window.i18n.t('settings.unknownError') : '未知错误'))
+                    : (window.i18n ? window.i18n.t('settings.apiUnavailable') : '设置 API 不可用');
+                this.showMessage(
+                    window.i18n
+                        ? window.i18n.t('settings.saveFail', { error: errorMsg })
+                        : '保存设置失败：' + errorMsg,
+                    'error'
+                );
                 logError('保存设置失败，详细信息:', {
                     result,
                     electronAPI: !!window.electronAPI,
@@ -1831,7 +1841,12 @@ class EditorSettings {
 
         } catch (error) {
             logError('保存编辑器设置失败:', error);
-            this.showMessage('保存设置失败：' + error.message, 'error');
+            this.showMessage(
+                window.i18n
+                    ? window.i18n.t('settings.saveFail', { error: error.message })
+                    : '保存设置失败：' + error.message,
+                'error'
+            );
         }
     }
 
@@ -1843,16 +1858,33 @@ class EditorSettings {
                     await this.loadSettings();
                     this.renderKeybindingsUI();
                     this.updateUI();
-                    this.showMessage('编辑器设置已重置为默认值', 'success');
+                    this.showMessage(
+                        window.i18n ? window.i18n.t('settings.resetSuccess') : '编辑器设置已重置为默认值',
+                        'success'
+                    );
                 } else {
-                    this.showMessage('重置设置失败：' + (result.error || '未知错误'), 'error');
+                    const resetError = result.error || (window.i18n ? window.i18n.t('settings.unknownError') : '未知错误');
+                    this.showMessage(
+                        window.i18n
+                            ? window.i18n.t('settings.resetFail', { error: resetError })
+                            : '重置设置失败：' + resetError,
+                        'error'
+                    );
                 }
             } else {
-                this.showMessage('设置 API 不可用', 'error');
+                this.showMessage(
+                    window.i18n ? window.i18n.t('settings.apiUnavailable') : '设置 API 不可用',
+                    'error'
+                );
             }
         } catch (error) {
             logError('重置设置失败:', error);
-            this.showMessage('重置设置失败：' + error.message, 'error');
+            this.showMessage(
+                window.i18n
+                    ? window.i18n.t('settings.resetFail', { error: error.message })
+                    : '重置设置失败：' + error.message,
+                'error'
+            );
         }
     }
 
