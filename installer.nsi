@@ -2,7 +2,7 @@
 
 ; HM NIS Edit Wizard helper defines
 !define PRODUCT_NAME "OICPP IDE"
-!define PRODUCT_VERSION "1.6.0"
+!define PRODUCT_VERSION "1.6.1"
 !define PRODUCT_PUBLISHER "mywwzh"
 !define PRODUCT_WEB_SITE "https://oicppide.com"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\OICPP IDE.exe"
@@ -159,7 +159,7 @@ FunctionEnd
 
 ; 自动更新时，安装器由“正在退出的 OICPP 进程”启动。如果不等旧进程退出，
 ; OICPP IDE.exe / resources\app.asar 还处于文件锁状态，SetOverwrite 会静默跳过，
-; 用户重启后版本号仍是旧的（issue：升级 1.6.0 后自报 1.6.0-beta1）。
+; 用户重启后版本号仍是旧的（issue：升级 1.6.1 后自报 1.6.1-beta1）。
 Function WaitForOicppExitIfUpdating
   ${If} $UPDATE_SILENT_MODE != "1"
     Return

@@ -23,7 +23,7 @@ const GDBDebugger = require('./gdb-debugger');
 const MultiThreadDownloader = require('./utils/multi-thread-downloader');
 
 // 版本号必须跟随 package.json（发版时只改 package.json / version.txt）。
-// 曾经硬编码为 '1.6.0-beta1' 而没有随发版同步，导致 beta2 的安装包仍把自己
+// 曾经硬编码为 '1.6.1-beta1' 而没有随发版同步，导致 beta2 的安装包仍把自己
 // 当成 beta1，于是每次检查更新都认为有新版本，退出时反复提示安装（issue #547）。
 function resolveAppVersion() {
     try {
@@ -1945,9 +1945,9 @@ function buildWindowsSilentInstallArgs() {
     return args;
 }
 
-// 安装包文件名里带版本号（OICPP-1.6.0-Setup.exe / OICPP-1.6.0-beta2-Setup.exe）。
+// 安装包文件名里带版本号（OICPP-1.6.1-Setup.exe / OICPP-1.6.1-beta2-Setup.exe）。
 // 服务器 filelist 与 checkUpdate 的版本字段曾经出现过不一致，结果把 beta 包当成
-// 正式版下发（用户升到 1.6.0 后实际装的仍是 1.6.0-beta1）。
+// 正式版下发（用户升到 1.6.1 后实际装的仍是 1.6.1-beta1）。
 function extractVersionFromInstallerName(fileName) {
     const match = String(fileName || '').match(/^OICPP-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)-Setup\.[A-Za-z0-9]+$/i);
     return match ? match[1] : '';
@@ -1998,7 +1998,7 @@ function isValidPendingUpdate(pending) {
     if (!/^OICPP-\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?-Setup\.(exe|deb|rpm|dmg|pkg|zip)$/i.test(base)) return false;
 
     // 文件名里的版本必须与记录的待安装版本一致，否则拒绝安装：
-    // 旧记录可能把 OICPP-1.6.0-beta1-Setup.exe 记成“1.6.0”，导致降级/回滚。
+    // 旧记录可能把 OICPP-1.6.1-beta1-Setup.exe 记成“1.6.1”，导致降级/回滚。
     const fileVersion = extractVersionFromInstallerName(base);
     if (fileVersion && pending.version && !versionsEqual(fileVersion, pending.version)) {
         return false;
@@ -7722,7 +7722,7 @@ async function downloadAndInstallUpdate(updateInfo = null, options = {}) {
             return;
         }
 
-        // 防御服务器把其它版本的安装包归到当前版本下（issue：升级 1.6.0 实际装了 1.6.0-beta1）。
+        // 防御服务器把其它版本的安装包归到当前版本下（issue：升级 1.6.1 实际装了 1.6.1-beta1）。
         const installerFileVersion = extractVersionFromInstallerName(installerFile.name);
         if (installerFileVersion && !versionsEqual(installerFileVersion, latestVersion)) {
             logError('[更新] 安装包版本与目标版本不一致，已取消自动安装:', {
