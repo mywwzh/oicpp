@@ -2574,12 +2574,21 @@ class MonacoEditorManager {
             }
 
             const selection = activeEditor.getSelection();
+            const hasSelection = !!(selection && !selection.isEmpty());
             let baseLineNumber = 1;
             let baseColumn = 1;
 
             if (selection) {
-                baseLineNumber = selection.endLineNumber;
-                baseColumn = selection.endColumn;
+                // 有选区时文本会替换选区，光标应基于“选区起点”计算；
+                // 基于 endColumn 会把粘贴文本的长度再加一次，导致光标向前跳（issue #549）。
+                if (hasSelection) {
+                    const start = selection.getStartPosition();
+                    baseLineNumber = start.lineNumber;
+                    baseColumn = start.column;
+                } else {
+                    baseLineNumber = selection.endLineNumber;
+                    baseColumn = selection.endColumn;
+                }
             } else {
                 const position = activeEditor.getPosition();
                 if (position) {
@@ -2588,7 +2597,7 @@ class MonacoEditorManager {
                 }
             }
 
-            const range = selection && !selection.isEmpty()
+            const range = hasSelection
                 ? selection
                 : new monaco.Range(baseLineNumber, baseColumn, baseLineNumber, baseColumn);
 
@@ -2597,7 +2606,7 @@ class MonacoEditorManager {
                 text: text
             }]);
 
-            const lines = text.split('\n');
+            const lines = text.split(/\r?\n/);
             const lastLineLength = lines[lines.length - 1].length;
             const newPosition = {
                 lineNumber: baseLineNumber + lines.length - 1,
