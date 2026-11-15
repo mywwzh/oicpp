@@ -156,8 +156,30 @@ Function EnsureInstallDirectoryAccess
     ${EndIf}
   ${EndIf}
 FunctionEnd
+
+; 自动更新时，安装器由“正在退出的 OICPP 进程”启动。如果不等旧进程退出，
+; OICPP IDE.exe / resources\app.asar 还处于文件锁状态，SetOverwrite 会静默跳过，
+; 用户重启后版本号仍是旧的（issue：升级 1.6.0 后自报 1.6.0-beta1）。
+Function WaitForOicppExitIfUpdating
+  ${If} $UPDATE_SILENT_MODE != "1"
+    Return
+  ${EndIf}
+
+  StrCpy $R9 0
+  ${Do}
+    nsExec::Exec 'cmd /c tasklist /FI "IMAGENAME eq OICPP IDE.exe" /NH | find /I "OICPP IDE.exe" >nul'
+    Pop $R7
+    ${If} $R7 != 0
+      ${ExitDo}
+    ${EndIf}
+    Sleep 500
+    IntOp $R9 $R9 + 1
+  ${LoopUntil} $R9 >= 120
+FunctionEnd
+
 Section "OICPP 主程序" SEC01
   Call EnsureInstallDirectoryAccess
+  Call WaitForOicppExitIfUpdating
   IfFileExists "$OICPP_USER_PROFILE\.oicpp\settings.json" 0 +3
     CreateDirectory "$TEMP\oicpp_backup"
     CopyFiles "$OICPP_USER_PROFILE\.oicpp\settings.json" "$TEMP\oicpp_backup\settings.json"
@@ -170,7 +192,8 @@ Section "OICPP 主程序" SEC01
   SetOverwrite on
   File /r "dist\win-unpacked\resources\clangd\*"
   SetOutPath "$INSTDIR"
-  SetOverwrite try
+  ; 使用覆盖写入而非 try：文件被占用时必须报错，不能静默保留旧版本。
+  SetOverwrite on
   File "dist\win-unpacked\chrome_100_percent.pak"
   File "dist\win-unpacked\chrome_200_percent.pak"
 

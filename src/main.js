@@ -1945,14 +1945,65 @@ function buildWindowsSilentInstallArgs() {
     return args;
 }
 
+// 安装包文件名里带版本号（OICPP-1.6.0-Setup.exe / OICPP-1.6.0-beta2-Setup.exe）。
+// 服务器 filelist 与 checkUpdate 的版本字段曾经出现过不一致，结果把 beta 包当成
+// 正式版下发（用户升到 1.6.0 后实际装的仍是 1.6.0-beta1）。
+function extractVersionFromInstallerName(fileName) {
+    const match = String(fileName || '').match(/^OICPP-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)-Setup\.[A-Za-z0-9]+$/i);
+    return match ? match[1] : '';
+}
+
+function normalizeVersionText(version) {
+    return String(version || '').trim().replace(/^v/i, '').toLowerCase();
+}
+
+function versionsEqual(a, b) {
+    const na = normalizeVersionText(a);
+    const nb = normalizeVersionText(b);
+    return !!na && na === nb;
+}
+
+// 根据用户所在通道挑选要比较的版本：
+// - 正式通道只能接受稳定版，绝不能用 latestVersion（服务器可能返回 beta）
+// - Beta 通道在稳定版与预览版中取更高的那个，避免永远停在旧 beta
+function pickUpdateTargetVersion(updateInfo) {
+    if (!updateInfo || typeof updateInfo !== 'object') return '';
+
+    const stable = String(updateInfo.latestStableVersion || '').trim();
+    const preview = String(updateInfo.latestPreviewVersion || '').trim();
+    const generic = String(updateInfo.latestVersion || '').trim();
+    const isPreRelease = (version) => /-[0-9A-Za-z]/.test(String(version || '').trim());
+
+    const candidates = settings?.receiveBetaUpdates === true
+        ? [stable, preview, generic]
+        : [stable, generic].filter((version) => version && !isPreRelease(version));
+
+    let best = '';
+    for (const candidate of candidates) {
+        if (!candidate) continue;
+        if (!best || compareVersions(best, candidate, true)) {
+            best = candidate;
+        }
+    }
+    return best;
+}
+
 function isValidPendingUpdate(pending) {
     if (!pending || typeof pending !== 'object') return false;
     const installerPath = pending.installerPath;
     if (!installerPath || typeof installerPath !== 'string') return false;
     const installerDir = path.join(os.homedir(), '.oicpp');
     const base = path.basename(installerPath);
-    return isSameOrWithin(installerPath, installerDir)
-        && /^OICPP-\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?-Setup\.(exe|deb|rpm|dmg|pkg|zip)$/i.test(base);
+    if (!isSameOrWithin(installerPath, installerDir)) return false;
+    if (!/^OICPP-\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?-Setup\.(exe|deb|rpm|dmg|pkg|zip)$/i.test(base)) return false;
+
+    // 文件名里的版本必须与记录的待安装版本一致，否则拒绝安装：
+    // 旧记录可能把 OICPP-1.6.0-beta1-Setup.exe 记成“1.6.0”，导致降级/回滚。
+    const fileVersion = extractVersionFromInstallerName(base);
+    if (fileVersion && pending.version && !versionsEqual(fileVersion, pending.version)) {
+        return false;
+    }
+    return true;
 }
 
 function armPendingUpdateSilentInstallOnQuit(reason = '退出应用') {
@@ -1966,6 +2017,10 @@ function armPendingUpdateSilentInstallOnQuit(reason = '退出应用') {
         return;
     }
     if (!fs.existsSync(pending.installerPath)) return;
+
+    // 记录尝试次数：安装器如果因为文件占用等原因没真正升级，下次启动能识别出来。
+    pending.installAttempts = (Number(pending.installAttempts) || 0) + 1;
+    settings.pendingUpdate = pending;
 
     settings.postInstallNotice = {
         targetVersion: pending.version || '',
@@ -1983,7 +2038,35 @@ function showPostInstallNoticeIfNeeded() {
     if (!notice || !notice.targetVersion) {
         return;
     }
-    if (String(notice.targetVersion) !== String(APP_VERSION)) {
+
+    const targetVersion = String(notice.targetVersion).trim();
+    if (!versionsEqual(targetVersion, APP_VERSION)) {
+        // 启动后版本号仍不是目标版本，说明静默安装没有生效
+        // （旧版安装器在应用未完全退出时复制文件，被锁定的 app.asar 会静默跳过）。
+        if (compareVersions(APP_VERSION, targetVersion, true)) {
+            const attempts = Number(settings.pendingUpdate?.installAttempts) || 0;
+            logWarn('[更新] 静默安装未生效:', { currentVersion: APP_VERSION, targetVersion, attempts });
+            if (attempts >= 2) {
+                if (settings.pendingUpdate && versionsEqual(settings.pendingUpdate.version, targetVersion)) {
+                    delete settings.pendingUpdate;
+                }
+                setTimeout(() => {
+                    try {
+                        dialog.showMessageBox(mainWindow, {
+                            type: 'warning',
+                            title: '更新未完成',
+                            message: `更新到 ${targetVersion} 未成功`,
+                            detail: `当前版本仍为 ${APP_VERSION}。请手动运行下载的安装包完成升级，或重新检查更新。`
+                        }).catch(() => { });
+                    } catch (_) { }
+                }, 1500);
+                notifyUser('更新未完成', `仍为 ${APP_VERSION}，新版本 ${targetVersion} 多次未能安装，请手动运行安装包。`, 'error');
+            } else {
+                notifyUser('更新未完成', `仍为 ${APP_VERSION}，新版本 ${targetVersion} 未能安装，将在下次退出时重试。`, 'error');
+            }
+        }
+        delete settings.postInstallNotice;
+        saveSettings();
         return;
     }
 
@@ -2005,7 +2088,7 @@ function showPostInstallNoticeIfNeeded() {
     pendingInstallerLaunch = null;
     pendingInstallerLaunchArmed = false;
     delete settings.postInstallNotice;
-    if (settings.pendingUpdate && String(settings.pendingUpdate.version || '') === String(APP_VERSION)) {
+    if (settings.pendingUpdate && versionsEqual(settings.pendingUpdate.version, APP_VERSION)) {
         delete settings.pendingUpdate;
     }
     saveSettings();
@@ -7397,8 +7480,18 @@ async function checkForUpdates(isManual = false) {
         const updateInfo = await response.json();
 
         const currentVersion = APP_VERSION; // 当前程序版本
-        const latestVersion = updateInfo.latestVersion;
-        const description = updateInfo.description || '';
+        const latestVersion = pickUpdateTargetVersion(updateInfo);
+        // 服务器 description 只对应 latestVersion，切到稳定版时不要展示 beta 的更新说明。
+        const description = versionsEqual(latestVersion, updateInfo.latestVersion) ? (updateInfo.description || '') : '';
+
+        logInfo('[更新] 检查完成:', {
+            channel: settings.receiveBetaUpdates === true ? 'beta' : 'stable',
+            currentVersion,
+            targetVersion: latestVersion || '(无)',
+            rawLatest: updateInfo.latestVersion || '',
+            rawStable: updateInfo.latestStableVersion || '',
+            rawPreview: updateInfo.latestPreviewVersion || ''
+        });
 
         try {
             settings.lastUpdateCheck = new Date().toISOString();
@@ -7412,10 +7505,11 @@ async function checkForUpdates(isManual = false) {
 
             const formattedDescription = description.replace(/\\n/g, '\n');
             if (isManual) {
+                const channelLabel = settings.receiveBetaUpdates === true ? '（Beta 通道）' : '';
                 dialog.showMessageBox(mainWindow, {
                     type: 'info',
                     title: '发现新版本',
-                    message: `发现新版本 ${latestVersion}`,
+                    message: `发现新版本 ${latestVersion}${channelLabel}`,
                     detail: formattedDescription || '已开始后台下载更新包。'
                 }).catch(() => { });
             }
@@ -7423,11 +7517,22 @@ async function checkForUpdates(isManual = false) {
         } else {
             logInfo('当前已是最新版本');
             if (isManual) {
+                // 关闭 beta 更新时如果服务器已有更新的预览版，顺便告知用户去哪里开启，
+                // 避免用户以为“预览版永远收不到”。
+                let detail = `您当前使用的版本 ${currentVersion} 已是最新版本。`;
+                if (settings.receiveBetaUpdates === true) {
+                    detail += '\n\n当前使用 Beta 通道，开启期间的预览版也会作为可用更新。';
+                } else {
+                    const previewVersion = String(updateInfo.latestPreviewVersion || updateInfo.latestVersion || '').trim();
+                    if (/-[0-9A-Za-z]/.test(previewVersion) && compareVersions(currentVersion, previewVersion, true)) {
+                        detail += `\n\n如需体验预览版 ${previewVersion}，可在“编辑器设置 → 编辑器行为 → 接收 beta 更新”中开启。`;
+                    }
+                }
                 dialog.showMessageBox(mainWindow, {
                     type: 'info',
                     title: '检查更新',
                     message: '当前已是最新版本',
-                    detail: `您当前使用的版本 ${currentVersion} 已是最新版本。`
+                    detail
                 });
             }
         }
@@ -7542,15 +7647,17 @@ async function downloadAndInstallUpdate(updateInfo = null, options = {}) {
             return;
         }
 
-        let latestVersion = updateInfo?.latestVersion;
+        let latestVersion = updateInfo ? pickUpdateTargetVersion(updateInfo) : '';
         let updateDescription = updateInfo?.description || '';
         if (!latestVersion) {
             try {
                 const versionResponse = await fetch('https://oicppide.com/api/checkUpdate');
                 if (versionResponse.ok) {
                     const versionInfo = await versionResponse.json();
-                    latestVersion = versionInfo.latestVersion;
-                    updateDescription = versionInfo.description || '';
+                    latestVersion = pickUpdateTargetVersion(versionInfo);
+                    updateDescription = versionsEqual(latestVersion, versionInfo.latestVersion)
+                        ? (versionInfo.description || '')
+                        : '';
                 }
             } catch (e) {
                 logWarn('[更新] 获取远程版本失败，放弃下载');
@@ -7558,6 +7665,10 @@ async function downloadAndInstallUpdate(updateInfo = null, options = {}) {
             }
         }
         if (!latestVersion) return;
+
+        if (updateInfo && !versionsEqual(latestVersion, updateInfo.latestVersion)) {
+            updateDescription = '';
+        }
 
         if (!compareVersions(APP_VERSION, latestVersion, settings.receiveBetaUpdates === true)) {
             logInfo('[更新] 目标版本不高于当前版本，跳过下载:', {
@@ -7608,6 +7719,21 @@ async function downloadAndInstallUpdate(updateInfo = null, options = {}) {
         }
         if (!installerFile || !installerFile.downloadUrl) {
             logWarn('[更新] 未找到可用安装包');
+            return;
+        }
+
+        // 防御服务器把其它版本的安装包归到当前版本下（issue：升级 1.6.0 实际装了 1.6.0-beta1）。
+        const installerFileVersion = extractVersionFromInstallerName(installerFile.name);
+        if (installerFileVersion && !versionsEqual(installerFileVersion, latestVersion)) {
+            logError('[更新] 安装包版本与目标版本不一致，已取消自动安装:', {
+                targetVersion: latestVersion,
+                installerFile: installerFile.name
+            });
+            notifyUser(
+                '更新已取消',
+                `更新服务器提供的安装包为 ${installerFileVersion}，与目标版本 ${latestVersion} 不一致，已停止自动安装。`,
+                'error'
+            );
             return;
         }
 
@@ -7843,6 +7969,26 @@ function checkPendingUpdate() {
             logWarn('[更新] 已丢弃非法待安装更新记录:', pendingUpdate?.installerPath || pendingUpdate);
             delete settings.pendingUpdate;
             saveSettings();
+            return;
+        }
+
+        // 正式通道不允许安装预发布包（历史记录可能残留 beta，或在 beta 通道下载后关闭了 beta）。
+        const pendingIsPreRelease = /-[0-9A-Za-z]/.test(String(pendingUpdate.version || '').trim());
+        if (pendingIsPreRelease && settings.receiveBetaUpdates !== true) {
+            logWarn('[更新] 正式通道丢弃预发布安装包:', pendingUpdate.version);
+            const stalePreviewInstaller = pendingUpdate.installerPath;
+            delete settings.pendingUpdate;
+            delete settings.postInstallNotice;
+            saveSettings();
+            try {
+                if (stalePreviewInstaller && fs.existsSync(stalePreviewInstaller)) {
+                    fs.unlinkSync(stalePreviewInstaller);
+                    logInfo('[更新] 已删除预发布安装包:', stalePreviewInstaller);
+                }
+            } catch (err) {
+                logWarn('[更新] 删除预发布安装包失败:', err?.message || err);
+            }
+            broadcastUpdateDownloadState();
             return;
         }
 
