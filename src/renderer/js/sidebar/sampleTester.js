@@ -1363,11 +1363,32 @@ class SampleTester {
         return targetDir;
     }
 
-    async writeZipEntryToWorkspace(entry, targetDir, fallbackName) {
+    async writeZipEntryToWorkspace(entry, targetDir, fallbackName, zipPath = '') {
         const entryPath = String(entry?.path || '');
         const rawName = entryPath.split(/[\\/]/).pop() || fallbackName;
         const fileName = this.sanitizeZipImportFileName(rawName, fallbackName);
         const targetPath = await window.electronAPI.pathJoin(targetDir, fileName);
+
+        // 大样例条目在主进程只传了元数据（避免几十 MB 字符串走 IPC），
+        // 这里直接让主进程把条目解压到工作区。
+        const entrySize = this.getZipEntrySizeBytes(entry);
+        const needsExtract = entry?.isLargeEntry === true
+            || (!entry?.content && entrySize > this.getZipLargeSampleThresholdBytes() && !!zipPath);
+        if (needsExtract) {
+            if (typeof window.electronAPI.extractZipEntry !== 'function') {
+                throw new Error(window.i18n ? window.i18n.t('tester.writeSampleFail', {name: fileName}) : `写入样例文件失败: ${fileName}`);
+            }
+            const extracted = await window.electronAPI.extractZipEntry(
+                zipPath,
+                String(entry?.entryName || entryPath),
+                targetPath
+            );
+            if (!extracted || !extracted.success) {
+                throw new Error(extracted?.error || (window.i18n ? window.i18n.t('tester.writeSampleFail', {name: fileName}) : `写入样例文件失败: ${fileName}`));
+            }
+            return extracted.filePath || targetPath;
+        }
+
         const content = String(entry?.content || '');
         const created = await window.electronAPI.createFile(targetPath, content);
         if (!created || !created.success) {
@@ -1448,8 +1469,8 @@ class SampleTester {
                         largeSamplesDir = await this.prepareZipLargeSampleImportDir(zipPath);
                     }
 
-                    const inputFilePath = await this.writeZipEntryToWorkspace(pair.input, largeSamplesDir, `sample_${maxId}.in`);
-                    const outputFilePath = await this.writeZipEntryToWorkspace(pair.output, largeSamplesDir, `sample_${maxId}.out`);
+                    const inputFilePath = await this.writeZipEntryToWorkspace(pair.input, largeSamplesDir, `sample_${maxId}.in`, zipPath);
+                    const outputFilePath = await this.writeZipEntryToWorkspace(pair.output, largeSamplesDir, `sample_${maxId}.out`, zipPath);
 
                     this.samples.push({
                         id: maxId,

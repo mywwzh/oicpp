@@ -4499,7 +4499,12 @@ function setupIPC() {
             const entries = await zip.entries();
             const allowedExts = new Set(['.in', '.out', '.ans', '.txt', '.input', '.output']);
             const files = [];
-            const MAX_ENTRY_BYTES = 8 * 1024 * 1024;
+            // 超过 8MB 的样例不再整体读入内存（20MB 的 .in 会把 IPC 和渲染进程拖垮），
+            // 但也不能像旧实现那样直接 continue：被丢掉的条目会让大样例永远配对不上
+            // （issue #551：bean3.in 20MB + bean3.out，结果只识别到 2 组）。
+            // 这里改为返回条目元数据，由渲染进程按需调用 extract-zip-entry 解压到磁盘。
+            const MAX_TEXT_ENTRY_BYTES = 8 * 1024 * 1024;
+            const MAX_ENTRY_BYTES = 512 * 1024 * 1024;
             const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
             const MAX_ENTRIES = 10000;
             let totalBytes = 0;
@@ -4523,6 +4528,17 @@ function setupIPC() {
 
                 const declaredSize = Number.isFinite(entry?.size) ? Math.max(0, Number(entry.size)) : 0;
                 if (declaredSize > MAX_ENTRY_BYTES) continue;
+                if (declaredSize > MAX_TEXT_ENTRY_BYTES) {
+                    // 大样例只回传元数据，避免几十 MB 的字符串经由 IPC 进入渲染进程。
+                    files.push({
+                        path: normalizedEntryName,
+                        entryName,
+                        content: '',
+                        sizeBytes: declaredSize,
+                        isLargeEntry: true
+                    });
+                    continue;
+                }
                 totalBytes += declaredSize;
                 if (totalBytes > MAX_TOTAL_BYTES) {
                     return { success: false, error: '压缩包内文本文件总大小超过限制' };
@@ -4558,6 +4574,31 @@ function setupIPC() {
         } catch (error) {
             logError('读取压缩包样例失败:', error);
             return { success: false, error: error.message || '读取压缩包失败' };
+        } finally {
+            if (zip) {
+                try { await zip.close(); } catch (_) { }
+            }
+        }
+    });
+
+    // 把压缩包内的大样例条目直接解压到工作区（按字节原样写出，不做文本解码）。
+    ipcMain.handle('extract-zip-entry', async (event, zipPath, entryName, targetPath) => {
+        let zip = null;
+        try {
+            if (!zipPath || typeof zipPath !== 'string' || !fs.existsSync(zipPath)) {
+                return { success: false, error: '压缩包不存在' };
+            }
+            if (!entryName || typeof entryName !== 'string' || !targetPath || typeof targetPath !== 'string') {
+                return { success: false, error: '无效的压缩包条目或目标路径' };
+            }
+
+            await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+            zip = new StreamZip.async({ file: zipPath });
+            await zip.extract(entryName, targetPath);
+            return { success: true, filePath: targetPath };
+        } catch (error) {
+            logError('解压压缩包条目失败:', error);
+            return { success: false, error: error.message || '解压失败' };
         } finally {
             if (zip) {
                 try { await zip.close(); } catch (_) { }

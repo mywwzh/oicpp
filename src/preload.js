@@ -536,6 +536,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readFileContent: (filePath) => ipcRenderer.invoke('read-file-content', filePath),
     readFileBuffer: (filePath) => safeIpcRenderer.invoke('read-file-buffer', filePath),
     readZipTextFiles: (zipPath) => ipcRenderer.invoke('read-zip-text-files', zipPath),
+    extractZipEntry: (zipPath, entryName, targetPath) => ipcRenderer.invoke('extract-zip-entry', zipPath, entryName, targetPath),
     showItemInFolder: (filePath) => ipcRenderer.invoke('open-path', filePath, { reveal: true }),
     openPath: (targetPath, options = {}) => ipcRenderer.invoke('open-path', targetPath, options),
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
