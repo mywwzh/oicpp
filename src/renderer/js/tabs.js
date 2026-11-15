@@ -4968,11 +4968,22 @@ class TabManager {
     getUnsavedFiles() {
         const unsavedFiles = [];
         for (const [uniqueKey, tabData] of this.tabs.entries()) {
+            if (this.isNonFileTab(tabData)) continue;
             if (tabData.modified) {
                 unsavedFiles.push(tabData.fileName);
             }
         }
         return unsavedFiles;
+    }
+
+    // 欢迎页、PDF、Markdown 预览等标签不是可写入磁盘的文档，
+    // 关闭/保存全部时必须跳过，否则欢迎页会被当成未命名文件要求另存（issue #548）。
+    isNonFileTab(tab) {
+        if (!tab) return true;
+        if (tab.isWelcome) return true;
+        if (tab.fileName === 'Welcome') return true;
+        if (tab.viewType === 'welcome' || tab.viewType === 'pdf' || tab.viewType === 'markdown-preview') return true;
+        return false;
     }
 
     async saveFile(fileName) {
@@ -5010,7 +5021,8 @@ class TabManager {
         };
 
         for (const [uniqueKey, tab] of this.tabs.entries()) {
-            if (!tab || tab.viewType === 'pdf' || tab.viewType === 'markdown-preview') {
+            // 欢迎页没有文件路径，绝不能进入“另存为”流程，否则关闭窗口时会弹“未选择保存位置”并阻止退出（issue #548）。
+            if (this.isNonFileTab(tab)) {
                 continue;
             }
             try {
