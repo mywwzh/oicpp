@@ -1,4 +1,20 @@
+// @ts-nocheck
 class FileExplorer {
+    currentPath: any;
+    files: any;
+    selectedFile: any;
+    selectedFiles: any;
+    hasWorkspace: any;
+    clipboard: any;
+    expandedFolders: any;
+    _directoryReadRequests: any;
+    _treeItemsByPath: any;
+    _draggingItems: any;
+    _dragOverItem: any;
+    _pendingDragOverTarget: any;
+    _pendingDragOverRoot: any;
+    _dragHoverFrame: any;
+    isDragging: any;
     constructor() {
         this.currentPath = '';
         this.files = [];

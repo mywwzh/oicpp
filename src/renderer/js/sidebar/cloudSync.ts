@@ -1,4 +1,16 @@
+// @ts-nocheck
 class CloudSyncPanel {
+    rootPath: any;
+    currentPath: any;
+    itemsCache: any;
+    expandedFolders: any;
+    selectedItems: any;
+    remainingFiles: any;
+    allowedExtensions: any;
+    maxFileSize: any;
+    isLoading: any;
+    _lastLoggedIn: any;
+    _contextMenu: any;
     constructor() {
         this.rootPath = '/';
         this.currentPath = '/';

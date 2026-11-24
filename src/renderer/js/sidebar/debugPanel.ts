@@ -1,4 +1,12 @@
+// @ts-nocheck
 class DebugPanel {
+    isActive: any;
+    root: any;
+    bound: any;
+    expandedVars: any;
+    loadingMore: any;
+    variableCache: any;
+    pendingWatchRemovals: any;
     constructor() {
         this.isActive = false;
         this.root = null;

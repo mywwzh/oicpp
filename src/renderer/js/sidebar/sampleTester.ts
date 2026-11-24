@@ -1,4 +1,22 @@
+// @ts-nocheck
 class SampleTester {
+    samples: any;
+    currentFile: any;
+    samplesFilePath: any;
+    nextId: any;
+    mainCompileCache: any;
+    spjCompileCache: any;
+    graderCompileCache: any;
+    spjTempFiles: any;
+    spjTempSequence: any;
+    interactiveTempSequence: any;
+    deferSpjTempCleanup: any;
+    isRunningAll: any;
+    isOperating: any;
+    editorChangeInterval: any;
+    statusFilter: any;
+    globalSettings: any;
+    globalSettingsPanelHeight: any;
     constructor() {
         this.samples = [];
         this.currentFile = null;

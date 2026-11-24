@@ -1,4 +1,16 @@
+// @ts-nocheck
 class CodeComparer {
+    activeTaskKey: any;
+    standardCodePath: any;
+    testCodePath: any;
+    generatorPath: any;
+    useTestlib: any;
+    spjPath: any;
+    freopenInputFile: any;
+    freopenOutputFile: any;
+    maxParallelThreads: any;
+    tasks: any;
+    eventsbound: any;
     constructor() {
         this.activeTaskKey = null;
         this.standardCodePath = '';
