@@ -3,32 +3,45 @@
  *
  * Provides multi-language support for the OICPP IDE.
  * Usage:
- *   const lang = require('./lang');
+ *   import lang from './lang';
  *   lang.setLanguage('en');
  *   lang.t('menu.file'); // => "File"
  *   lang.t('message.updateDownloading', { version: ' (v2.0)', progress: 50 }); // template substitution
  */
 
-const fs = require('fs');
-const path = require('path');
+import * as fs from 'fs';
+import * as path from 'path';
+
+interface LanguageMeta {
+    code: string;
+    name: string;
+    nameEn?: string;
+}
+
+interface LanguageEntry {
+    code: string;
+    name: string;
+    nameEn: string;
+}
 
 class LanguageManager {
+    private _currentLang: string = 'zh-cn';
+    private _messages: Record<string, unknown> = {};
+    private _fallbackMessages: Record<string, unknown> = {};
+    private _loaded: boolean = false;
+
     constructor() {
-        this._currentLang = 'zh-cn';
-        this._messages = {};
-        this._fallbackMessages = {};
-        this._loaded = false;
         this._loadFallback();
     }
 
     /**
      * Load the fallback language (Chinese) so we always have defaults.
      */
-    _loadFallback() {
+    private _loadFallback(): void {
         try {
             const fallbackPath = path.join(__dirname, 'zh-cn.json');
             if (fs.existsSync(fallbackPath)) {
-                this._fallbackMessages = JSON.parse(fs.readFileSync(fallbackPath, 'utf8'));
+                this._fallbackMessages = JSON.parse(fs.readFileSync(fallbackPath, 'utf8')) as Record<string, unknown>;
             }
         } catch (e) {
             console.error('[LanguageManager] Failed to load fallback language:', e);
@@ -37,10 +50,10 @@ class LanguageManager {
 
     /**
      * Load a language file.
-     * @param {string} langCode - Language code, e.g. 'zh-cn', 'en'
-     * @returns {boolean} Whether loading succeeded
+     * @param langCode - Language code, e.g. 'zh-cn', 'en'
+     * @returns Whether loading succeeded
      */
-    loadLanguage(langCode) {
+    loadLanguage(langCode: string): boolean {
         if (!langCode || typeof langCode !== 'string') {
             return false;
         }
@@ -52,7 +65,7 @@ class LanguageManager {
                 console.warn(`[LanguageManager] Language file not found: ${langPath}`);
                 return false;
             }
-            this._messages = JSON.parse(fs.readFileSync(langPath, 'utf8'));
+            this._messages = JSON.parse(fs.readFileSync(langPath, 'utf8')) as Record<string, unknown>;
             this._currentLang = normalizedCode;
             this._loaded = true;
             return true;
@@ -64,46 +77,46 @@ class LanguageManager {
 
     /**
      * Set the current language.
-     * @param {string} langCode
-     * @returns {boolean}
+     * @param langCode
+     * @returns
      */
-    setLanguage(langCode) {
+    setLanguage(langCode: string): boolean {
         return this.loadLanguage(langCode);
     }
 
     /**
      * Get the current language code.
-     * @returns {string}
+     * @returns
      */
-    getCurrentLanguage() {
+    getCurrentLanguage(): string {
         return this._currentLang;
     }
 
     /**
      * Get the display name of the current language.
-     * @returns {string}
+     * @returns
      */
-    getCurrentLanguageName() {
-        return this._getNested(this._messages, 'meta.name') ||
-               this._getNested(this._fallbackMessages, 'meta.name') ||
+    getCurrentLanguageName(): string {
+        return (this._getNested(this._messages, 'meta.name') as string) ||
+               (this._getNested(this._fallbackMessages, 'meta.name') as string) ||
                'Unknown';
     }
 
     /**
      * Get all available languages.
-     * @returns {Array<{code: string, name: string, nameEn: string}>}
+     * @returns
      */
-    getAvailableLanguages() {
-        const languages = [];
+    getAvailableLanguages(): LanguageEntry[] {
+        const languages: LanguageEntry[] = [];
         try {
             const langDir = __dirname;
             const files = fs.readdirSync(langDir);
             for (const file of files) {
-                if (!file.endsWith('.json') || file === 'index.js' || file.startsWith('_')) {
+                if (!file.endsWith('.json') || file === 'index.ts' || file.startsWith('_')) {
                     continue;
                 }
                 try {
-                    const content = JSON.parse(fs.readFileSync(path.join(langDir, file), 'utf8'));
+                    const content = JSON.parse(fs.readFileSync(path.join(langDir, file), 'utf8')) as { meta?: LanguageMeta };
                     if (content.meta && content.meta.code) {
                         languages.push({
                             code: content.meta.code,
@@ -123,11 +136,11 @@ class LanguageManager {
 
     /**
      * Translate a key.
-     * @param {string} key - Dot-notation key, e.g. 'menu.file'
-     * @param {object} [params] - Optional template parameters for substitution, e.g. { msg: 'hello' }
-     * @returns {string} Translated string, or the key itself if not found
+     * @param key - Dot-notation key, e.g. 'menu.file'
+     * @param params - Optional template parameters for substitution, e.g. { msg: 'hello' }
+     * @returns Translated string, or the key itself if not found
      */
-    t(key, params) {
+    t(key: string, params?: Record<string, unknown>): string {
         if (!key || typeof key !== 'string') {
             return key || '';
         }
@@ -149,7 +162,7 @@ class LanguageManager {
 
         // Substitute template parameters like {name}
         if (params && typeof params === 'object') {
-            return value.replace(/\{(\w+)\}/g, (match, paramName) => {
+            return value.replace(/\{(\w+)\}/g, (match: string, paramName: string) => {
                 const paramValue = params[paramName];
                 return paramValue !== undefined && paramValue !== null ? String(paramValue) : match;
             });
@@ -161,15 +174,15 @@ class LanguageManager {
     /**
      * Get a nested value from an object by dot-notation key.
      */
-    _getNested(obj, key) {
+    private _getNested(obj: Record<string, unknown> | undefined | null, key: string): unknown {
         if (!obj || !key) return undefined;
         const keys = key.split('.');
-        let current = obj;
+        let current: unknown = obj;
         for (const k of keys) {
             if (current === null || current === undefined || typeof current !== 'object') {
                 return undefined;
             }
-            current = current[k];
+            current = (current as Record<string, unknown>)[k];
         }
         return current;
     }
@@ -177,7 +190,7 @@ class LanguageManager {
     /**
      * Reload the current language (useful after language file updates).
      */
-    reload() {
+    reload(): void {
         this._loadFallback();
         if (this._currentLang) {
             this.loadLanguage(this._currentLang);
@@ -191,5 +204,5 @@ const instance = new LanguageManager();
 // Load default language (Chinese)
 instance.loadLanguage('zh-cn');
 
-module.exports = instance;
-module.exports.LanguageManager = LanguageManager;
+export default instance;
+export { LanguageManager };

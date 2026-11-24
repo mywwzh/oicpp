@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { contextBridge, ipcRenderer, shell, clipboard } = require('electron');
 const path = require('path');
 

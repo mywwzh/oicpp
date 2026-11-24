@@ -1,17 +1,73 @@
-const fs = require('fs');
-const path = require('path');
-const { Worker } = require('worker_threads');
-const crypto = require('crypto');
-const https = require('https');
-const http = require('http');
+// @ts-nocheck
+import * as fs from 'fs';
+import * as path from 'path';
+import { Worker } from 'worker_threads';
+import * as crypto from 'crypto';
+import * as https from 'https';
+import * as http from 'http';
 
-function makeRequest(url, options = {}) {
+interface RequestOptions {
+    method?: string;
+    headers?: Record<string, string>;
+    timeout?: number;
+}
+
+interface Response {
+    ok: boolean;
+    status: number;
+    statusText: string | undefined;
+    headers: {
+        get: (name: string) => string | undefined;
+    };
+    body: unknown;
+}
+
+interface DownloadOptions {
+    maxConcurrency?: number;
+    chunkSize?: number;
+    timeout?: number;
+    retryCount?: number;
+    minMultiThreadSize?: number;
+    progressCallback?: (progress: {
+        type: string;
+        chunkIndex?: number;
+        downloadedBytes?: number;
+        totalBytes?: number;
+        progress?: number;
+        speed?: number;
+        activeChunks?: number;
+    }) => void;
+}
+
+interface ChunkPart {
+    index: number;
+    start: number;
+    end: number;
+}
+
+interface ChunkResult {
+    chunkIndex: number;
+    file: string;
+    size: number;
+}
+
+interface ProgressInfo {
+    type: string;
+    chunkIndex?: number;
+    downloadedBytes?: number;
+    totalBytes?: number;
+    progress?: number;
+    speed?: number;
+    activeChunks?: number;
+}
+
+function makeRequest(url: string, options: RequestOptions = {}): Promise<Response> {
     return new Promise((resolve, reject) => {
         const urlObj = new URL(url);
         const isHttps = urlObj.protocol === 'https:';
         const client = isHttps ? https : http;
 
-        const requestOptions = {
+        const requestOptions: https.RequestOptions = {
             hostname: urlObj.hostname,
             port: urlObj.port || (isHttps ? 443 : 80),
             path: urlObj.pathname + urlObj.search,
@@ -21,13 +77,12 @@ function makeRequest(url, options = {}) {
         };
 
         const req = client.request(requestOptions, (res) => {
-
             resolve({
                 ok: res.statusCode >= 200 && res.statusCode < 300,
                 status: res.statusCode,
                 statusText: res.statusMessage,
                 headers: {
-                    get: (name) => res.headers[name.toLowerCase()]
+                    get: (name: string) => res.headers[name.toLowerCase()]
                 },
                 body: res
             });
@@ -43,27 +98,34 @@ function makeRequest(url, options = {}) {
     });
 }
 
-
 class MultiThreadDownloader {
-    constructor(options = {}) {
+    private isCancelled: boolean = false;
+    private cancelError: Error | null = null;
+    private maxConcurrency: number = 16;
+    private chunkSize: number = 1024 * 1024 * 2;
+    private timeout: number = 30000;
+    private retryCount: number = 8;
+    private minMultiThreadSize: number = 1024 * 1024 * 2;
+    private progressCallback: ((progress: ProgressInfo) => void) | null = null;
+
+    constructor(options: DownloadOptions = {}) {
         this.isCancelled = false;
         this.cancelError = null;
-        this.maxConcurrency = options.maxConcurrency || 16; // 最大并发数
-        this.chunkSize = options.chunkSize || 1024 * 1024 * 2; // 每个分片大小 (2MB)
-        this.timeout = options.timeout || 30000; // 超时时间 (30秒)
-        this.retryCount = options.retryCount || 8; // 增加重试次数到8次
+        this.maxConcurrency = options.maxConcurrency || 16;
+        this.chunkSize = options.chunkSize || 1024 * 1024 * 2;
+        this.timeout = options.timeout || 30000;
+        this.retryCount = options.retryCount || 8;
         this.minMultiThreadSize = options.minMultiThreadSize || 1024 * 1024 * 2;
-        this.progressCallback = options.progressCallback || (() => { });
+        this.progressCallback = options.progressCallback || null;
     }
 
-    cancel() {
+    cancel(): void {
         this.isCancelled = true;
         logInfo('[多线程下载] 下载已取消');
         this.cancelError = new Error('下载已取消');
     }
 
-
-    async checkRangeSupport(url) {
+    async checkRangeSupport(url: string): Promise<boolean> {
         try {
             const headResponse = await makeRequest(url, {
                 method: 'HEAD'
@@ -83,25 +145,23 @@ class MultiThreadDownloader {
 
             return isSupported;
         } catch (error) {
-            logWarn('[多线程下载] 检查范围请求支持失败:', error.message);
+            logWarn('[多线程下载] 检查范围请求支持失败:', (error as Error).message);
             return false;
         }
     }
 
-
-    async getFileSize(url) {
+    async getFileSize(url: string): Promise<number | null> {
         try {
             const response = await makeRequest(url, { method: 'HEAD' });
             const contentLength = response.headers.get('content-length');
             return contentLength ? parseInt(contentLength) : null;
         } catch (error) {
-            logWarn('[多线程下载] 获取文件大小失败:', error.message);
+            logWarn('[多线程下载] 获取文件大小失败:', (error as Error).message);
             return null;
         }
     }
 
-
-    async downloadChunk(url, start, end, chunkIndex, tempDir) {
+    async downloadChunk(url: string, start: number, end: number, chunkIndex: number, tempDir: string): Promise<ChunkResult> {
         const chunkFile = path.join(tempDir, `chunk_${chunkIndex}.tmp`);
         let retries = 0;
 
@@ -122,26 +182,25 @@ class MultiThreadDownloader {
                 }
 
                 if (response.status !== 206) {
-                    // 服务器忽略了 Range 头并返回完整文件。若继续写入，每个分片都会得到
-                    // 整份文件，合并后大小会变成 N 倍。必须中止并回退到单线程下载。
                     const rangeError = new Error(`服务器未按范围请求返回数据（HTTP ${response.status}）`);
-                    rangeError.code = 'RANGE_NOT_SUPPORTED';
-                    try { response.body.destroy(); } catch (_) { }
+                    (rangeError as Record<string, unknown>).code = 'RANGE_NOT_SUPPORTED';
+                    try { (response.body as { destroy?: () => void }).destroy?.(); } catch (_) { }
                     throw rangeError;
                 }
 
                 const writer = fs.createWriteStream(chunkFile);
                 let downloadedBytes = 0;
 
-                return new Promise((resolve, reject) => {
-                    response.body.on('data', (chunk) => {
+                return new Promise<ChunkResult>((resolve, reject) => {
+                    const body = response.body as { on: (event: string, listener: (...args: unknown[]) => void) => void };
+                    body.on('data', (chunk: Buffer) => {
                         if (this.isCancelled) {
                             writer.end(() => {
                                 if (fs.existsSync(chunkFile)) {
-                                    fs.unlinkSync(chunkFile); // 清理文件
+                                    fs.unlinkSync(chunkFile);
                                 }
                             });
-                            response.body.destroy();
+                            body.destroy?.();
                             return reject(this.cancelError || new Error('下载已取消'));
                         }
                         writer.write(chunk);
@@ -157,15 +216,15 @@ class MultiThreadDownloader {
                         }
                     });
 
-                    response.body.on('end', () => {
-                        writer.end((error) => {
+                    body.on('end', () => {
+                        writer.end((error: Error | null) => {
                             if (error) {
                                 reject(error);
                             } else {
                                 const expectedBytes = end - start + 1;
                                 if (downloadedBytes !== expectedBytes) {
                                     const sizeError = new Error(`分片 ${chunkIndex} 大小异常（${downloadedBytes}/${expectedBytes}）`);
-                                    sizeError.code = 'RANGE_SIZE_MISMATCH';
+                                    (sizeError as Record<string, unknown>).code = 'RANGE_SIZE_MISMATCH';
                                     return reject(sizeError);
                                 }
                                 logInfo(`[多线程下载] 分片 ${chunkIndex} 下载完成`);
@@ -174,7 +233,7 @@ class MultiThreadDownloader {
                         });
                     });
 
-                    response.body.on('error', (error) => {
+                    body.on('error', (error: Error) => {
                         if (this.isCancelled) {
                             return reject(this.cancelError);
                         }
@@ -184,7 +243,7 @@ class MultiThreadDownloader {
                         reject(error);
                     });
 
-                    writer.on('error', (error) => {
+                    writer.on('error', (error: Error) => {
                         if (this.isCancelled) {
                             return reject(this.cancelError);
                         }
@@ -193,8 +252,8 @@ class MultiThreadDownloader {
                 });
 
             } catch (error) {
-                // 服务器不支持/忽略 Range 时重试没有意义，直接向上抛出以便回退单线程。
-                if (error.code === 'RANGE_NOT_SUPPORTED' || error.code === 'RANGE_SIZE_MISMATCH') {
+                const err = error as Record<string, unknown>;
+                if (err.code === 'RANGE_NOT_SUPPORTED' || err.code === 'RANGE_SIZE_MISMATCH') {
                     if (fs.existsSync(chunkFile)) {
                         try { fs.unlinkSync(chunkFile); } catch (_) { }
                     }
@@ -203,47 +262,47 @@ class MultiThreadDownloader {
 
                 retries++;
 
-                const isNetworkError = error.code === 'ECONNRESET' ||
-                    error.code === 'ENOTFOUND' ||
-                    error.code === 'ETIMEDOUT' ||
-                    error.code === 'ECONNREFUSED' ||
-                    error.message.includes('aborted') ||
-                    error.message.includes('timeout');
+                const isNetworkError = err.code === 'ECONNRESET' ||
+                    err.code === 'ENOTFOUND' ||
+                    err.code === 'ETIMEDOUT' ||
+                    err.code === 'ECONNREFUSED' ||
+                    (err.message as string).includes('aborted') ||
+                    (err.message as string).includes('timeout');
 
                 if (isNetworkError) {
-                    logWarn(`[多线程下载] 分片 ${chunkIndex} 网络错误 (尝试 ${retries}/${this.retryCount}):`, error.code || error.message);
+                    logWarn(`[多线程下载] 分片 ${chunkIndex} 网络错误 (尝试 ${retries}/${this.retryCount}):`, err.code || err.message);
                 } else {
-                    logWarn(`[多线程下载] 分片 ${chunkIndex} 下载失败 (尝试 ${retries}/${this.retryCount}):`, error.message);
+                    logWarn(`[多线程下载] 分片 ${chunkIndex} 下载失败 (尝试 ${retries}/${this.retryCount}):`, err.message);
                 }
 
                 if (fs.existsSync(chunkFile)) {
                     try {
                         fs.unlinkSync(chunkFile);
                     } catch (cleanupError) {
-                        logWarn(`[多线程下载] 清理失败分片文件出错:`, cleanupError.message);
+                        logWarn(`[多线程下载] 清理失败分片文件出错:`, (cleanupError as Error).message);
                     }
                 }
 
                 if (retries >= this.retryCount) {
-                    throw new Error(`分片 ${chunkIndex} 下载失败: ${error.message}`);
+                    throw new Error(`分片 ${chunkIndex} 下载失败: ${err.message}`);
                 }
 
-                let delay;
+                let delay: number;
                 if (isNetworkError) {
-                    delay = Math.pow(2, retries) * 1000; // 2s, 4s, 8s, 16s
+                    delay = Math.pow(2, retries) * 1000;
                     logInfo(`[多线程下载] 分片 ${chunkIndex} 网络错误，将在 ${delay / 1000}s 后重试`);
                 } else {
-                    delay = Math.pow(2, retries - 1) * 1000; // 1s, 2s, 4s, 8s
+                    delay = Math.pow(2, retries - 1) * 1000;
                     logInfo(`[多线程下载] 分片 ${chunkIndex} 将在 ${delay / 1000}s 后重试`);
                 }
 
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
+        throw new Error('Unexpected exit from retry loop');
     }
 
-
-    async mergeChunks(chunks, outputFile) {
+    async mergeChunks(chunks: ChunkResult[], outputFile: string): Promise<void> {
         logInfo('[多线程下载] 开始合并分片文件');
 
         const writer = fs.createWriteStream(outputFile);
@@ -256,12 +315,12 @@ class MultiThreadDownloader {
                 try {
                     fs.unlinkSync(chunk.file);
                 } catch (error) {
-                    logWarn(`[多线程下载] 删除临时文件失败:`, error.message);
+                    logWarn(`[多线程下载] 删除临时文件失败:`, (error as Error).message);
                 }
             }
 
-            await new Promise((resolve, reject) => {
-                writer.end((error) => {
+            await new Promise<void>((resolve, reject) => {
+                writer.end((error: Error | null) => {
                     if (error) reject(error);
                     else resolve();
                 });
@@ -275,21 +334,20 @@ class MultiThreadDownloader {
         }
     }
 
-
-    async downloadSingleThread(url, outputFile) {
+    async downloadSingleThread(url: string, outputFile: string): Promise<void> {
         logInfo('[多线程下载] 使用单线程下载模式');
 
         const maxAttempts = Math.max(1, this.retryCount);
         let attempt = 0;
-        let lastError = null;
+        let lastError: Error | null = null;
 
         while (attempt < maxAttempts) {
             attempt++;
             if (this.isCancelled) throw new Error('下载已取消');
 
-            let response = null;
-            let writer = null;
-            let inactivityTimer = null;
+            let response: Response | null = null;
+            let writer: fs.WriteStream | null = null;
+            let inactivityTimer: NodeJS.Timeout | null = null;
             let finished = false;
 
             try {
@@ -311,7 +369,7 @@ class MultiThreadDownloader {
                 const resetInactivityTimer = () => {
                     if (inactivityTimer) clearTimeout(inactivityTimer);
                     inactivityTimer = setTimeout(() => {
-                        try { response.body.destroy(new Error('下载超时(无数据)')); } catch (_) { }
+                        try { (response.body as { destroy?: (err?: Error) => void }).destroy?.(new Error('下载超时(无数据)')); } catch (_) { }
                     }, this.timeout);
                 };
 
@@ -321,14 +379,15 @@ class MultiThreadDownloader {
                     if (finished) return;
                     finished = true;
                     if (inactivityTimer) clearTimeout(inactivityTimer);
-                    try { writer.end(() => { }); } catch (_) { }
+                    try { writer?.end(() => { }); } catch (_) { }
                 };
 
-                await new Promise((resolve, reject) => {
-                    response.body.on('data', (chunk) => {
+                await new Promise<void>((resolve, reject) => {
+                    const body = response.body as { on: (event: string, listener: (...args: unknown[]) => void) => void };
+                    body.on('data', (chunk: Buffer) => {
                         if (this.isCancelled) {
-                            try { writer.end(() => { if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile); }); } catch (_) { }
-                            try { response.body.destroy(); } catch (_) { }
+                            try { writer?.end(() => { if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile); }); } catch (_) { }
+                            try { body.destroy?.(); } catch (_) { }
                             return reject(this.cancelError || new Error('下载已取消'));
                         }
 
@@ -343,7 +402,7 @@ class MultiThreadDownloader {
                         downloadedBytes += chunk.length;
 
                         const now = Date.now();
-                        if (now - lastProgressTime > 500) { // 每500ms报告一次进度
+                        if (now - lastProgressTime > 500) {
                             const progress = totalSize > 0 ? (downloadedBytes / totalSize) * 100 : 0;
                             const elapsed = (now - startTime) / 1000;
                             const speed = elapsed > 0 ? (downloadedBytes / elapsed) : 0;
@@ -364,7 +423,7 @@ class MultiThreadDownloader {
                         }
                     });
 
-                    response.body.on('end', () => {
+                    body.on('end', () => {
                         finishSuccessfully();
                         const elapsed = Math.max(0.001, (Date.now() - startTime) / 1000);
                         if (this.progressCallback) {
@@ -379,13 +438,13 @@ class MultiThreadDownloader {
                         resolve();
                     });
 
-                    response.body.on('close', () => {
+                    body.on('close', () => {
                         if (!finished) {
                             return reject(new Error('连接关闭但未完成下载'));
                         }
                     });
 
-                    response.body.on('error', (error) => {
+                    body.on('error', (error: Error) => {
                         if (this.isCancelled) {
                             return reject(this.cancelError);
                         }
@@ -393,7 +452,7 @@ class MultiThreadDownloader {
                         reject(error);
                     });
 
-                    writer.on('error', (error) => {
+                    writer.on('error', (error: Error) => {
                         if (this.isCancelled) {
                             return reject(this.cancelError);
                         }
@@ -416,8 +475,8 @@ class MultiThreadDownloader {
                 }
                 return;
             } catch (error) {
-                lastError = error;
-                logWarn(`[单线程下载] 失败(尝试 ${attempt}/${maxAttempts}):`, error?.message || String(error));
+                lastError = error as Error;
+                logWarn(`[单线程下载] 失败(尝试 ${attempt}/${maxAttempts}):`, (error as Error)?.message || String(error));
                 try { if (writer && !writer.destroyed) writer.destroy(); } catch (_) { }
                 try { if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile); } catch (_) { }
                 if (attempt < maxAttempts) {
@@ -434,8 +493,7 @@ class MultiThreadDownloader {
         throw lastError || new Error('单线程下载失败');
     }
 
-
-    async download(url, outputFile, options = {}) {
+    async download(url: string, outputFile: string, options: DownloadOptions = {}): Promise<void> {
         const startTime = Date.now();
         logInfo(`[多线程下载] 开始下载: ${url}`);
 
@@ -479,7 +537,7 @@ class MultiThreadDownloader {
             }
             try {
                 const totalParts = Math.ceil(fileSize / this.chunkSize);
-                const parts = [];
+                const parts: ChunkPart[] = [];
                 for (let i = 0; i < totalParts; i++) {
                     const start = i * this.chunkSize;
                     const end = Math.min(start + this.chunkSize - 1, fileSize - 1);
@@ -510,13 +568,13 @@ class MultiThreadDownloader {
                     }
                 };
 
-                const enhancedProgressCallback = (progress) => {
+                const enhancedProgressCallback = (progress: ProgressInfo) => {
                     if (progress.type === 'chunk') {
                         const safeDownloaded = Math.min(
                             typeof progress.downloadedBytes === 'number' ? progress.downloadedBytes : 0,
                             typeof progress.totalBytes === 'number' && isFinite(progress.totalBytes) ? progress.totalBytes : Infinity
                         );
-                        chunkProgress[progress.chunkIndex] = safeDownloaded;
+                        chunkProgress[progress.chunkIndex as number] = safeDownloaded;
                         const now = Date.now();
                         if (now - lastProgressReport > 500) {
                             reportMultiThreadProgress();
@@ -527,7 +585,7 @@ class MultiThreadDownloader {
 
                 this.progressCallback = enhancedProgressCallback;
 
-                const results = new Array(totalParts);
+                const results = new Array<ChunkResult | undefined>(totalParts);
                 let cursor = 0;
 
                 const runWorker = async () => {
@@ -565,7 +623,7 @@ class MultiThreadDownloader {
                     });
                 }
 
-                const completedChunks = results.filter(Boolean);
+                const completedChunks = results.filter(Boolean) as ChunkResult[];
                 logInfo(`[多线程下载] 分片全部完成，准备合并 ${completedChunks.length} 个分片`);
                 await this.mergeChunks(completedChunks, outputFile);
 
@@ -579,7 +637,7 @@ class MultiThreadDownloader {
                 try {
                     fs.rmSync(tempDir, { recursive: true, force: true });
                 } catch (error) {
-                    logWarn('[多线程下载] 清理临时目录失败:', error.message);
+                    logWarn('[多线程下载] 清理临时目录失败:', (error as Error).message);
                 }
 
             } catch (error) {
@@ -588,10 +646,11 @@ class MultiThreadDownloader {
                         fs.rmSync(tempDir, { recursive: true, force: true });
                     }
                 } catch (cleanupError) {
-                    logWarn('[多线程下载] 清理临时目录失败:', cleanupError.message);
+                    logWarn('[多线程下载] 清理临时目录失败:', (cleanupError as Error).message);
                 }
-                if (error && (error.code === 'RANGE_NOT_SUPPORTED' || error.code === 'RANGE_SIZE_MISMATCH')) {
-                    logWarn('[多线程下载] 服务器未正确支持范围请求，回退到单线程下载:', error.message);
+                const err = error as Record<string, unknown>;
+                if (err.code === 'RANGE_NOT_SUPPORTED' || err.code === 'RANGE_SIZE_MISMATCH') {
+                    logWarn('[多线程下载] 服务器未正确支持范围请求，回退到单线程下载:', err.message);
                     try { if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile); } catch (_) { }
                     await this.downloadSingleThread(url, outputFile);
                     return;
@@ -613,8 +672,7 @@ class MultiThreadDownloader {
         }
     }
 
-
-    async verifyFile(filePath, expectedMd5) {
+    async verifyFile(filePath: string, expectedMd5: string): Promise<boolean> {
         if (!expectedMd5) return true;
 
         try {
@@ -622,10 +680,10 @@ class MultiThreadDownloader {
             const actualMd5 = crypto.createHash('md5').update(fileBuffer).digest('hex');
             return actualMd5 === expectedMd5;
         } catch (error) {
-            logError('[多线程下载] 文件验证失败:', error.message);
+            logError('[多线程下载] 文件验证失败:', (error as Error).message);
             return false;
         }
     }
 }
 
-module.exports = MultiThreadDownloader;
+export default MultiThreadDownloader;
