@@ -1,4 +1,3 @@
-// @ts-nocheck
 class CompilerSettings {
     settings: any;
     isMacPlatform: any;
@@ -116,7 +115,7 @@ class CompilerSettings {
             });
         }
         
-        const installBtn = document.getElementById('install-compiler');
+        const installBtn = document.getElementById('install-compiler') as HTMLButtonElement;
         if (installBtn) {
             this.getCurrentPlatform().then(p => {
                 if (p !== 'windows') {
@@ -273,7 +272,7 @@ class CompilerSettings {
             this.isIntegratedOnlyPlatform = isIntegratedOnlyPlatform;
             const allSettings = await window.electronAPI.getAllSettings();
             if (allSettings) {
-                const loadedCompilerArgs = allSettings.compilerArgs || (isMacPlatform ? '-std=c++14 -O2' : '-std=c++14 -O2 -static');
+                const loadedCompilerArgs = (allSettings.compilerArgs || (isMacPlatform ? '-std=c++14 -O2' : '-std=c++14 -O2 -static')) as string;
                 this.settings = {
                     compilerPath: allSettings.compilerPath || '',
                     pythonInterpreterPath: allSettings.pythonInterpreterPath || '',
@@ -578,7 +577,7 @@ class CompilerSettings {
     async resetSettings() {
         try {
             if (window.electronAPI && window.electronAPI.resetSettings) {
-                const result = await window.electronAPI.resetSettings();
+                const result = (await window.electronAPI.resetSettings()) as { success?: boolean; error?: string } | undefined;
                 if (result.success) {
                     await this.loadSettings();
                     this.updateUI();
@@ -1150,8 +1149,9 @@ class CompilerSettings {
         renderTestResult('testing', '正在测试 Testlib 环境...');
         
         try {
-            if (window.electronAPI && window.electronAPI.testTestlib) {
-                const result = await window.electronAPI.testTestlib(testlibPath);
+            const ea = window.electronAPI as { testTestlib?: (opts: { url: string; version: string; name: string }) => Promise<{ success?: boolean; testlibPath?: string; error?: string }> } | undefined;
+            if (ea?.testTestlib) {
+                const result = await ea.testTestlib({ url: testlibPath, version: '', name: '' });
                 
                 if (result.success) {
                     renderTestResult('success', 'Testlib 测试成功！');

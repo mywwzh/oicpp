@@ -1,4 +1,3 @@
-// @ts-nocheck
 class LspClientBridge {
     _ready: any;
     _readyPromise: any;
@@ -27,7 +26,7 @@ class LspClientBridge {
                 return;
             }
             if (payload.method === 'textDocument/publishDiagnostics') {
-                const params = payload.params || {};
+                const params = (payload.params || {}) as { uri?: string; diagnostics?: any[] };
                 const uri = params.uri || '';
                 const diagnostics = Array.isArray(params.diagnostics) ? params.diagnostics : [];
                 this._diagnosticListeners.forEach((listener) => {
@@ -40,7 +39,7 @@ class LspClientBridge {
         });
     }
 
-    async start(options = {}) {
+    async start(options: { workspaceRoot?: string; clangdArgs?: any[]; fallbackFlags?: any[]; compilerPath?: string; rootUri?: string } = {}) {
         if (this._readyPromise) {
             return this._readyPromise;
         }
@@ -52,7 +51,7 @@ class LspClientBridge {
         return this._readyPromise;
     }
 
-    async restart(options = {}) {
+    async restart(options: { workspaceRoot?: string; clangdArgs?: any[]; fallbackFlags?: any[]; compilerPath?: string; rootUri?: string } = {}) {
         this._ready = false;
         this._readyPromise = null;
         this._readyPromise = this._restartInternal(options).catch((err) => {
@@ -62,7 +61,7 @@ class LspClientBridge {
         return this._readyPromise;
     }
 
-    async _restartInternal(options = {}) {
+    async _restartInternal(options: { workspaceRoot?: string; clangdArgs?: any[]; fallbackFlags?: any[]; compilerPath?: string; rootUri?: string } = {}) {
         const api = window.electronAPI;
         if (!api) {
             throw new Error('LSP API unavailable');
@@ -98,7 +97,7 @@ class LspClientBridge {
         return await this._startInternal(options);
     }
 
-    async _startInternal(options = {}) {
+    async _startInternal(options: { workspaceRoot?: string; clangdArgs?: any[]; fallbackFlags?: any[]; compilerPath?: string; rootUri?: string; workspaceName?: string } = {}) {
         const api = window.electronAPI;
         if (!api || typeof api.lspStart !== 'function') {
             logError('[LSP] LSP API 不可用，无法启动');
@@ -149,7 +148,7 @@ class LspClientBridge {
         return await this._finishStartup(startResult, options, api, effectiveFallbackFlags);
     }
 
-    async _finishStartup(startResult, options = {}, api = window.electronAPI, effectiveFallbackFlags = null) {
+    async _finishStartup(startResult, options: { rootUri?: string; workspaceName?: string; fallbackFlags?: any[] } = {}, api = window.electronAPI, effectiveFallbackFlags = null) {
         const rootUri = options.rootUri || '';
         const workspaceFolders = rootUri
             ? [{ uri: rootUri, name: options.workspaceName || 'workspace' }]
@@ -226,7 +225,7 @@ class LspClientBridge {
         this._serverCapabilities = initResult && initResult.capabilities ? initResult.capabilities : null;
         this._semanticTokensLegend = this._serverCapabilities?.semanticTokensProvider?.legend || null;
 
-        const serverInfo = initResult?.serverInfo || {};
+        const serverInfo = (initResult?.serverInfo || {}) as { name?: string; version?: string };
         logInfo('[LSP] 初始化完成, 服务器:', serverInfo.name || 'clangd', '版本:', serverInfo.version || '?');
         if (this._semanticTokensLegend) {
             logInfo('[LSP] 语义令牌支持: ' + (this._semanticTokensLegend.tokenTypes?.length || 0) + ' 种类型, ' + (this._semanticTokensLegend.tokenModifiers?.length || 0) + ' 种修饰符');
@@ -255,7 +254,7 @@ class LspClientBridge {
         if (!api || typeof api.lspNotify !== 'function') {
             throw new Error('LSP notify API unavailable');
         }
-        const result = await api.lspNotify(method, params);
+        const result = (await api.lspNotify(method, params)) as { ok?: boolean; error?: string } | undefined;
         // 检查通知是否发送成功（进程可能已停止）
         if (result && result.ok === false) {
             logWarn('[LSP] 通知发送失败 (' + method + '):', result.error || '未知错误');

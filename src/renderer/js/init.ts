@@ -1,4 +1,3 @@
-// @ts-nocheck
 document.addEventListener('DOMContentLoaded', function() {
     logInfo('DOM 加载完成，开始初始化应用...');
     setUserIconPath();
@@ -47,7 +46,7 @@ async function setUserIconPath() {
 async function initializeApp() {
     try {
         logInfo('初始化标题栏管理器...');
-        window.titlebarManager = new TitlebarManager();
+        window.titlebarManager = new (window.TitlebarManager as any)();
   
         logInfo('初始化侧边栏管理器...');
         window.sidebarManager = new SidebarManager();
@@ -72,7 +71,7 @@ async function initializeApp() {
         window.tabManager = new TabManager();
 
         logInfo('初始化主应用...');
-        window.oicppApp = new OICPPApp();
+        window.oicppApp = new (window as any).OICPPApp();
         logInfo('OICPPApp 实例已创建');
         await window.oicppApp.init();
    
@@ -121,7 +120,7 @@ async function initializeApp() {
 function setupDefaultContent() {
     setTimeout(function() {
         try {
-            const fileExplorer = window.sidebarManager?.getPanelManager?.('files');
+            const fileExplorer = window.sidebarManager?.getPanelManager?.('files') as { hasWorkspace?: boolean } | undefined;
             const hasWorkspace = !!(fileExplorer && fileExplorer.hasWorkspace);
             if (hasWorkspace) {
                 logInfo('检测到已打开工作区，跳过欢迎页面');
@@ -138,8 +137,8 @@ function setupDefaultContent() {
             }
         } catch (error) {
             logError('显示欢迎页面时出错:', error);
-            if (window.tabManager && typeof window.tabManager.createNewCppFile === 'function') {
-                window.tabManager.createNewCppFile();
+            if (window.tabManager && typeof (window.tabManager as { createNewCppFile?: () => void }).createNewCppFile === 'function') {
+                (window.tabManager as { createNewCppFile: () => void }).createNewCppFile();
             }
         }
     }, 1000); 

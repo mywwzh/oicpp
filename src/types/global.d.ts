@@ -20,7 +20,6 @@ interface Window {
     // electronAPI (contextBridge)
     electronAPI?: {
         getIdeLoginStatus?: () => Promise<{ loggedIn?: boolean; user?: { username?: string } }>;
-        clipboardWriteText?: (text: string) => void;
         browserResolveUrl?: (url: string) => string;
         readFileContent?: (filePath: string) => Promise<string>;
         onRequestSaveAll?: (cb: () => Promise<unknown>) => void;
@@ -30,7 +29,7 @@ interface Window {
         send?: (channel: string, ...args: unknown[]) => void;
         saveAsFile?: (content: string, filePath?: string) => Promise<unknown>;
         on?: (channel: string, listener: (...args: unknown[]) => void) => void;
-        walkDirectory?: (root: string, options?: { excludeGlobs?: string[] }) => Promise<{ success?: boolean; files?: Array<{ name: string; path: string }> }>;
+        walkDirectory?: (root: string, options?: { excludeGlobs?: string[]; includeExts?: string[] }) => Promise<{ success?: boolean; error?: string; files?: Array<{ name: string; path: string; ext?: string }> }>;
         getAllSettings?: () => Promise<Record<string, unknown>>;
         updateSettings?: (settings: Record<string, unknown>) => Promise<{ success?: boolean; error?: string }>;
         getLanguage?: () => Promise<string>;
@@ -38,7 +37,7 @@ interface Window {
         openFileDialog?: (opts: { title?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<{ canceled?: boolean; filePaths?: string[] }>;
         saveFileDialog?: (opts: { title?: string; defaultPath?: string }) => Promise<{ canceled?: boolean; filePath?: string }>;
         readFile?: (filePath: string) => Promise<string>;
-        writeFile?: (filePath: string, content: string) => Promise<unknown>;
+        writeFile?: (filePath: string, content: string) => Promise<{ success?: boolean; error?: string }>;
         getSettings?: () => Promise<Record<string, unknown>>;
         onLanguageChanged?: (cb: (langCode: string) => void) => void;
         getAvailableLanguages?: () => Promise<string[]>;
@@ -62,6 +61,8 @@ interface Window {
         openExternal?: (url: string) => Promise<unknown>;
         clipboardWriteText?: (text: string) => Promise<{ success?: boolean }>;
         clipboardReadText?: () => Promise<{ success?: boolean; text?: string }>;
+        readDirectory?: (dirPath: string) => Promise<{ entries?: Array<{ name: string; path: string; isDirectory?: boolean }> }>;
+        ensureDirectory?: (dirPath: string) => Promise<unknown>;
         pathDirname?: (p: string) => Promise<string>;
         downloadCompiler?: (opts: { url: string; version: string; name: string }) => Promise<{ success?: boolean; compilerPath?: string; error?: string }>;
         selectCompiler?: (version: string) => Promise<{ success?: boolean; compilerPath?: string; error?: string }>;
@@ -74,6 +75,51 @@ interface Window {
         saveSetting?: (key: string, value: string) => Promise<unknown>;
         runCommandVersionProbe?: (cmd: string, args: string[], options?: { env?: Record<string, string>; timeoutMs?: number }) => Promise<{ ok: boolean; output: string; message: string }>;
         onSampleTesterCreateProblem?: (cb: (data: Record<string, unknown>) => void) => void;
+        onBrowserOpenNewTab?: (cb: (request: { url?: string; sourceWebContentsId?: number }) => void) => (() => void);
+        ipcRenderer?: {
+            send?: (channel: string, ...args: unknown[]) => void;
+        };
+        showOpenDialog?: (opts?: { title?: string; filters?: Array<{ name: string; extensions: string[] }>; properties?: string[]; defaultPath?: string }) => Promise<{ canceled?: boolean; filePaths?: string[] }>;
+        showSaveDialog?: (opts?: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<{ canceled?: boolean; filePath?: string }>;
+        resetSettings?: () => Promise<unknown>;
+        getUserHome?: () => Promise<string>;
+        testTestlib?: (opts: { url: string; version: string; name: string }) => Promise<{ success?: boolean; testlibPath?: string; error?: string }>;
+        openCompilerSettings?: () => Promise<unknown>;
+        deleteTempFile?: (path: string) => Promise<unknown>;
+        pathJoin?: (...parts: string[]) => string;
+        ensureDir?: (dirPath: string) => Promise<unknown>;
+        compileFile?: (opts: Record<string, unknown>) => Promise<{ success?: boolean; stderr?: string; stdout?: string }>;
+        checkFileExists?: (path: string) => Promise<boolean>;
+        getPathInfo?: (path: string) => Promise<{ dirname?: string; [key: string]: unknown }>;
+        getHomeDir?: () => Promise<string>;
+        dirname?: (path: string) => string;
+        runProgram?: (opts: Record<string, unknown>, input?: string, timeLimit?: number) => Promise<{ output?: string; outputLimitExceeded?: boolean; outputLimitBytes?: number; exitCode?: number; stderr?: string; timeout?: boolean; time?: number; capturedOutputBytes?: number; observedOutputBytes?: number }>;
+        deleteFile?: (path: string) => Promise<unknown>;
+        saveTempFile?: (filename: string, content: string) => Promise<string>;
+        getCpuThreads?: () => Promise<number>;
+        createFile?: (filename: string, content?: string) => Promise<unknown>;
+        readFileBuffer?: (filePath: string) => Promise<{ data?: ArrayBuffer | Uint8Array }>;
+        saveFile?: (path: string, content?: string) => Promise<{ success?: boolean; error?: string }>;
+        getEncodedToken?: () => Promise<string | null>;
+        cloudSyncRequest?: (payload: { method: string; path: string; query?: unknown; body?: unknown }) => Promise<{ ok?: boolean; status?: number; data?: { msg?: string; code?: number; }; error?: string }>;
+        logoutIdeAccount?: () => Promise<unknown>;
+        onIdeLoginUpdated?: (cb: (status: { loggedIn?: boolean; user?: { username?: string } }) => void) => void;
+        onIdeLoginError?: (cb: (err: unknown) => void) => void;
+        startIdeLogin?: () => Promise<unknown>;
+        onMenuSaveFile?: (cb: () => void) => void;
+        onMenuNewTempFile?: (cb: () => void) => void;
+        onMenuFormatCode?: (cb: () => void) => void;
+        onMenuFindReplace?: (cb: () => void) => void;
+        onMenuCompile?: (cb: () => void) => void;
+        onMenuCompileRun?: (cb: () => void) => void;
+        onMenuOpenTerminal?: (cb: () => void) => void;
+        onMenuOpenFileHistory?: (cb: () => void) => void;
+        onMenuOpenBrowser?: (cb: () => void) => void;
+        onMenuNewBrowserTab?: (cb: () => void) => void;
+        onMenuDebug?: (cb: () => void) => void;
+        onMenuRestoreLayout?: (cb: () => void) => void;
+        onMenuSettings?: (cb: () => void) => void;
+        onMenuAbout?: (cb: () => void) => void;
     };
 
     // electronIPC
@@ -83,6 +129,18 @@ interface Window {
         invoke?: (channel: string, ...args: unknown[]) => Promise<unknown>;
     };
 
+    // electron (remote shell, etc.)
+    electron?: {
+        shell?: {
+            openExternal?: (url: string) => Promise<void>;
+        };
+        ipcRenderer?: {
+            send?: (channel: string, ...args: unknown[]) => void;
+            on?: (channel: string, listener: (...args: unknown[]) => void) => void;
+            invoke?: (channel: string, ...args: unknown[]) => Promise<unknown>;
+        };
+    };
+
     // i18n
     i18n?: {
         init?: () => Promise<void>;
@@ -90,6 +148,7 @@ interface Window {
         t?: (key: string, params?: Record<string, unknown>) => string;
         _applyToDOM?: () => void;
         onChange?: (cb: () => void) => void;
+        getCurrentLanguage?: () => string;
     };
     __?: (key: string, params?: Record<string, unknown>) => string;
 
@@ -97,9 +156,11 @@ interface Window {
     sidebarManager?: {
         panels?: { files?: { currentPath?: string; workspacePath?: string } };
         getPanelManager?: (name: string) => unknown;
+        getCurrentPanel?: () => unknown;
         updateFileExplorerButtons?: () => void;
         checkResizeStatus?: () => void;
         showPanel?: (name: string) => void;
+        setCloudPanelVisible?: (visible: boolean) => void;
     };
 
     // TabManager
@@ -113,6 +174,14 @@ interface Window {
         tabs?: Map<string, unknown>;
         getTabContentForSave?: (tab: unknown) => unknown;
         saveAsFile?: (content: string, filePath?: string) => Promise<unknown>;
+        syncWebviewSize?: () => void;
+        resizeObserver?: unknown;
+        openBrowserTab?: (opts: { url: string; groupId?: string }) => void;
+        activeGroupId?: string;
+        getTabByFileName?: (fileName: string) => unknown;
+        markTabAsSaved?: (tab: unknown) => void;
+        markTabAsSavedByUniqueKey?: (uniqueKey: string) => void;
+        updateTabPathBySource?: (source: string, path: string, newName?: string) => void;
     };
 
     // OICPPApp
@@ -125,6 +194,10 @@ interface Window {
         showMessage?: (message: string, type?: string) => void;
         getActiveFilePath?: () => string | null;
         isCloudFilePath?: (path: string) => boolean;
+        settings?: Record<string, unknown>;
+        startDebug?: (executablePath?: string, sourcePath?: string, options?: Record<string, unknown>) => Promise<void>;
+        openIntegratedTerminalAndRunExecutable?: (executablePath: string, options?: { workingDirectory?: string }) => void;
+        compilerManager?: unknown;
     };
 
     // dialogManager
@@ -134,6 +207,8 @@ interface Window {
         showConfirmDialog?: (title: string, msg: string) => Promise<unknown>;
         showActionDialog?: (title: string, msg: string, buttons: Array<{ id: string; label: string; className?: string }>) => Promise<unknown>;
         showError?: (title: string, msg: string) => void;
+        showInputDialog?: (title: string, msg: string, defaultValue?: string) => Promise<string>;
+        showSaveDialog?: (opts?: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<{ canceled?: boolean; filePath?: string }>;
     };
 
     // Titlebar
@@ -149,6 +224,9 @@ interface Window {
     fontDetector?: {
         validateFont?: (font: string) => string;
     };
+
+    // Font Loading API
+    queryLocalFonts?: () => Promise<Array<{ family: string }>>;
 
     // applySettings / getCurrentSettings / updateSettings
     applySettings?: (settings: Record<string, unknown>) => void;
@@ -220,5 +298,56 @@ interface Window {
         runMode?: string;
     };
 
+    // editorManager
+    editorManager?: {
+        currentEditor?: { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown };
+        getCurrentEditor?: () => { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown };
+        applyDiagnostics?: (diagnostics: unknown[]) => void;
+        clearDiagnostics?: () => void;
+    };
     [key: string]: unknown;
+}
+interface HTMLElement {
+    disabled?: boolean;
+    value?: string;
+    selectStart?: number;
+    selectEnd?: number;
+    offsetTop?: number;
+    offsetHeight?: number;
+    style?: any;
+    src?: string;
+    checked?: boolean;
+    max?: string;
+}
+interface Element {
+    style?: any;
+    disabled?: boolean;
+    dataset?: { [key: string]: string };
+    tabIndex?: number;
+    offsetWidth?: number;
+    offsetHeight?: number;
+    isContentEditable?: boolean;
+    focus(): void;
+}
+interface Event {
+    key?: string;
+    detail?: any;
+    clientX?: number;
+    clientY?: number;
+    target?: any;
+    currentTarget?: EventTarget & { dataset?: { [key: string]: string } };
+    preventDefault?(): void;
+    stopPropagation?(): void;
+}
+interface EventTarget {
+    value?: string;
+    classList?: { add: (c: string) => void; remove: (c: string) => void; contains: (c: string) => boolean };
+    querySelector?: (s: string) => Element | null;
+    dataset?: { [key: string]: string };
+    closest?: (selector: string) => Element | null;
+}
+
+// 允许 window.require 被自定义函数替代
+interface Window {
+    require: any;
 }

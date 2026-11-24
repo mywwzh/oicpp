@@ -1,9 +1,10 @@
-// @ts-nocheck
-﻿class OICPPApp {
+﻿// @ts-nocheck
+class OICPPApp {
     currentFile: any;
     files: any;
     settings: any;
     editorManager: any;
+    compilerManager: any;
     initialized: any;
     accountLoggedIn: any;
     accountInfo: any;
@@ -199,7 +200,7 @@
                     return;
                 }
 
-                if (menuItem.classList.contains('disabled') || menuItem.getAttribute('aria-disabled') === 'true') {
+                if (menuItem.classList.contains('disabled') || (menuItem as HTMLElement).getAttribute('aria-disabled') === 'true') {
                     e.preventDefault();
                     const blockedAction = menuItem.dataset.action;
                     if (blockedAction === 'check-update') {
@@ -1414,7 +1415,7 @@
                 tagName: target?.tagName || null,
                 id: target?.id || null,
                 className: typeof target?.className === 'string' ? target.className : null,
-                role: typeof target?.getAttribute === 'function' ? (target.getAttribute('role') || null) : null,
+                role: typeof target?.getAttribute === 'function' ? ((target as HTMLElement).getAttribute('role') || null) : null,
                 isContentEditable: !!target?.isContentEditable
             };
             const currentEditorInfo = {

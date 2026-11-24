@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { ipcRenderer } from 'electron';
 
 class TemplatesSettings {
@@ -176,10 +175,10 @@ class TemplatesSettings {
             });
         }
         
-        const cppTemplateTextarea = document.getElementById('cpp-template');
+        const cppTemplateTextarea = document.getElementById('cpp-template') as HTMLTextAreaElement;
         if (cppTemplateTextarea) {
             cppTemplateTextarea.addEventListener('input', (e) => {
-                this.settings.cppTemplate = e.target.value;
+                this.settings.cppTemplate = (e.target as HTMLInputElement).value;
                 logInfo('模板内容已更新');
             });
             
@@ -192,12 +191,13 @@ class TemplatesSettings {
                 
                 if (e.key === 'Tab') {
                     e.preventDefault();
-                    const start = e.target.selectionStart;
-                    const end = e.target.selectionEnd;
-                    const value = e.target.value;
+                    const target = e.target as HTMLInputElement;
+                    const start = target.selectionStart;
+                    const end = target.selectionEnd;
+                    const value = target.value;
                     
-                    e.target.value = value.substring(0, start) + '    ' + value.substring(end);
-                    e.target.selectionStart = e.target.selectionEnd = start + 4;
+                    target.value = value.substring(0, start) + '    ' + value.substring(end);
+                    target.selectionStart = target.selectionEnd = start + 4;
                 }
             });
         }
@@ -257,7 +257,7 @@ class TemplatesSettings {
     updateUI() {
         logInfo('更新UI界面');
         
-        const cppTemplateTextarea = document.getElementById('cpp-template');
+        const cppTemplateTextarea = document.getElementById('cpp-template') as HTMLTextAreaElement;
         if (cppTemplateTextarea) {
             cppTemplateTextarea.value = this.settings.cppTemplate;
             logInfo('模板内容已加载到编辑器');
@@ -271,7 +271,7 @@ class TemplatesSettings {
         try {
             logInfo('保存设置中...');
             
-            const cppTemplateTextarea = document.getElementById('cpp-template');
+            const cppTemplateTextarea = document.getElementById('cpp-template') as HTMLTextAreaElement;
             if (!cppTemplateTextarea) {
                 throw new Error('找不到模板编辑器');
             }
@@ -322,7 +322,7 @@ class TemplatesSettings {
                 this.settings.cppTemplate = defaultTemplate;
                 this.snippets = [];
                 
-                const cppTemplateTextarea = document.getElementById('cpp-template');
+                const cppTemplateTextarea = document.getElementById('cpp-template') as HTMLTextAreaElement;
                 if (cppTemplateTextarea) {
                     cppTemplateTextarea.value = defaultTemplate;
                 }
@@ -354,9 +354,9 @@ class TemplatesSettings {
         const dialog = document.getElementById('snippet-dialog');
         if (!dialog) return;
 
-        const kwEl = document.getElementById('snippet-dialog-keyword');
-        const descEl = document.getElementById('snippet-dialog-desc');
-        const contentEl = document.getElementById('snippet-dialog-content');
+        const kwEl = document.getElementById('snippet-dialog-keyword') as HTMLInputElement;
+        const descEl = document.getElementById('snippet-dialog-desc') as HTMLInputElement;
+        const contentEl = document.getElementById('snippet-dialog-content') as HTMLTextAreaElement;
 
         // 如果是编辑模式，加载已有数据
         if (editIndex >= 0 && editIndex < this.snippets.length) {
@@ -364,7 +364,7 @@ class TemplatesSettings {
             if (kwEl) kwEl.value = item.keyword || '';
             if (descEl) descEl.value = item.description || '';
             if (contentEl) contentEl.value = item.content || '';
-            dialog.setAttribute('data-edit-index', editIndex);
+            dialog.setAttribute('data-edit-index', String(editIndex));
             const titleEl = document.getElementById('snippet-dialog-title');
             if (titleEl) titleEl.textContent = '编辑代码片段';
         } else {
@@ -391,9 +391,9 @@ class TemplatesSettings {
     }
 
     confirmSnippetDialog() {
-        const kwEl = document.getElementById('snippet-dialog-keyword');
-        const descEl = document.getElementById('snippet-dialog-desc');
-        const contentEl = document.getElementById('snippet-dialog-content');
+        const kwEl = document.getElementById('snippet-dialog-keyword') as HTMLInputElement;
+        const descEl = document.getElementById('snippet-dialog-desc') as HTMLInputElement;
+        const contentEl = document.getElementById('snippet-dialog-content') as HTMLTextAreaElement;
         const keyword = (kwEl?.value || '').trim();
         const description = (descEl?.value || '').trim() || '用户代码片段';
         const content = (contentEl?.value || '').trim();
@@ -453,9 +453,10 @@ class TemplatesSettings {
         list.innerHTML = rows;
         list.querySelectorAll('button[data-action]')?.forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const row = e.target.closest('.snippet-row');
-                const idx = parseInt(row?.dataset.index || '-1', 10);
-                const action = e.target.dataset.action;
+                const target = e.target as HTMLElement;
+                const row = target.closest('.snippet-row');
+                const idx = parseInt((row as HTMLElement)?.dataset.index || '-1', 10);
+                const action = target.dataset.action;
                 if (Number.isNaN(idx) || idx < 0) return;
                 if (action === 'delete') {
                     this.snippets.splice(idx, 1);
@@ -479,7 +480,7 @@ class TemplatesSettings {
     showPreview() {
         logInfo('显示模板预览');
         
-        const cppTemplateTextarea = document.getElementById('cpp-template');
+        const cppTemplateTextarea = document.getElementById('cpp-template') as HTMLTextAreaElement;
         if (!cppTemplateTextarea) {
             this.showMessage('找不到模板内容', 'error');
             return;

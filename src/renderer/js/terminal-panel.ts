@@ -1,4 +1,3 @@
-// @ts-nocheck
 // 终端渲染 oh-my-posh 等主题时需要 Nerd Font 图标字体。
 // 这些字体不一定安装，浏览器会自动跳过不可用的字体，因此可以安全地作为回退链使用。
 // 仅使用单宽（Mono）变体，避免图标按双宽渲染导致提示符错位。
@@ -48,7 +47,7 @@ class IntegratedTerminalPanel {
     _dragState: any;
     fixedTerminalFontSize: any;
     _resizeObserver: any;
-    constructor(options = {}) {
+    constructor(options: { getApp?: () => any } = {}) {
         this.getApp = typeof options.getApp === 'function' ? options.getApp : () => null;
         this.sessions = new Map();
         this.activeId = null;
@@ -208,7 +207,7 @@ class IntegratedTerminalPanel {
         // Status line intentionally removed from UI.
     }
 
-    async open(options = {}) {
+    async open(options: { forceCreate?: boolean; createIfNone?: boolean } = {}) {
         await this.init();
         await this.refreshFeatureStatus();
 
@@ -357,7 +356,7 @@ class IntegratedTerminalPanel {
         this.applyTerminalFontSettings();
     }
 
-    async createTerminal(options = {}) {
+    async createTerminal(options: { cwd?: string } = {}) {
         if (!this.status.available) {
             this.renderEmptyState();
             return;
@@ -960,7 +959,7 @@ class IntegratedTerminalPanel {
         return `${quoted}\r`;
     }
 
-    async runExecutableInNewTerminal(executablePath, options = {}) {
+    async runExecutableInNewTerminal(executablePath: string, options: { workingDirectory?: string } = {}) {
         if (!executablePath) {
             throw new Error(window.i18n ? window.i18n.t('panel.terminalExePathEmpty') : '可执行文件路径为空');
         }

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as fs from 'fs';
 import * as path from 'path';
 import { Worker } from 'worker_threads';
@@ -82,7 +81,7 @@ function makeRequest(url: string, options: RequestOptions = {}): Promise<Respons
                 status: res.statusCode,
                 statusText: res.statusMessage,
                 headers: {
-                    get: (name: string) => res.headers[name.toLowerCase()]
+                    get: (name: string) => res.headers[name.toLowerCase()] as string,
                 },
                 body: res
             });
@@ -183,7 +182,7 @@ class MultiThreadDownloader {
 
                 if (response.status !== 206) {
                     const rangeError = new Error(`服务器未按范围请求返回数据（HTTP ${response.status}）`);
-                    (rangeError as Record<string, unknown>).code = 'RANGE_NOT_SUPPORTED';
+                    (rangeError as unknown as Record<string, unknown>).code = 'RANGE_NOT_SUPPORTED';
                     try { (response.body as { destroy?: () => void }).destroy?.(); } catch (_) { }
                     throw rangeError;
                 }
@@ -200,7 +199,7 @@ class MultiThreadDownloader {
                                     fs.unlinkSync(chunkFile);
                                 }
                             });
-                            body.destroy?.();
+                            (body as { destroy?: () => void }).destroy?.();
                             return reject(this.cancelError || new Error('下载已取消'));
                         }
                         writer.write(chunk);
@@ -224,7 +223,7 @@ class MultiThreadDownloader {
                                 const expectedBytes = end - start + 1;
                                 if (downloadedBytes !== expectedBytes) {
                                     const sizeError = new Error(`分片 ${chunkIndex} 大小异常（${downloadedBytes}/${expectedBytes}）`);
-                                    (sizeError as Record<string, unknown>).code = 'RANGE_SIZE_MISMATCH';
+                                    (sizeError as unknown as Record<string, unknown>).code = 'RANGE_SIZE_MISMATCH';
                                     return reject(sizeError);
                                 }
                                 logInfo(`[多线程下载] 分片 ${chunkIndex} 下载完成`);
@@ -383,7 +382,7 @@ class MultiThreadDownloader {
                 };
 
                 await new Promise<void>((resolve, reject) => {
-                    const body = response.body as { on: (event: string, listener: (...args: unknown[]) => void) => void };
+                    const body = response.body as { on: (event: string, listener: (...args: unknown[]) => void) => void; destroy?: () => void; pause?: () => void; resume?: () => void };
                     body.on('data', (chunk: Buffer) => {
                         if (this.isCancelled) {
                             try { writer?.end(() => { if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile); }); } catch (_) { }
@@ -394,9 +393,9 @@ class MultiThreadDownloader {
                         resetInactivityTimer();
                         const canContinue = writer.write(chunk);
                         if (!canContinue) {
-                            response.body.pause();
+                            body.pause?.();
                             writer.once('drain', () => {
-                                try { response.body.resume(); } catch (_) { }
+                                try { body.resume?.(); } catch (_) { }
                             });
                         }
                         downloadedBytes += chunk.length;

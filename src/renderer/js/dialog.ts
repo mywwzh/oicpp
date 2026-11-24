@@ -1,4 +1,3 @@
-// @ts-nocheck
 export default class DialogManager {
     currentDialog: any;
     _keydownHandler: any;
@@ -63,7 +62,7 @@ export default class DialogManager {
         }
     }
 
-    showInputDialog(title, defaultValue = '', placeholder = '', options = {}) {
+    showInputDialog(title, defaultValue = '', placeholder = '', options: { selectStart?: number; selectEnd?: number } = {}) {
         return new Promise((resolve, reject) => {
             this.resetDialogState();
             const overlay = document.getElementById('dialog-overlay');
@@ -88,7 +87,7 @@ export default class DialogManager {
 
             overlay.style.display = 'flex';
 
-            const input = document.getElementById('dialog-input');
+            const input = document.getElementById('dialog-input') as HTMLInputElement;
             if (input) {
                 input.value = String(defaultValue ?? '');
             }
@@ -307,7 +306,7 @@ export default class DialogManager {
     confirmDialog() {
         if (!this.currentDialog) return;
 
-        const input = document.getElementById('dialog-input');
+        const input = document.getElementById('dialog-input') as HTMLInputElement;
         const result = input ? input.value : true;
 
         this.currentDialog.resolve(result);

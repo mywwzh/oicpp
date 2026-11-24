@@ -1,4 +1,3 @@
-// @ts-nocheck
 (function () {
     'use strict';
     document.addEventListener('DOMContentLoaded', async function () {

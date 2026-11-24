@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * BrowserManager - 内置浏览器管理器
  * 提供标签页内的网页浏览功能，支持分屏
@@ -134,7 +133,7 @@ class BrowserManager {
             }
         };
         fixInternalFrame(webview);
-        webview.addEventListener('did-attach', () => fixInternalFrame(webview), { once: true });
+        webview.addEventListener('did-attach', () => fixInternalFrame(webview), { once: true } as any);
 
         // 保存引用
         const state = {
@@ -151,7 +150,9 @@ class BrowserManager {
             currentUrl: initialUrl,
             history: [],
             // 标记是否已显示过；首次显示时强制重载，确保 guest 以正确视口重新布局
-            _hasBeenShown: false
+            _hasBeenShown: false,
+            syncWebviewSize: undefined as (() => void) | undefined,
+            resizeObserver: undefined as ResizeObserver | undefined
         };
         this.browserTabs.set(uniqueKey, state);
 
@@ -325,7 +326,7 @@ class BrowserManager {
     /**
      * 在新标签页中打开 URL
      */
-    _openInNewTab(url, groupId) {
+    _openInNewTab(url, groupId = undefined) {
         if (!url || !window.tabManager) return;
         const resolvedUrl = url;
         // 使用 tabManager 打开新的浏览器标签
@@ -484,12 +485,12 @@ class BrowserManager {
      */
     _updateTabTitle(uniqueKey, title) {
         if (!title || !window.tabManager) return;
-        const tabData = window.tabManager.tabs.get(uniqueKey);
+        const tabData = window.tabManager.tabs.get(uniqueKey) as { fileName?: string; element?: HTMLElement } | undefined;
         if (!tabData) return;
         const displayTitle = title || tabData.fileName;
         tabData.fileName = displayTitle;
         if (tabData.element) {
-            const label = tabData.element.querySelector('.tab-label');
+            const label = tabData.element.querySelector('.tab-label') as HTMLElement;
             if (label) {
                 label.textContent = displayTitle;
                 label.title = displayTitle;

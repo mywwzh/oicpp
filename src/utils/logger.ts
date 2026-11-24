@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -124,7 +123,7 @@ class Logger {
         const infoStringify = (v: unknown): string => {
             if (v === null || v === undefined) return String(v);
             if (v instanceof Error) return JSON.stringify(serializeError(v), null, 2);
-            if (typeof v === 'string') return clamp(Logger.redactString(v), INFO_PER_ARG_LIMIT);
+            if (typeof v === 'string') return String(clamp(Logger.redactString(v), INFO_PER_ARG_LIMIT));
             try {
                 const full = JSON.stringify(v, redactingReplacer, 2);
                 if (full && full.length <= INFO_PER_ARG_LIMIT) return full;
@@ -146,7 +145,7 @@ class Logger {
                     return `{Object with ${keys.length} keys, sample}: ${clamp(sampleStr, INFO_PER_ARG_LIMIT)}${more}`;
                 }
 
-                return clamp(Logger.redactString(String(v)), INFO_PER_ARG_LIMIT);
+                return String(clamp(Logger.redactString(String(v)), INFO_PER_ARG_LIMIT));
             } catch (_) {
                 try { return JSON.stringify(v, redactingReplacer); } catch (e2) { return String(v); }
             }

@@ -1,4 +1,3 @@
-// @ts-nocheck
 class CodeComparer {
     activeTaskKey: any;
     standardCodePath: any;
@@ -110,7 +109,7 @@ class CodeComparer {
         return this.getOrCreateTask(key);
     }
 
-    setActiveTaskKey(taskKey, options = {}) {
+    setActiveTaskKey(taskKey, options: { syncTestCodePath?: boolean } = {}) {
         if (!taskKey || typeof taskKey !== 'string') return;
         const normalizedKey = this.normalizeTaskKey(taskKey);
         if (!normalizedKey) return;
@@ -302,7 +301,7 @@ class CodeComparer {
 
         if (useTestlibCheckbox) {
             useTestlibCheckbox.addEventListener('change', (e) => {
-                this.useTestlib = e.target.checked;
+                this.useTestlib = (e.target as HTMLInputElement).checked;
                 const task = this.getActiveTask();
                 if (task) {
                     task.config.useTestlib = !!this.useTestlib;
@@ -677,7 +676,7 @@ class CodeComparer {
         };
         try {
             const settings = await window.electronAPI.getAllSettings();
-            const compilerPath = settings.compilerPath;
+            const compilerPath = settings.compilerPath as string;
             let compilerArgs = settings.compilerArgs || '-std=c++14 -O2';
 
             if (task.config.useTestlib) {
@@ -785,7 +784,7 @@ class CodeComparer {
 
 
                 if (settings.testlibPath) {
-                    const testlibPathInfo = await window.electronAPI.getPathInfo(settings.testlibPath);
+                    const testlibPathInfo = await window.electronAPI.getPathInfo(settings.testlibPath as string);
                     const testlibIncludePath = testlibPathInfo.dirname;
                     spjCompilerArgs += ` -I"${testlibIncludePath}"`;
                 } else {
@@ -1819,7 +1818,7 @@ class CodeComparer {
                 ]);
                 shouldExpand = action === 'expand';
             } else if (window.dialogManager?.showConfirmDialog) {
-                shouldExpand = await window.dialogManager.showConfirmDialog('展开完整输出确认', `当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`);
+                shouldExpand = (await window.dialogManager.showConfirmDialog('展开完整输出确认', `当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`)) as boolean;
             } else {
                 shouldExpand = window.confirm(`当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`);
             }
@@ -2069,7 +2068,7 @@ class CodeComparer {
             if (window.tabManager) {
                 const fileName = filePath.split(/[\\/]/).pop();
                 const tab = window.tabManager.getTabByFileName && window.tabManager.getTabByFileName(fileName);
-                if (tab && !tab.modified) {
+                if (tab && !(tab as { modified?: boolean }).modified) {
                     logInfo('[对拍器-自动保存] 文件未修改，跳过保存');
                     return;
                 }

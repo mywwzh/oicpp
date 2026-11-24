@@ -1,7 +1,6 @@
-// @ts-nocheck
 (function () {
     if (window.folderPicker) return;
-    const E = (t, c, txt) => { const e = document.createElement(t); if (c) e.className = c; if (txt !== undefined) e.textContent = txt; return e; };
+    const E = (t, c?, txt?) => { const e = document.createElement(t); if (c) e.className = c; if (txt !== undefined) e.textContent = txt; return e; };
     const norm = (...ps) => ps.join('/').replace(/\\/g, '/').replace(/\/+/g, '/');
 
     function buildBreadcrumb(path, bar, onChange) {
@@ -45,11 +44,11 @@
     }
 
     window.folderPicker = {
-        show(opts = {}) {
+        show(opts: { startPath?: string } = {}) {
             return new Promise(resolve => {
                 const theme = (window.oicppApp?.settings?.theme) || 'dark';
                 const isLightTheme = String(theme).toLowerCase().includes('light');
-                let cur = opts.startPath || window.oicppApp?.settings?.lastOpen || ((process.platform === 'win32') ? (process.env.USERPROFILE || 'C:/') : '/');
+                let cur = (opts.startPath || window.oicppApp?.settings?.lastOpen || ((process.platform === 'win32') ? (process.env.USERPROFILE || 'C:/') : '/')) as string;
                 if (!cur) cur = '/';
                 const backdrop = E('div', 'folder-picker-backdrop');
                 const panel = E('div', 'folder-picker ' + (isLightTheme ? 'light' : ''));
@@ -123,9 +122,10 @@
                     choose.disabled = true;
                     buildBreadcrumb(cur, bar, p => { cur = p; reload(); });
                     treeWrap.innerHTML = '<div class="folder-picker-loading">' + (window.i18n ? window.i18n.t('folderPicker.loading') : 'Loading...') + '</div>';
-                    let entries = [], error = null;
+                    let entries: any[] = [], error = null;
                     try {
-                        entries = await window.electronAPI.readDirectory(cur);
+                        const result = await window.electronAPI.readDirectory(cur);
+                        entries = result?.entries || [];
                     } catch (e) { error = e; }
                     const folders = (entries || []).filter(i => i.type === 'folder');
                     const f = search.value.trim().toLowerCase();

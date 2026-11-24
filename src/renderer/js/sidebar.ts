@@ -1,9 +1,15 @@
-// @ts-nocheck
 class SidebarManager {
     currentPanel: any;
     panels: any;
     _pendingResizeRaf: any;
     _pendingResizeIsTimeout: any;
+    resizer: any;
+    sidebar: any;
+    sidebarPanel: any;
+    isCollapsed: any;
+    savedWidth: any;
+    _prevWidth: any;
+    _wasCollapsed: any;
     constructor() {
         this.currentPanel = 'files';
         this.panels = {
@@ -46,13 +52,14 @@ class SidebarManager {
         const sidebarIcons = document.querySelectorAll('.sidebar-icon');
         logInfo('setupEventListeners: 找到', sidebarIcons.length, '个侧边栏图标');
         sidebarIcons.forEach((icon, index) => {
-            logInfo('绑定事件监听器到图标', index, '面板名:', icon.dataset.panel);
-            icon.tabIndex = 0;
-            icon.setAttribute('role', 'button');
-            icon.addEventListener('click', (e) => {
+            const iconEl = icon as HTMLElement;
+            logInfo('绑定事件监听器到图标', index, '面板名:', iconEl.dataset.panel);
+            iconEl.tabIndex = 0;
+            iconEl.setAttribute('role', 'button');
+            iconEl.addEventListener('click', (e) => {
                 e.preventDefault();
-                icon.focus({ preventScroll: true });
-                const panelName = e.currentTarget.dataset.panel;
+                iconEl.focus();
+                const panelName = (e.currentTarget as HTMLElement)?.dataset?.panel;
                 logInfo('图标被点击，面板名:', panelName);
                 this.showPanel(panelName);
             });
@@ -151,7 +158,7 @@ class SidebarManager {
             document.removeEventListener('selectstart', preventSelection);
 
             const width = sidebar.offsetWidth;
-            localStorage.setItem('sidebar-width', width);
+            localStorage.setItem('sidebar-width', String(width));
 
             this.scheduleEditorResize(true);
             setTimeout(() => {
@@ -288,7 +295,7 @@ class SidebarManager {
             .find(candidate => Number.isFinite(candidate) && candidate >= 200) || 350;
         this.sidebar.style.width = width + 'px';
 
-        localStorage.setItem('sidebar-width', width);
+        localStorage.setItem('sidebar-width', String(width));
         localStorage.removeItem('sidebar-collapsed');
 
         logInfo('侧边栏已展开，宽度:', width, 'isCollapsed:', this.isCollapsed);

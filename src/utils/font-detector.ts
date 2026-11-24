@@ -1,4 +1,3 @@
-// @ts-nocheck
 class FontDetector {
     private testString: string = 'mmmmmmmmmmlli';
     private testSize: string = '72px';
@@ -87,7 +86,7 @@ class FontDetector {
                 <button class="font-warning-close" onclick="this.parentElement.parentElement.remove()">×</button>
             </div>
         `;
-        const detail = message.querySelector('.font-warning-detail');
+        const detail = message.querySelector('.font-warning-detail') as HTMLElement;
         if (detail) {
             detail.textContent = `系统中未找到字体 "${fontName}"，已自动切换到 "${this.defaultFont}"`;
         }
@@ -107,7 +106,7 @@ class FontDetector {
             animation: slideInRight 0.3s ease-out;
         `;
         
-        const content = message.querySelector('.font-warning-content');
+        const content = message.querySelector('.font-warning-content') as HTMLElement;
         content.style.cssText = `
             display: flex;
             align-items: flex-start;
@@ -115,7 +114,7 @@ class FontDetector {
             gap: 12px;
         `;
         
-        const icon = message.querySelector('.font-warning-icon');
+        const icon = message.querySelector('.font-warning-icon') as HTMLElement;
         icon.style.cssText = `
             font-size: 20px;
             flex-shrink: 0;
@@ -126,7 +125,7 @@ class FontDetector {
             window.uiIcons.hydrate(message);
         }
         
-        const text = message.querySelector('.font-warning-text');
+        const text = message.querySelector('.font-warning-text') as HTMLElement;
         text.style.cssText = `
             flex: 1;
             color: #856404;
@@ -134,7 +133,7 @@ class FontDetector {
             line-height: 1.4;
         `;
         
-        const closeBtn = message.querySelector('.font-warning-close');
+        const closeBtn = message.querySelector('.font-warning-close') as HTMLElement;
         closeBtn.style.cssText = `
             background: none;
             border: none;
@@ -279,7 +278,7 @@ class FontDetector {
             'sans-serif'
         ];
         
-        const allFonts = [...new Set([...systemFonts, ...commonFonts])];
+        const allFonts = [...new Set([...systemFonts, ...commonFonts])] as string[];
         
         const availableFonts = allFonts.filter(font => {
             if (['monospace', 'serif', 'sans-serif'].includes(font)) {

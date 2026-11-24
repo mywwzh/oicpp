@@ -1,4 +1,3 @@
-// @ts-nocheck
 class CloudSyncPanel {
     rootPath: any;
     currentPath: any;
@@ -11,6 +10,13 @@ class CloudSyncPanel {
     isLoading: any;
     _lastLoggedIn: any;
     _contextMenu: any;
+    treeEl: HTMLElement | null;
+    summaryEl: HTMLElement | null;
+    remainingEl: HTMLElement | null;
+    quotaHelpBtn: HTMLElement | null;
+    uploadProgressEl: HTMLElement | null;
+    uploadProgressTextEl: HTMLElement | null;
+    uploadProgressFillEl: HTMLElement | null;
     constructor() {
         this.rootPath = '/';
         this.currentPath = '/';
@@ -254,7 +260,7 @@ class CloudSyncPanel {
         this.refresh();
     }
 
-    async refresh(options = {}) {
+    async refresh(options = {} as { silent?: boolean }) {
         const silent = options && options.silent === true;
         if (this.isLoading) return;
         if (!this._lastLoggedIn) {
@@ -497,7 +503,7 @@ class CloudSyncPanel {
         }
     }
 
-    selectItem(item, options = {}) {
+    selectItem(item, options = {} as { toggle?: boolean }) {
         const toggle = !!options.toggle;
         if (!toggle) {
             this.selectedItems.clear();
@@ -529,7 +535,7 @@ class CloudSyncPanel {
             const content = typeof data?.content === 'string' ? data.content : '';
             const fileName = file.name;
             if (window.tabManager && typeof window.tabManager.openFile === 'function') {
-                await window.tabManager.openFile(fileName, content, false, `cloud://${file.path}`);
+                await window.tabManager.openFile(fileName, content, false, { filePath: `cloud://${file.path}` });
                 if (window.tabManager.markTabAsSavedByUniqueKey) {
                     window.tabManager.markTabAsSavedByUniqueKey(`cloud://${file.path}`);
                 }
@@ -648,20 +654,20 @@ class CloudSyncPanel {
                 filters: [
                     {
                         name: window.i18n ? window.i18n.t('cloud.supportedFileTypes') : 'Supported Files',
-                        extensions: Array.from(this.allowedExtensions, (extension) => extension.slice(1))
+                        extensions: Array.from(this.allowedExtensions as string[], (extension) => (extension as string).slice(1))
                     }
                 ]
             });
             const filePath = result?.filePaths?.[0];
             if (!filePath) return;
             const info = await window.electronAPI.getPathInfo(filePath);
-            const ext = (info?.extname || '').toLowerCase();
+            const ext = ((info?.extname as string) || '').toLowerCase();
             if (!this.allowedExtensions.has(ext)) {
                 this.showMessage('仅支持 .ans .in .out .cpp .py .txt .md .h .hpp', 'error');
                 return;
             }
             const buffer = await window.electronAPI.readFileBuffer(filePath);
-            const byteLength = buffer?.byteLength ?? buffer?.length ?? 0;
+            const byteLength = (buffer as { byteLength?: number; length?: number })?.byteLength ?? (buffer as { byteLength?: number; length?: number })?.length ?? 0;
             if (byteLength > this.maxFileSize) {
                 this.showMessage(window.i18n ? window.i18n.t('cloud.fileSizeExceeded') : '文件大小超过 50KB，无法上传', 'error');
                 return;
@@ -669,7 +675,7 @@ class CloudSyncPanel {
             const content = await window.electronAPI.readFileContent(filePath);
             if (!this.checkRemainingCapacity()) return;
             const targetDir = this.getActionTargetFolder();
-            const fileName = info?.basename || filePath.split(/[\\/]/).pop();
+            const fileName = info?.basename || (filePath as string).split(/[\\/]/).pop();
             const conflictAction = await this.resolveUploadConflict(targetDir, fileName, 'file');
             if (conflictAction === 'cancel' || conflictAction === 'skip') {
                 return;
@@ -747,14 +753,14 @@ class CloudSyncPanel {
             await this.tryCreateCloudFolder(cloudRoot);
             const folders = new Set();
             for (const entry of entries) {
-                const relDir = this.getRelativeDir(entry.rel);
+                const relDir = (this.getRelativeDir(entry.rel) as string);
                 if (!relDir) continue;
                 const parts = relDir.split('/').filter(Boolean);
                 for (let i = 1; i <= parts.length; i++) {
                     folders.add(parts.slice(0, i).join('/'));
                 }
             }
-            const folderList = Array.from(folders).sort((a, b) => a.split('/').length - b.split('/').length);
+            const folderList = Array.from(folders).sort((a, b) => (a as string).split('/').length - (b as string).split('/').length);
             for (const relDir of folderList) {
                 const cloudPath = this.joinPath(cloudRoot, relDir);
                 await this.tryCreateCloudFolder(cloudPath);
@@ -1045,7 +1051,7 @@ class CloudSyncPanel {
         this.updateUploadProgress(current, total, true, text);
     }
 
-    updateUploadProgress(current, total, force = false, text) {
+    updateUploadProgress(current, total, force = false, text = '') {
         if (!this.uploadProgressEl || !this.uploadProgressFillEl) return;
         if (!force && current > 0 && current < total && current % 3 !== 0) return;
         const safeTotal = total > 0 ? total : 1;
@@ -1236,7 +1242,7 @@ class CloudSyncPanel {
         }
     }
 
-    async request(method, path, params) {
+    async request(method: string, path: string, params?: unknown): Promise<any> {
         if (!window.electronAPI?.cloudSyncRequest) {
             throw new Error('云同步接口不可用');
         }
@@ -1260,11 +1266,11 @@ class CloudSyncPanel {
                 : msg;
             throw new Error(friendly);
         }
-        const data = response?.data;
+        const data = (response as { data?: { msg?: string; code?: number; } })?.data;
         if (data && data.code && data.code !== 200) {
             throw new Error(data.msg || '服务器返回错误');
         }
-        return data?.data ?? data;
+        return (data as { data?: unknown } | undefined)?.data ?? data;
     }
 }
 

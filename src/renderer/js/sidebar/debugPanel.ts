@@ -1,4 +1,3 @@
-// @ts-nocheck
 class DebugPanel {
     isActive: any;
     root: any;
@@ -100,7 +99,10 @@ class DebugPanel {
         this.bound = true;
         const $ = (id) => this.root && this.root.querySelector(id);
         const send = (ch, ...args) => this._ipcSend(ch, ...args);
-        $('#dbg-start')?.addEventListener('click', () => (window.oicppApp?.startDebug?.() || window.app?.startDebug?.()));
+        $('#dbg-start')?.addEventListener('click', () => {
+            (window.oicppApp as { startDebug?: () => void } | undefined)?.startDebug?.();
+            (window as { app?: { startDebug?: () => void } })?.app?.startDebug?.();
+        });
         $('#dbg-continue')?.addEventListener('click', () => send('debug-continue'));
         $('#dbg-step-over')?.addEventListener('click', () => send('debug-step-over'));
         $('#dbg-step-into')?.addEventListener('click', () => send('debug-step-into'));
@@ -370,7 +372,7 @@ class DebugPanel {
         container.appendChild(frag);
     }
 
-    _renderVariableNode({ scope, rootName, data = {}, path = [], isRoot = false }) {
+    _renderVariableNode({ scope, rootName, data = {}, path = [], isRoot = false }: { scope?: string; rootName?: string; data?: { name?: string; [key: string]: any }; path?: any[]; isRoot?: boolean }) {
         scope = this._normalizeScope(scope);
         const nodeKey = this._makeNodeKey(scope, rootName, path);
         const item = document.createElement('div');
@@ -386,7 +388,7 @@ class DebugPanel {
         const header = document.createElement('div');
         header.className = 'variable-header';
         item.appendChild(header);
-        item.__variableData = data;
+        (item as { __variableData?: any }).__variableData = data;
 
         const hasChildren = Array.isArray(data?.children) && data.children.length > 0;
         const numericCount = Number(data?.elementCount);
@@ -554,7 +556,7 @@ class DebugPanel {
         }
 
         childrenWrap.innerHTML = '<div class="no-debug-message">' + (window.i18n ? window.i18n.t('debug.loading') : '加载中…') + '</div>';
-        const payload = {
+        const payload: { scope: string; path: any; cacheKey: any; start: number; varObjectName?: string; expression?: string; count?: number } = {
             scope,
             path,
             cacheKey: nodeKey,
@@ -707,7 +709,7 @@ class DebugPanel {
                     const latestParent = this._getVariableNode(scope, rootName, parentPath) || parentData || {};
                     const nextIndex = Number.isFinite(child.nextIndex) ? child.nextIndex : loadedCount;
                     const count = Number.isFinite(child.chunkSize) && child.chunkSize > 0 ? child.chunkSize : 100;
-                    const payload = {
+                    const payload: { scope: string; path: any[]; start: any; count: any; append: boolean; cacheKey: string; varObjectName?: string; expression?: string } = {
                         scope,
                         path: parentPath,
                         start: nextIndex,
