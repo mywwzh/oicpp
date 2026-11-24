@@ -1,3 +1,4 @@
+// @ts-nocheck
 if (!self.MonacoEnvironment) {
     const basePath = '../../node_modules/monaco-editor/min/vs';
     self.MonacoEnvironment = {
@@ -11,6 +12,56 @@ if (!self.MonacoEnvironment) {
 }
 
 class MonacoEditorManager {
+    currentEditor: any;
+    editors: any;
+    isInitialized: any;
+    currentFilePath: any;
+    currentFileName: any;
+    tabIdToFilePath: any;
+    groupContainers: any;
+    tabIdToGroupId: any;
+    groupActiveTab: any;
+    tabIdToContainer: any;
+    diffEditors: any;
+    markerOwner: any;
+    lspMarkerOwner: any;
+    _compilerErrorDecorations: any;
+    breakpoints: any;
+    _execHighlights: any;
+    completionProviders: any;
+    _globalKeysRegistered: any;
+    userSnippets: any;
+    defaultKeybindings: any;
+    keybindings: any;
+    _keybindingParseCache: any;
+    _headerCache: any;
+    _includePathCache: any;
+    _compilerIncludeDirsCache: any;
+    _compilerIncludeDirsPromise: any;
+    _includeCacheToken: any;
+    _includeRootsCache: any;
+    _fileIncludeCache: any;
+    lineHeightSetting: any;
+    syntaxColorsByTheme: any;
+    syntaxStyles: any;
+    unifiedPreprocessorColor: any;
+    formatterIndentStyle: any;
+    clangFormatStyle: any;
+    _lspSemanticProviders: any;
+    _lspDocuments: any;
+    _lspChangeTimers: any;
+    _lspChangeInFlight: any;
+    _lspChangePending: any;
+    _lspReadyPromise: any;
+    _lspCompletionEnabled: any;
+    _syntaxCheckEnabled: any;
+    _lspCompilerPath: any;
+    _lspProviders: any;
+    _lspProvidersReady: any;
+    _lspGuardedModels: any;
+    _lspGuardDetails: any;
+    lspClient: any;
+    _onMonacoContextMenuPasteCapture: any;
     constructor() {
         this.currentEditor = null;
         this.editors = new Map();

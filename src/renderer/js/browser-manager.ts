@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * BrowserManager - 内置浏览器管理器
  * 提供标签页内的网页浏览功能，支持分屏
@@ -36,6 +37,11 @@ p{font-size:13px;color:${muted};margin-bottom:24px;text-align:center;line-height
 })();
 
 class BrowserManager {
+    browserTabs: any;
+    _currentFocusKey: any;
+    _pendingNav: any;
+    _newTabPage: any;
+    _removeOpenNewTabListener: any;
     constructor() {
         this.browserTabs = new Map(); // uniqueKey -> { webview, container, navBar, urlInput, title }
         this._currentFocusKey = null;

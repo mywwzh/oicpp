@@ -1,4 +1,28 @@
+// @ts-nocheck
 ﻿class OICPPApp {
+    currentFile: any;
+    files: any;
+    settings: any;
+    editorManager: any;
+    initialized: any;
+    accountLoggedIn: any;
+    accountInfo: any;
+    _accountIpcBound: any;
+    isDebugging: any;
+    _autoContinueOnStart: any;
+    _debugSessionId: any;
+    _debugExited: any;
+    _debugTerminalId: any;
+    _debugTerminalBridgeEnabled: any;
+    _debugSessionTerminalId: any;
+    terminalPanel: any;
+    updateDownloadState: any;
+    autoSaveController: any;
+    supportedDropTextExtensions: any;
+    _isWindowsPlatform: any;
+    _isMacPlatform: any;
+    _pendingCtrlKFolderTimer: any;
+    _ctrlKChordPending: any;
     constructor() {
         this.currentFile = null;
         this.files = new Map();

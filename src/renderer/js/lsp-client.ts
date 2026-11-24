@@ -1,4 +1,12 @@
+// @ts-nocheck
 class LspClientBridge {
+    _ready: any;
+    _readyPromise: any;
+    _serverCapabilities: any;
+    _semanticTokensLegend: any;
+    _readyListeners: any;
+    _diagnosticListeners: any;
+    _notificationListeners: any;
     constructor() {
         this._ready = false;
         this._readyPromise = null;

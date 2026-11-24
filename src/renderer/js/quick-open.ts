@@ -1,3 +1,4 @@
+// @ts-nocheck
 (function () {
     let allFiles = [];
     let indexedRoot = '';

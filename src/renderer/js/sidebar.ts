@@ -1,4 +1,9 @@
+// @ts-nocheck
 class SidebarManager {
+    currentPanel: any;
+    panels: any;
+    _pendingResizeRaf: any;
+    _pendingResizeIsTimeout: any;
     constructor() {
         this.currentPanel = 'files';
         this.panels = {

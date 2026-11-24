@@ -1,4 +1,10 @@
-class TitlebarManager {
+// @ts-nocheck
+export default class TitlebarManager {
+    titlebar: any;
+    currentTitle: any;
+    isMaximized: any;
+    _closeConfirmInProgress: any;
+    isMacPlatform: any;
     constructor() {
         this.titlebar = null;
         this.currentTitle = 'OICPP IDE';
@@ -292,4 +298,4 @@ class TitlebarManager {
 }
 
 
-window.TitlebarManager = TitlebarManager;
+(window as unknown as { TitlebarManager?: typeof TitlebarManager }).TitlebarManager = TitlebarManager;

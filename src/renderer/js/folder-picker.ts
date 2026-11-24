@@ -1,3 +1,4 @@
+// @ts-nocheck
 (function () {
     if (window.folderPicker) return;
     const E = (t, c, txt) => { const e = document.createElement(t); if (c) e.className = c; if (txt !== undefined) e.textContent = txt; return e; };

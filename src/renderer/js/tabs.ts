@@ -1,4 +1,32 @@
+// @ts-nocheck
 class TabManager {
+    tabs: any;
+    groups: any;
+    groupOrder: any;
+    activeGroupId: any;
+    activeTab: any;
+    activeTabKey: any;
+    tabOrder: any;
+    monacoEditorManager: any;
+    editorGroupsElement: any;
+    welcomeContainer: any;
+    splitOverlay: any;
+    groupCounter: any;
+    draggedTabInfo: any;
+    draggedTab: any;
+    placeholder: any;
+    tabDragInProgress: any;
+    lastTabDropInfo: any;
+    dropHandled: any;
+    _openingKeys: any;
+    _watchedFiles: any;
+    _fileWatchListenerBound: any;
+    _externalFileChangeUnsubscribe: any;
+    _fileWatchCleanupBound: any;
+    _tabContextMenu: any;
+    _altWheelListenerBound: any;
+    _lastAltWheelSwitchTs: any;
+    handlePdfViewerMessage: any;
     constructor() {
         this.tabs = new Map();
         this.groups = new Map();

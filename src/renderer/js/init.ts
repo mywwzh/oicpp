@@ -1,3 +1,4 @@
+// @ts-nocheck
 document.addEventListener('DOMContentLoaded', function() {
     logInfo('DOM 加载完成，开始初始化应用...');
     setUserIconPath();

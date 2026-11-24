@@ -1,4 +1,7 @@
-class DialogManager {
+// @ts-nocheck
+export default class DialogManager {
+    currentDialog: any;
+    _keydownHandler: any;
     constructor() {
         this.currentDialog = null;
         this._keydownHandler = null;

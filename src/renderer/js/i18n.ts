@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Renderer-side i18n module.
  *
@@ -10,6 +11,12 @@
  *   __('message.updateDownloading', { version: ' v2.0', progress: 50 });
  */
 class I18nManager {
+    _messages: any;
+    _fallbackMessages: any;
+    _currentLang: any;
+    _loaded: any;
+    _readyPromise: any;
+    _listeners: any;
     constructor() {
         this._messages = {};
         this._fallbackMessages = {};

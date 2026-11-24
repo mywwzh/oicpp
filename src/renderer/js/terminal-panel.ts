@@ -1,3 +1,4 @@
+// @ts-nocheck
 // 终端渲染 oh-my-posh 等主题时需要 Nerd Font 图标字体。
 // 这些字体不一定安装，浏览器会自动跳过不可用的字体，因此可以安全地作为回退链使用。
 // 仅使用单宽（Mono）变体，避免图标按双宽渲染导致提示符错位。
@@ -28,6 +29,25 @@ const TERMINAL_NERD_FONT_FALLBACKS = [
 ];
 
 class IntegratedTerminalPanel {
+    getApp: any;
+    sessions: any;
+    activeId: any;
+    visible: any;
+    initialized: any;
+    status: any;
+    panel: any;
+    resizer: any;
+    tabs: any;
+    body: any;
+    empty: any;
+    statusNode: any;
+    newBtn: any;
+    hideBtn: any;
+    counter: any;
+    panelHeight: any;
+    _dragState: any;
+    fixedTerminalFontSize: any;
+    _resizeObserver: any;
     constructor(options = {}) {
         this.getApp = typeof options.getApp === 'function' ? options.getApp : () => null;
         this.sessions = new Map();

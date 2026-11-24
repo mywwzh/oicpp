@@ -1,3 +1,4 @@
+// @ts-nocheck
 class CompilerManager {
     t(key, params, fallback) {
         return window.i18n?.t?.(key, params) || fallback || key;
