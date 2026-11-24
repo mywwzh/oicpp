@@ -1,4 +1,7 @@
+// @ts-nocheck
 class BackupSettings {
+    settings: any;
+    _saving: any;
     constructor() {
         this.settings = {
             autoBackupSettings: false,
@@ -301,6 +304,8 @@ class BackupSettings {
         }, 3000);
     }
 }
+
+export default BackupSettings;
 
 window.addEventListener('DOMContentLoaded', () => {
     new BackupSettings();

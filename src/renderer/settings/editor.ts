@@ -1,4 +1,11 @@
+// @ts-nocheck
 class EditorSettings {
+    settings: any;
+    _initialLoadedSettings: any;
+    _saved: any;
+    _clangFormatRawDirty: any;
+    _clangFormatControlsDirty: any;
+    keybindingSchema: any;
     constructor() {
         this.settings = {
             font: 'Consolas, "Courier New", monospace',
@@ -2154,6 +2161,8 @@ class EditorSettings {
         window.close();
     }
 }
+
+export default EditorSettings;
 
 window.addEventListener('DOMContentLoaded', async () => {
     if (window.i18n && typeof window.i18n.init === 'function') {

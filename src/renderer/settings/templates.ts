@@ -1,6 +1,9 @@
-const { ipcRenderer } = require('electron');
+// @ts-nocheck
+import { ipcRenderer } from 'electron';
 
 class TemplatesSettings {
+    settings: any;
+    snippets: any;
     constructor() {
         this.settings = {
             cppTemplate: ''
@@ -549,6 +552,8 @@ class TemplatesSettings {
     }
 }
 
+export default TemplatesSettings;
+
 window.addEventListener('DOMContentLoaded', () => {
     logInfo('DOM加载完成，初始化模板设置');
     
@@ -559,4 +564,4 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-window.TemplatesSettings = TemplatesSettings;
+(window as unknown as { TemplatesSettings?: typeof TemplatesSettings }).TemplatesSettings = TemplatesSettings;

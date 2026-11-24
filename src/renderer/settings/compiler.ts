@@ -1,4 +1,8 @@
+// @ts-nocheck
 class CompilerSettings {
+    settings: any;
+    isMacPlatform: any;
+    isIntegratedOnlyPlatform: any;
     constructor() {
         this.settings = {
             compilerPath: '',
@@ -1420,6 +1424,8 @@ class CompilerSettings {
         window.close();
     }
 }
+
+export default CompilerSettings;
 
 window.addEventListener('DOMContentLoaded', () => {
     new CompilerSettings();
