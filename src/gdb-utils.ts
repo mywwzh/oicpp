@@ -1,28 +1,32 @@
-class Token {
-    constructor(start, end, type) {
+export default class Token {
+    start: number;
+    end: number;
+    type: number;
+    hasRepeatedChar: boolean;
+    static Undefined = 0;
+    static OpenBrace = 1;
+    static CloseBrace = 2;
+    static Equal = 3;
+    static String = 4;
+    static Comma = 5;
+    constructor(start: number, end: number, type: number) {
         this.start = start;
         this.end = end;
         this.type = type;
         this.hasRepeatedChar = false;
     }
+    extractString(s: string): string {
+        return s.substring(this.start, this.end);
+    }
+    trim(s: string): void {
+        while (this.start < s.length && (s[this.start] === ' ' || s[this.start] === '\t' || s[this.start] === '\n')) {
+            this.start++;
+        }
+        while (this.end > 0 && (s[this.end - 1] === ' ' || s[this.end - 1] === '\t' || s[this.end - 1] === '\n')) {
+            this.end--;
+        }
+    }
 }
-Token.Undefined  = 0;
-Token.OpenBrace  = 1;
-Token.CloseBrace = 2;
-Token.Equal      = 3;
-Token.String     = 4;
-Token.Comma      = 5;
-Token.prototype.extractString = function (s) {
-    return s.substring(this.start, this.end);
-};
-Token.prototype.trim = function (s) {
-    while (this.start < s.length && (s[this.start] === ' ' || s[this.start] === '\t' || s[this.start] === '\n')) {
-        this.start++;
-    }
-    while (this.end > 0 && (s[this.end - 1] === ' ' || s[this.end - 1] === '\t' || s[this.end - 1] === '\n')) {
-        this.end--;
-    }
-};
 function skipShortenedString(str, pos) {
     while (pos < str.length && str[pos] === '.') {
         pos++;
@@ -584,8 +588,7 @@ function parseGDBExamineMemoryLine(outputLine) {
     }
     return result;
 }
-module.exports = {
-    Token,
+export {
     getNextToken,
     tokenizeGDBLocals,
     parseGDBWatchValue,

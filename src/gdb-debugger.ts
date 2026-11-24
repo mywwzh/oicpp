@@ -1,13 +1,13 @@
-const { spawn, spawnSync } = require('child_process');
-const path = require('path');
-const os = require('os');
-const EventEmitter = require('events');
-const fs = require('fs');
-const {
+import { spawn, spawnSync } from 'child_process';
+import * as path from 'path';
+import * as os from 'os';
+import EventEmitter from 'events';
+import * as fs from 'fs';
+import {
     tokenizeGDBLocals,
     parseGDBWatchValue,
     tokenizeBacktrace
-} = require('./gdb-utils');
+} from './gdb-utils';
 const GDB_PROMPT = 'oicpp_gdb:';
 const FULL_GDB_PROMPT = '>>>>>>' + GDB_PROMPT;
 const reThreadSwitch = /^\[Switching to thread .*\]#0[ \t]+(0x[A-Fa-f0-9]+) in (.*) from (.*)/;
@@ -26,6 +26,28 @@ const reChildPid2 = /\[New [tT]hread[ \t]+\d+\.[xA-Fa-f0-9-]+\]/;
 const reInferiorExited = /^\[Inferior[ \t].+[ \t]exited normally\]$/;
 const reInferiorExitedWithCode = /^\[[Ii]nferior[ \t].+[ \t]exited[ \t]with[ \t]code[ \t](\d+)\]$/;
 class GDBDebugger extends EventEmitter {
+    isRunning: boolean = false;
+    programExited: boolean = false;
+    gdbProcess: any = null;
+    _variables: any = { local: {}, global: {}, watches: {} };
+    _callStack: any[] = [];
+    _breakpoints: any[] = [];
+    _watchExpressions: Set<string> = new Set();
+    _inferiorRunning: boolean = false;
+    _cmdQueue: any[] = [];
+    _queueBusy: boolean = false;
+    _currentCmd: any = null;
+    _buffer: string = '';
+    _programStopped: boolean = true;
+    _isStarted: boolean = false;
+    _manualBreakOnEntry: boolean = false;
+    _cursor: any = { file: '', function: '', address: '', line: -1, changed: false };
+    _ttyProcess: any = null;
+    _ttyProcessPid: number = 0;
+    _ttyPath: string | null = null;
+    _linuxTTYOptions: any = {};
+    _ttyShellPid: any = null;
+    _shortPathCache: Map<string, string> = new Map();
     constructor() {
         super();
         this.isRunning = false;
@@ -51,7 +73,7 @@ class GDBDebugger extends EventEmitter {
         this._ttyShellPid = null;
         this._shortPathCache = new Map();
     }
-    _queueCommand(cmd, opts = {}) {
+    _queueCommand(cmd, opts: any = {}) {
         return new Promise((resolve, reject) => {
             const entry = { cmd, resolve, reject, parser: opts.parser || null, isContinue: !!opts.isContinue };
             if (opts.highPriority) this._cmdQueue.unshift(entry);
@@ -90,9 +112,9 @@ class GDBDebugger extends EventEmitter {
             this._runQueue();
         }
     }
-    _send(cmd, opts = {}) { return this._queueCommand(cmd, opts); }
-    _sendContinue(cmd, opts = {}) { return this._queueCommand(cmd, { ...opts, isContinue: true }); }
-    async start(executablePath, sourcePath, options = {}) {
+    _send(cmd, opts: any = {}) { return this._queueCommand(cmd, opts); }
+    _sendContinue(cmd, opts: any = {}) { return this._queueCommand(cmd, { ...opts, isContinue: true }); }
+    async start(executablePath, sourcePath, options: any = {}) {
         if (this.gdbProcess) await this.stop();
         this.programExited = false;
         this._inferiorRunning = false;
@@ -137,7 +159,7 @@ class GDBDebugger extends EventEmitter {
             try { this.emit('error', err); } catch (_) { }
         });
         const runInit = async (cmd) => {
-            try { await this._send(cmd); } catch (e) { if (!relaxedInit) throw e; }
+            try { await this._send(cmd); } catch (e: any) { if (!relaxedInit) throw e; }
         };
         const initWatchdog = setTimeout(() => {
             if (this.isRunning) return;
@@ -203,7 +225,7 @@ class GDBDebugger extends EventEmitter {
     // gdb 收到 quit 会立即退出、不会打印自定义提示符，因此不能依赖 _send('quit')
     // （它等待返回提示符，会永不完成，导致 stop() 卡死）。改为「写入 quit 后等待进程退出（带超时兜底）」。
     _quitGDB() {
-        return new Promise((resolve) => {
+        return new Promise<void>((resolve) => {
             const p = this.gdbProcess;
             if (!p) { resolve(); return; }
             if (p.exitCode !== null || p.signalCode !== null) { resolve(); return; }
@@ -229,7 +251,7 @@ class GDBDebugger extends EventEmitter {
             try {
                 const tty = await this._ensureLinuxTTY();
                 if (tty && tty.ttyPath) await this._send(`set inferior-tty ${tty.ttyPath}`);
-            } catch (e) { global.logWarn?.('[GDB] TTY 失败', e); }
+            } catch (e: any) { global.logWarn?.('[GDB] TTY 失败', e); }
         }
         this._isStarted = true;
         this._sendContinue('run').catch(e => global.logWarn?.('[GDB] run 失败:', e?.message || e));
@@ -271,7 +293,7 @@ class GDBDebugger extends EventEmitter {
             throw new Error('无效的断点文件路径');
         }
         const loc = `${this._escapePath(file)}:${lineNum}`;
-        const output = await this._send(`break "${loc}"`);
+        const output: any = await this._send(`break "${loc}"`);
         const m = /Breakpoint (\d+) at (0x[0-9A-Fa-f]+)/.exec(output || '');
         if (m) {
             const bp = { number: parseInt(m[1], 10), file: this._normalizePath(file), line: lineNum, address: m[2] };
@@ -312,7 +334,7 @@ class GDBDebugger extends EventEmitter {
                     this._variables.local[item.name] = e;
                 }
             }
-        } catch (e) { global.logWarn?.('[GDB] 局部变量失败', e); needsRetry = true; }
+        } catch (e: any) { global.logWarn?.('[GDB] 局部变量失败', e); needsRetry = true; }
         if (!this.isRunning || this._inferiorRunning || this.programExited) return;
         try {
             const out = await this._send('info args');
@@ -323,14 +345,14 @@ class GDBDebugger extends EventEmitter {
                     this._variables.local[item.name] = e;
                 }
             }
-        } catch (e) { global.logWarn?.('[GDB] 参数失败', e); needsRetry = true; }
+        } catch (e: any) { global.logWarn?.('[GDB] 参数失败', e); needsRetry = true; }
         if (!this.isRunning || this._inferiorRunning || this.programExited) return;
         this._variables.watches = {};
         for (const expr of this._watchExpressions) {
             try {
                 let typeStr = '';
-                try { const t = await this._send(`whatis ${expr}`); if (t && t.startsWith('type = ')) typeStr = t.substring(7).trim(); } catch (_) { }
-                const out = await this._send(`output ${expr}`);
+                try { const t: any = await this._send(`whatis ${expr}`); if (t && t.startsWith('type = ')) typeStr = t.substring(7).trim(); } catch (_) { }
+                const out: any = await this._send(`output ${expr}`);
                 const e = { name: expr, value: out || '', type: typeStr, children: [] };
                 parseGDBWatchValue(e, out || '');
                 this._variables.watches[expr] = e;
@@ -348,11 +370,11 @@ class GDBDebugger extends EventEmitter {
                 line: f.line, level: f.level, address: f.address
             }));
             this.emit('callstack-updated', this._callStack);
-        } catch (e) { global.logWarn?.('[GDB] 堆栈失败', e); }
+        } catch (e: any) { global.logWarn?.('[GDB] 堆栈失败', e); }
     }
     getVariables() { return this._variables; }
     getCallStack() { return this._callStack; }
-    async expandVariable(name, options = {}) {
+    async expandVariable(name, options: any = {}) {
         let root = null;
         const scope = options.scope || 'local';
         if (scope === 'watch' && this._variables.watches[name]) root = this._variables.watches[name];
@@ -365,7 +387,7 @@ class GDBDebugger extends EventEmitter {
         }
         if (!root) throw new Error(`Variable ${name} not found`);
         if ((!options.path || options.path.length === 0) && (!root.children || root.children.length === 0)) {
-            try { const out = await this._send(`output ${name}`); parseGDBWatchValue(root, out || ''); } catch (e) { global.logWarn?.(`[GDB] 无法获取 ${name} 子项`, e); }
+            try { const out = await this._send(`output ${name}`); parseGDBWatchValue(root, out || ''); } catch (e: any) { global.logWarn?.(`[GDB] 无法获取 ${name} 子项`, e); }
         }
         let current = root;
         if (options.path) for (const p of options.path) { const idx = Number(p); if (current.children && current.children[idx]) current = current.children[idx]; else break; }
@@ -605,7 +627,7 @@ class GDBDebugger extends EventEmitter {
         try {
             this._ttyProcess = spawn('/bin/sh', ['-c', cmd], { detached: true, stdio: 'ignore', env: { ...process.env } });
             this._ttyProcessPid = this._ttyProcess.pid || 0; this._ttyProcess.unref();
-        } catch (e) { return null; }
+        } catch (e: any) { return null; }
         for (let i = 0; i < 100; i++) {
             await new Promise(r => setTimeout(r, 200));
             let po = '';
@@ -654,4 +676,4 @@ class GDBDebugger extends EventEmitter {
         return false;
     }
 }
-module.exports = GDBDebugger;
+export default GDBDebugger;

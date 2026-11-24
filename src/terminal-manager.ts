@@ -1,14 +1,17 @@
-const os = require('os');
-const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
-const { spawn, spawnSync } = require('child_process');
+// @ts-nocheck
+import * as os from 'os';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import { spawn, spawnSync } from 'child_process';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 
 let pty = null;
 let ptyLoadError = null;
 let ptyLoadTargets = [];
 
-function tryLoadPty(moduleId) {
+function tryLoadPty(moduleId: string) {
     try {
         return require(moduleId);
     } catch (error) {
@@ -60,6 +63,8 @@ if (!pty) {
 }
 
 class IntegratedTerminalManager {
+    sessions: any;
+    sendToRenderer: any;
     constructor(options = {}) {
         this.sessions = new Map();
         this.sendToRenderer = typeof options.sendToRenderer === 'function'
@@ -902,4 +907,4 @@ class IntegratedTerminalManager {
     }
 }
 
-module.exports = IntegratedTerminalManager;
+export default IntegratedTerminalManager;
