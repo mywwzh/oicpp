@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "module": "commonjs",
+    "rootDir": "src",
+    "outDir": "src",
+    "typeRoots": ["./node_modules/@types"],
+    "types": ["node"],
+    "noCheck": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"]
+}

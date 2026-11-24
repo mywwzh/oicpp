@@ -15,7 +15,8 @@
     "prebuild:icons": "node scripts/generate-icons.js",
     "prebuild:buildinfo": "node scripts/generate-build-info.js",
     "prebuild:clangd": "node scripts/download-clangd.js",
-    "build": "npm run prebuild:buildinfo && npm run prebuild:icons && npm run prebuild:clangd && electron-builder"
+    "prebuild:tsc": "tsc -p tsconfig.build.json",
+    "build": "npm run prebuild:buildinfo && npm run prebuild:icons && npm run prebuild:clangd && npm run prebuild:tsc && electron-builder"
   },
   "devDependencies": {
     "electron": "^37.2.0",
