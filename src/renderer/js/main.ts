@@ -1,3 +1,4 @@
+// @ts-nocheck
 ﻿// @ts-nocheck
 class OICPPApp {
     currentFile: any;
