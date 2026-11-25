@@ -1149,9 +1149,9 @@ class CompilerSettings {
         renderTestResult('testing', '正在测试 Testlib 环境...');
         
         try {
-            const ea = window.electronAPI as { testTestlib?: (opts: { url: string; version: string; name: string }) => Promise<{ success?: boolean; testlibPath?: string; error?: string }> } | undefined;
+            const ea = window.electronAPI as { testTestlib?: (testlibPath: string) => Promise<{ success?: boolean; testlibPath?: string; error?: string }> } | undefined;
             if (ea?.testTestlib) {
-                const result = await ea.testTestlib({ url: testlibPath, version: '', name: '' });
+                const result = await ea.testTestlib(testlibPath);
                 
                 if (result.success) {
                     renderTestResult('success', 'Testlib 测试成功！');

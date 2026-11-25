@@ -83,7 +83,7 @@ interface Window {
         showSaveDialog?: (opts?: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<{ canceled?: boolean; filePath?: string }>;
         resetSettings?: () => Promise<unknown>;
         getUserHome?: () => Promise<string>;
-        testTestlib?: (opts: { url: string; version: string; name: string }) => Promise<{ success?: boolean; testlibPath?: string; error?: string }>;
+        testTestlib?: (testlibPath: string) => Promise<{ success?: boolean; testlibPath?: string; error?: string }>;
         openCompilerSettings?: () => Promise<unknown>;
         deleteTempFile?: (path: string) => Promise<unknown>;
         pathJoin?: (...parts: string[]) => string;
