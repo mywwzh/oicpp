@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { app, BrowserWindow, Menu, ipcMain, dialog, shell as electronShell, webContents } from 'electron';
+import type { MenuItemConstructorOptions } from 'electron';
 import * as http from 'http';
 import * as https from 'https';
 import * as crypto from 'crypto';
@@ -173,8 +173,8 @@ const SETTINGS_ALLOWED_KEYS = new Set([
     'autoOpenLastWorkspace', 'language', 'autoBackupSettings', 'receiveBetaUpdates', 'runAllSamples'
 ]);
 
-function sanitizeIncomingSettings(payload) {
-    const result = {};
+function sanitizeIncomingSettings(payload: Record<string, unknown>) {
+    const result: Record<string, unknown> = {};
     const rejected = [];
     for (const key of Object.keys(payload || {})) {
         if (SETTINGS_ALLOWED_KEYS.has(key)) {
@@ -1303,7 +1303,7 @@ async function handleIdeLoginCallback(req, res) {
     }
 
     try {
-        const verifyResult = await verifyIdeLoginToken({ uid, username, timestamp, token, service });
+        const verifyResult = (await verifyIdeLoginToken({ uid, username, timestamp, token, service })) as { success?: boolean; user?: { username?: string }; code?: string; error?: string; message?: string; access_token?: string; login_token?: string; token?: string } | null;
         if (!verifyResult || verifyResult.success !== true || !verifyResult.user) {
             logWarn('[登录] 验证失败:', {
                 success: verifyResult?.success,
@@ -1628,7 +1628,7 @@ async function handleWatcherEvent(key, eventType) {
     }
 }
 
-function markLocalSave(filePath, state = {}) {
+function markLocalSave(filePath, state: Record<string, unknown> = {}) {
     const normalized = normalizeWatchKey(filePath);
     if (!normalized) return;
     const entry = fileWatchRegistry.get(normalized.key);
@@ -1748,6 +1748,7 @@ function getDefaultSettings() {
         compilerArgs,
         runMode: normalizeRunModeForPlatform('popup'),
         testlibPath: '', // testlib库路径
+        gdbPath: '', // GDB 调试器路径
         font: 'Consolas',
         fontSize: 14,
         terminalFontSize: 14,
@@ -1793,6 +1794,8 @@ function getDefaultSettings() {
         windowOpacity: 1.0,
         glassEffectEnabled: false,
         backgroundImage: '',
+        consoleTerminalTemplate: '',
+        debugConsoleTerminal: '',
         cppTemplate,
         account: null,
         keybindings: {
@@ -2461,7 +2464,7 @@ async function ensureConsolePauserExecutable(compilerPath) {
         fs.writeFileSync(sourcePath, CONSOLE_PAUSER_SOURCE, 'utf8');
     };
 
-    const compileOnce = async (extraArgs = []) => {
+    const compileOnce = async (extraArgs = []): Promise<{ code: number; stdout: string; stderr: string }> => {
         const baseArgs = ['-O2', '-o', consolePauserPath, sourcePath];
         const args = [...extraArgs, ...baseArgs];
         const env = {
@@ -2989,7 +2992,7 @@ function createWindow() {
 
 
 function createMenuBar() {
-    const defaultKeybindings = getDefaultSettings().keybindings || {};
+    const defaultKeybindings = getDefaultSettings().keybindings;
     const activeKeybindings = (settings && settings.keybindings && typeof settings.keybindings === 'object')
         ? settings.keybindings
         : {};
@@ -3040,7 +3043,7 @@ function createMenuBar() {
     // 移除与带修饰符快捷键冲突的裸 Fn 菜单加速器，
     // 避免 Electron 同时触发两个动作（如 Ctrl+F11 触发 F11）
     const compileRunAcceleratorFinal = hasConflictingModifiedKey(compileRunAccelerator) ? undefined : compileRunAccelerator;
-    const menuTemplate = [
+    const menuTemplate: MenuItemConstructorOptions[] = [
         {
             label: '文件',
             submenu: [
@@ -3152,7 +3155,7 @@ function createMenuBar() {
                 },
                 {
                     label: '编译运行',
-                    accelerator: compileRunAcceleratorFinal,
+                    accelerator: compileRunAcceleratorFinal as string,
                     click: () => {
                         mainWindow.webContents.send('menu-compile-run');
                     }
@@ -3395,7 +3398,8 @@ function createCompetitiveCompanionServer(port, tagLabel) {
     });
 
     server.on('error', (err) => {
-        if (err && err.code === 'EADDRINUSE') {
+        const errnoErr = err as { code?: string };
+        if (errnoErr && errnoErr.code === 'EADDRINUSE') {
             try { logWarn(`[${label}] 端口 ${port} 被占用，可能被其他工具占用（如 cph）。可在 Competitive Companion 中添加 http://127.0.0.1:${port}/ 作为自定义端口。`); } catch (_) { }
             return;
         }
@@ -3848,9 +3852,9 @@ function setupIPC() {
     ipcMain.handle('lsp-request', async (_event, method, params) => {
         logInfo('[LSP] 请求: ' + method);
         try {
-            const result = await clangdLspManager.request(method, params || {});
+            const result = await clangdLspManager.request(method, params || {}) as { capabilities?: unknown; serverInfo?: { version?: string; name?: string } } | null;
             if (method === 'initialize') {
-                const caps = result?.capabilities;
+                const caps = result?.capabilities as { semanticTokensProvider?: { legend?: { tokenTypes?: unknown[]; tokenModifiers?: unknown[] } } } | undefined;
                 const version = result?.serverInfo?.version || '?';
                 logInfo('[LSP] 初始化完成, 服务器:', result?.serverInfo?.name || 'clangd', '版本:', version);
                 if (caps?.semanticTokensProvider) {
@@ -4591,7 +4595,7 @@ function setupIPC() {
             }
 
             zip = new StreamZip.async({ file: zipPath });
-            const entries = await zip.entries();
+            const entries = await zip.entries() as Record<string, { isDirectory: boolean; size: number }>;
             const allowedExts = new Set(['.in', '.out', '.ans', '.txt', '.input', '.output']);
             const files = [];
             // 超过 8MB 的样例不再整体读入内存（20MB 的 .in 会把 IPC 和渲染进程拖垮），
@@ -5310,7 +5314,7 @@ function setupIPC() {
                 if (memorySamplePromise) {
                     return memorySamplePromise;
                 }
-                memorySamplePromise = readMemoryBytes()
+                memorySamplePromise = (readMemoryBytes() as Promise<number>)
                     .then((bytes) => {
                         peakMemoryBytes = Math.max(peakMemoryBytes, bytes);
                         if (memoryLimitBytes > 0 && bytes > memoryLimitBytes && !memoryLimitTriggered) {
@@ -5703,7 +5707,7 @@ function setupIPC() {
                 : 0;
             const sampleMemory = () => {
                 if (memoryPromise) return memoryPromise;
-                memoryPromise = readMemory().then((bytes) => {
+                memoryPromise = (readMemory() as Promise<number>).then((bytes) => {
                     peakMemoryBytes = Math.max(peakMemoryBytes, bytes);
                     if (memoryLimitBytes > 0 && bytes > memoryLimitBytes && !memoryLimitExceeded) {
                         memoryLimitExceeded = true;
@@ -6829,11 +6833,12 @@ function setupIPC() {
                 workingDirectory: testDir
             });
 
-            if (!compileResult.success) {
-                return { success: false, message: '编译测试代码失败。', details: compileResult.stderr };
+            const compileResultTyped = compileResult as { success: boolean; stderr: string };
+            if (!compileResultTyped.success) {
+                return { success: false, message: '编译测试代码失败。', details: compileResultTyped.stderr };
             }
 
-            const runResult = await new Promise<void>((resolve) => {
+            const runResult = await new Promise<{ success: boolean; message?: string; details?: string }>((resolve) => {
                 const { spawn } = require('child_process');
 
                 let testEnv = { ...process.env };
@@ -7016,7 +7021,7 @@ async function readFileContent(filePath) {
     }
 }
 
-function detectEncoding(buffer) {
+function detectEncoding(buffer): string {
     if (buffer.length >= 3 && buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF) {
         return 'utf8';
     }
@@ -8077,7 +8082,7 @@ function scheduleNextUpdateCheck(delayMs = UPDATE_CHECK_INTERVAL_MS) {
     }, delayMs);
 }
 
-async function checkDailyUpdate() {
+async function checkDailyUpdate(): Promise<void> {
     if (hasPendingUpdateToInstall()) {
         logInfo('已有待安装更新，停止自动检查更新直到安装完成');
         return;
@@ -8091,7 +8096,7 @@ async function checkDailyUpdate() {
     logInfo('启动时检查更新...');
     logInfo('上次检查时间:', lastCheckTimestamp > 0 ? new Date(lastCheckTimestamp).toISOString() : '从未检查');
 
-    return new Promise(resolve => {
+    return new Promise<void>(resolve => {
         setTimeout(async () => {
             try {
                 if (lastCheckTimestamp > 0 && elapsed < UPDATE_CHECK_INTERVAL_MS) {
@@ -8200,18 +8205,15 @@ function loadSettings() {
                 ? normalizeCompilerArgsForPlatform(settings.compilerArgs, 'darwin')
                 : settings.compilerArgs;
             const normalizedCompileAndRunShortcut = 'Ctrl+F11';
-            const existingKeybindings = settings.keybindings && typeof settings.keybindings === 'object'
-                ? settings.keybindings
-                : {};
-            const existingCompileAndRun = typeof existingKeybindings.compileAndRun === 'string'
-                ? existingKeybindings.compileAndRun.trim()
+            const existingCompileAndRun = typeof settings.keybindings.compileAndRun === 'string'
+                ? settings.keybindings.compileAndRun.trim()
                 : '';
             const shouldMigrateCompileAndRun = process.platform === 'darwin'
                 && (!existingCompileAndRun || existingCompileAndRun.toUpperCase() === 'F11');
 
             if (shouldMigrateCompileAndRun) {
                 settings.keybindings = {
-                    ...existingKeybindings,
+                    ...settings.keybindings,
                     compileAndRun: normalizedCompileAndRunShortcut
                 };
             }
@@ -8781,7 +8783,7 @@ async function compileFile(options) {
             ...process.env,
             PATH: envPath,
             MINGW_PREFIX: compilerRoot
-        };
+        } as NodeJS.ProcessEnv;
 
         if (includeEnvValue) {
             compilerEnv.C_INCLUDE_PATH = includeEnvValue;
@@ -9165,7 +9167,7 @@ async function runExecutable(options) {
             child.unref(); // 允许父进程退出而不等待子进程
             child.on('error', (error) => {
                 try {
-                    let diag = { message: error.message, code: error.code, errno: error.errno, syscall: error.syscall };
+                    let diag: Record<string, unknown> = { message: error.message, code: error.code, errno: error.errno, syscall: error.syscall };
                     try {
                         if (fs.existsSync(executablePath)) {
                             const st = fs.statSync(executablePath);
@@ -10219,7 +10221,7 @@ async function syncSettingsFromCloud() {
     }
 
     const infoResult = await getLatestSettingsBackupInfo();
-    if (!infoResult.success) {
+    if (!infoResult.success || !('info' in infoResult)) {
         return infoResult;
     }
 
@@ -10454,7 +10456,7 @@ async function sendHeartbeat(type = 'heartbeat', username = '') {
             }
         } catch (_) { }
 
-        const data = {
+        const data: Record<string, unknown> = {
             type: type,
             token: token,
             version: currentVersion
@@ -10475,8 +10477,7 @@ async function sendHeartbeat(type = 'heartbeat', username = '') {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(data),
-            timeout: 10000 // 10秒超时
+            body: JSON.stringify(data)
         });
 
         const result = await response.json();
@@ -11278,8 +11279,8 @@ async function startDebugSession(filePath, options: any = {}) {
  * 通过 fuser 命令（回退到 /proc 扫描）找到实际打开了指定 TTY 设备的所有 PID。
  * 不能用 ps -t，因为 GDB 的 set inferior-tty 只重定向 fd，不改变控制终端。
  */
-function _resolvePidsOnTTY(ttyPath) {
-    const pids = new Set();
+function _resolvePidsOnTTY(ttyPath): Set<number> {
+    const pids = new Set<number>();
     if (!ttyPath) return pids;
     try {
         // 优先用 fuser，速度快且不受进程数限制

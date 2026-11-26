@@ -117,8 +117,8 @@ interface Window {
         getEncodedToken?: () => Promise<string | null>;
         cloudSyncRequest?: (payload: { method: string; path: string; query?: unknown; body?: unknown }) => Promise<{ ok?: boolean; status?: number; data?: { msg?: string; code?: number; }; error?: string }>;
         logoutIdeAccount?: () => Promise<unknown>;
-        onIdeLoginUpdated?: (cb: (status: { loggedIn?: boolean; user?: { username?: string } }) => void) => void;
-        onIdeLoginError?: (cb: (err: unknown) => void) => void;
+        onIdeLoginUpdated?: (cb: (status: { loggedIn?: boolean; user?: { username?: string }; message?: string }) => void) => void;
+        onIdeLoginError?: (cb: (err: { message?: string }) => void) => void;
         startIdeLogin?: () => Promise<unknown>;
         onMenuSaveFile?: (cb: () => void) => void;
         onMenuNewTempFile?: (cb: () => void) => void;
@@ -134,6 +134,37 @@ interface Window {
         onMenuRestoreLayout?: (cb: () => void) => void;
         onMenuSettings?: (cb: () => void) => void;
         onMenuAbout?: (cb: () => void) => void;
+        onShowDebugDevelopingMessage?: (cb: () => void) => void;
+        openFile?: () => Promise<unknown>;
+        onThemeChanged?: (cb: (theme: string) => void) => void;
+        onSettingsReset?: (cb: (allSettings: Record<string, unknown>) => void) => void;
+        onSettingsImported?: (cb: (allSettings: Record<string, unknown>) => void) => void;
+        onFileOpened?: (cb: (event: unknown, data: { filePath?: string; content?: string } | string) => void) => void;
+        onFileSaved?: (cb: (filePath: string, error: string | null) => void) => void;
+        onFolderOpened?: (cb: (folderPath: string) => void) => void;
+        onFileOpenedFromArgs?: (cb: (data: { path: string; fileName?: string; content?: string; viewType?: string }) => void) => void;
+        onApplySettingsPreview?: (cb: (previewSettings: Record<string, unknown>) => void) => void;
+        onSettingsApplied?: (cb: (finalSettings: Record<string, unknown>) => void) => void;
+        onUpdateDownloadStatus?: (cb: (payload: Record<string, unknown>) => void) => void;
+        getUpdateDownloadStatus?: () => Promise<Record<string, unknown>>;
+        onAppToast?: (cb: (payload: { message: string; type?: string }) => void) => void;
+        consumeStartupWorkspaceToOpen?: () => Promise<string | null>;
+        saveBinaryTempFile?: (filename: string, data: string) => Promise<string | null>;
+        openEditorSettings?: () => Promise<unknown>;
+        openFolder?: () => Promise<unknown>;
+        getTerminalTTY?: (terminalId: string) => Promise<{ tty?: string } | null>;
+        saveCloudFile?: (cloudPath: string, content: string) => Promise<boolean>;
+        openTemplateSettings?: () => Promise<unknown>;
+        openBackupSettings?: () => Promise<unknown>;
+        listClientLogs?: () => Promise<{ success?: boolean; message?: string; logs?: Array<{ path?: string; name?: string }> }>;
+        uploadClientLog?: (logPath: string) => Promise<{ success?: boolean; message?: string; traceCode?: string; uploadedAt?: string }>;
+        getBuildInfo?: () => Promise<{ version?: string; buildTime?: string; author?: string; buildTag?: string; buildVersion?: string; buildNo?: string }>;
+        addToFileHistory?: (path: string) => Promise<unknown>;
+        getFileHistory?: () => Promise<Array<{ path?: string; name?: string; time?: number }>>;
+        openFileFromHistory?: (path: string) => Promise<unknown>;
+        clearFileHistory?: () => Promise<unknown>;
+        saveLastOpenTabs?: (tabs: Array<{ filePath?: string; fileName?: string; groupId?: string; viewType?: string }>) => Promise<unknown>;
+        getLastOpenTabs?: () => Promise<Array<{ filePath?: string; fileName?: string; groupId?: string; viewType?: string }>>;
     };
 
     // electronIPC
@@ -169,7 +200,7 @@ interface Window {
         enableAutoTranslate?: () => void;
         t?: (key: string, params?: Record<string, unknown>) => string;
         _applyToDOM?: () => void;
-        onChange?: (cb: () => void) => void;
+        onChange?: (cb: () => void) => (() => void) | void;
         getCurrentLanguage?: () => string;
         getAvailableLanguages?: () => Promise<Array<{ code: string; name: string; nameEn: string }>>;
         setLanguage?: (lang: string) => void;
@@ -184,6 +215,7 @@ interface Window {
                 currentPath?: string;
                 workspacePath?: string;
                 selectedFile?: { path?: string; name?: string };
+                hasWorkspace?: boolean;
                 createNewFile?: () => Promise<unknown>;
                 samples?: {
                     handleFileRenamed?: (oldPath: string, newPath: string) => void | Promise<void>;
@@ -194,7 +226,7 @@ interface Window {
     };
 
     sidebarManager?: {
-        panels?: { files?: { currentPath?: string; workspacePath?: string; selectedFile?: { path?: string; name?: string } }; samples?: { handleFileRenamed?: (oldPath: string, newPath: string) => void | Promise<void>; handleFileDeleted?: (path: string) => void | Promise<void> } };
+        panels?: { files?: { currentPath?: string; workspacePath?: string; selectedFile?: { path?: string; name?: string }; hasWorkspace?: boolean; createNewFile?: () => Promise<unknown>; setWorkspace?: (path: string) => void; clearWorkspace?: () => void }; samples?: { handleFileRenamed?: (oldPath: string, newPath: string) => void | Promise<void>; handleFileDeleted?: (path: string) => void | Promise<void> } };
         getPanelManager?: (name: string) => unknown;
         getCurrentPanel?: () => unknown;
         updateFileExplorerButtons?: () => void;
@@ -210,19 +242,22 @@ interface Window {
 
     // TabManager
     tabManager?: {
-        openFile?: (name: string, content: string, readonly: boolean, options?: { filePath?: string; viewType?: string }) => void;
+        openFile?: (name: string, content: string, readonly: boolean, options?: { filePath?: string; viewType?: string; groupId?: string; isTempFile?: boolean; pdfBase64?: string | null }) => void;
         saveAllFiles?: () => Promise<{ success: boolean; failures: any[] }>;
         saveCurrentFile?: () => Promise<unknown>;
         getTabCount?: () => number;
         showWelcomePage?: () => void;
+        closeWelcomePage?: () => void;
         getUnsavedFiles?: () => unknown;
-        tabs?: Map<string, { filePath?: string; name?: string; viewType?: string }>;
+        tabs?: Map<string, { filePath?: string; fileName?: string; viewType?: string; groupId?: string; isWelcome?: boolean; isTempFile?: boolean }>;
         getTabContentForSave?: (tab: unknown) => unknown;
         saveAsFile?: (content: string, filePath?: string) => Promise<unknown>;
         syncWebviewSize?: () => void;
         resizeObserver?: unknown;
-        openBrowserTab?: (opts: { url: string; groupId?: string }) => void;
+        openBrowserTab?: (opts: { url?: string; groupId?: string }) => void;
         activeGroupId?: string;
+        groupOrder?: string[];
+        tabDragInProgress?: boolean;
         getTabByFileName?: (fileName: string) => unknown;
         markTabAsSaved?: (tab: unknown) => void;
         markTabAsSavedByUniqueKey?: (uniqueKey: string) => void;
@@ -237,12 +272,20 @@ interface Window {
         markTabAsModifiedByUniqueKey?: (uniqueKey: string) => void;
         markTabAsModified?: (tab: unknown) => void;
         getAllTabs?: () => string[];
+        autoSaveModifiedTabs?: () => Promise<number>;
+        updateAllEditorsSettings?: (settings: Record<string, unknown>) => void;
+        refreshTabLabels?: () => void;
+        openFileByPath?: (filePath: string, content: string) => void;
         editorManager?: {
-            currentEditor?: { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown };
-            getCurrentEditor?: () => { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown };
+            currentEditor?: { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown; highlightLine?: (line: number) => void };
+            getCurrentEditor?: () => { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown; highlightLine?: (line: number) => void };
             applyDiagnostics?: (diagnostics: unknown[]) => void;
             clearDiagnostics?: () => void;
             getModel?: () => unknown;
+            clearAllExecHighlights?: () => void;
+            getAllBreakpoints?: () => unknown[];
+            restartLspWithCompiler?: (compilerPath: string) => unknown;
+            refreshUserSnippets?: () => void;
         };
     };
 
@@ -257,6 +300,7 @@ interface Window {
         getActiveFilePath?: () => string | null;
         isCloudFilePath?: (path: string) => boolean;
         settings?: Record<string, unknown>;
+        editor?: unknown;
         startDebug?: (executablePath?: string, sourcePath?: string, options?: Record<string, unknown>) => Promise<void>;
         openIntegratedTerminalAndRunExecutable?: (executablePath: string, options?: { workingDirectory?: string }) => void;
         compilerManager?: unknown;
@@ -268,8 +312,8 @@ interface Window {
         openRecentFile?: () => void;
         getRecentFiles?: () => Promise<Array<{ path?: string; name?: string }>>;
         editorManager?: {
-            currentEditor?: { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown };
-            getCurrentEditor?: () => { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown };
+            currentEditor?: { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown; highlightLine?: (line: number) => void };
+            getCurrentEditor?: () => { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown; highlightLine?: (line: number) => void };
             applyDiagnostics?: (diagnostics: unknown[]) => void;
             clearDiagnostics?: () => void;
             getModel?: () => unknown;
@@ -281,6 +325,7 @@ interface Window {
         showNewYearGreeting?: (d: Date) => void;
         showSpringFestivalGreeting?: (d: Date) => void;
         showConfirmDialog?: (title: string, msg: string) => Promise<unknown>;
+        showConfirm?: (title: string, msg: string) => Promise<boolean>;
         showActionDialog?: (title: string, msg: string, buttons: Array<{ id: string; label: string; className?: string }>) => Promise<unknown>;
         showError?: (title: string, msg?: string) => void;
         showInputDialog?: (title: string, msg: string, defaultValue?: string, options?: { selectStart?: number; selectEnd?: number }) => Promise<string>;
@@ -407,15 +452,15 @@ interface Window {
 
     // editorManager
     editorManager?: {
-        currentEditor?: { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown };
-        getCurrentEditor?: () => { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown };
+        currentEditor?: { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown; highlightLine?: (line: number) => void };
+        getCurrentEditor?: () => { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown; highlightLine?: (line: number) => void };
         applyDiagnostics?: (diagnostics: unknown[]) => void;
         clearDiagnostics?: () => void;
         getCurrentContent?: () => string;
     };
     monacoEditorManager?: {
-        currentEditor?: { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown };
-        getCurrentEditor?: () => { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown };
+        currentEditor?: { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown; highlightLine?: (line: number) => void };
+        getCurrentEditor?: () => { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown; highlightLine?: (line: number) => void };
         applyDiagnostics?: (diagnostics: unknown[]) => void;
         clearDiagnostics?: () => void;
         getModel?: () => unknown;
@@ -423,6 +468,12 @@ interface Window {
         switchTab?: (tabId: string) => void;
         moveEditorToGroup?: (tabId: string, groupId: string) => void;
         cleanupEditor?: (tabId: string) => void;
+        loadKeybindingsFromSettings?: (settings: Record<string, unknown>) => void;
+        restartLspWithCompiler?: (compilerPath: string) => unknown;
+        updateAllEditorsSettings?: (settings: Record<string, unknown>) => void;
+        clearAllExecHighlights?: () => void;
+        getAllBreakpoints?: () => unknown[];
+        refreshUserSnippets?: () => void;
     };
     // app
     app?: {
@@ -432,8 +483,8 @@ interface Window {
             openFolder?: (path?: string) => void;
         };
         editorManager?: {
-            currentEditor?: { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown };
-            getCurrentEditor?: () => { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown };
+            currentEditor?: { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown; highlightLine?: (line: number) => void };
+            getCurrentEditor?: () => { layout?: () => void; filePath?: string; getFilePath?: () => string; getValue?: () => string; getModel?: () => unknown; highlightLine?: (line: number) => void };
         };
     };
     [key: string]: unknown;

@@ -1,4 +1,3 @@
-﻿// @ts-nocheck
 class OICPPApp {
     currentFile: any;
     files: any;
@@ -17,6 +16,8 @@ class OICPPApp {
     _debugTerminalBridgeEnabled: any;
     _debugSessionTerminalId: any;
     terminalPanel: any;
+    editor: any;
+    _origUpdateStatusBar: any;
     updateDownloadState: any;
     autoSaveController: any;
     supportedDropTextExtensions: any;
@@ -435,7 +436,7 @@ class OICPPApp {
             return;
         }
         try {
-            const result = await window.electronAPI.startIdeLogin();
+            const result = (await window.electronAPI.startIdeLogin()) as { ok?: boolean; message?: string } | null;
             if (result && result.ok === false && result.message) {
                 this.showMessage(result.message, 'warning');
             } else {
@@ -462,7 +463,7 @@ class OICPPApp {
             return;
         }
         try {
-            const result = await window.electronAPI.logoutIdeAccount();
+            const result = (await window.electronAPI.logoutIdeAccount()) as { ok?: boolean } | null;
             if (result && result.ok) {
                 this.showMessage(this.t('message.logoutSuccess', null, 'Logged out'), 'success');
             }
@@ -534,7 +535,7 @@ class OICPPApp {
         }
     }
 
-    applyUpdateDownloadStatus(payload = {}) {
+    applyUpdateDownloadStatus(payload: Record<string, unknown> = {}) {
         const progressRaw = Number(payload.progress);
         const progress = Number.isFinite(progressRaw)
             ? Math.max(0, Math.min(100, Math.round(progressRaw)))
@@ -650,9 +651,10 @@ class OICPPApp {
             });
 
             window.electronAPI.onFileOpened((event, data) => {
-                try { logInfo('[渲染进程] 收到 file-opened:', { fileName: data?.fileName, filePath: data?.filePath, contentBytes: (data?.content || '').length }); } catch (_) {}
-                if (data && data.filePath !== undefined && data.content !== undefined) {
-                    this.openFile(data.filePath, data.content);
+                const fileData = typeof data === 'string' ? { filePath: data, content: '' } : (data as { filePath?: string; content?: string; fileName?: string } | null);
+                try { logInfo('[渲染进程] 收到 file-opened:', { fileName: fileData?.fileName, filePath: fileData?.filePath, contentBytes: (fileData?.content || '').length }); } catch (_) {}
+                if (fileData && fileData.filePath !== undefined && fileData.content !== undefined) {
+                    this.openFile(fileData.filePath, fileData.content);
                 } else if (typeof data === 'string') {
                     this.openFile(data, '');
                 }
@@ -671,16 +673,17 @@ class OICPPApp {
             });
 
             window.electronAPI.onFileOpenedFromArgs((data) => {
-                logInfo('收到命令行文件打开请求:', data);
-                if (!data || !data.path) {
+                const openData = data as { path: string; fileName?: string; content?: string; viewType?: string };
+                logInfo('收到命令行文件打开请求:', openData);
+                if (!openData || !openData.path) {
                     return;
                 }
 
-                const fileName = data.fileName || (data.path.split(/[\\/]/).pop() || 'untitled.cpp');
-                const content = data.content ?? '';
-                const openOptions = { filePath: data.path };
-                if (data.viewType) {
-                    openOptions.viewType = data.viewType;
+                const fileName = openData.fileName || (openData.path.split(/[\\/]/).pop() || 'untitled.cpp');
+                const content = openData.content ?? '';
+                const openOptions: { filePath: string; viewType?: string } = { filePath: openData.path };
+                if (openData.viewType) {
+                    openOptions.viewType = openData.viewType;
                 }
 
                 const tryOpenWithTabManager = () => {
@@ -828,14 +831,16 @@ class OICPPApp {
         if (newSettings && Object.prototype.hasOwnProperty.call(newSettings, 'compilerPath') && previousCompilerPath !== currentCompilerPath) {
             logInfo('[LSP] 编译器路径发生更改，正在重启LSP:', previousCompilerPath, '->', currentCompilerPath);
             try {
-                const restartPromise = window.monacoEditorManager?.restartLspWithCompiler?.(currentCompilerPath);
+                const restartPromise = window.monacoEditorManager?.restartLspWithCompiler?.(currentCompilerPath) as { catch?: (onRejected: (err: unknown) => void) => void } | null;
                 if (restartPromise && typeof restartPromise.catch === 'function') {
                     restartPromise.catch((err) => {
-                        logWarn('[LSP] 触发重启失败:', err?.message || err);
+                        const e = err as { message?: string } | undefined;
+                        logWarn('[LSP] 触发重启失败:', e?.message || err);
                     });
                 }
             } catch (err) {
-                logWarn('[LSP] 触发重启失败:', err?.message || err);
+                const e = err as { message?: string } | undefined;
+                logWarn('[LSP] 触发重启失败:', e?.message || err);
             }
         }
 
@@ -1486,19 +1491,20 @@ class OICPPApp {
         }
 
         for (const file of files) {
+            const droppedFile = file as { name?: string; path?: string };
             try {
-                await this.openDroppedFile(file);
+                await this.openDroppedFile(droppedFile);
             } catch (error) {
                 logError('打开拖拽文件失败:', error);
                 if (window.dialogManager?.showError) {
-                    const displayName = file?.name || '未知文件';
+                    const displayName = droppedFile?.name || '未知文件';
                     window.dialogManager.showError(`无法打开 ${displayName}\n${error?.message || String(error)}`);
                 }
             }
         }
     }
 
-    async openDroppedFile(file, options = {}) {
+    async openDroppedFile(file: { name?: string; path?: string; text?: () => Promise<string> } | null, options: Record<string, unknown> = {}) {
         if (!file && !options?.filePath) {
             return;
         }
@@ -1534,7 +1540,7 @@ class OICPPApp {
             : null;
 
         const tabManager = window.tabManager;
-        const preferredGroupId = options?.groupId || null;
+        const preferredGroupId = (options?.groupId as string | undefined) || null;
         const activeGroupId = preferredGroupId || tabManager?.activeGroupId || tabManager?.groupOrder?.[0] || 'group-1';
 
         const overrideRawPath = typeof options?.filePath === 'string' && options.filePath.trim()
@@ -1575,12 +1581,14 @@ class OICPPApp {
 
                 if (!pdfPath && !base64Data && fallbackPaths.length > 0 && window.electronAPI?.readFileBuffer) {
                     for (const candidate of fallbackPaths) {
-                        if (!candidate) {
+                        const candidatePath = typeof candidate === 'string' ? candidate : String(candidate || '');
+                        if (!candidatePath) {
                             continue;
                         }
                         try {
-                            const fetched = await window.electronAPI.readFileBuffer(candidate);
-                            const trimmed = typeof fetched === 'string' ? fetched.trim() : '';
+                            const fetched = await window.electronAPI.readFileBuffer(candidatePath);
+                            const data = fetched?.data;
+                            const trimmed = data ? Buffer.from(data as Uint8Array).toString('base64') : '';
                             if (trimmed) {
                                 base64Data = trimmed;
                                 const persisted = await this.tryPersistPdfToTemp(fileName, base64Data);
@@ -1610,7 +1618,7 @@ class OICPPApp {
                     throw new Error('无法获取 PDF 文件数据');
                 }
 
-                await tabManager.openFile(fileName, '', false, {
+                await tabManager.openFile(String(fileName || ''), '', false, {
                     filePath: pdfPath,
                     groupId: activeGroupId,
                     viewType: 'pdf',
@@ -1636,7 +1644,7 @@ class OICPPApp {
             }
 
             await tabManager.openFile(fileName, content ?? '', false, {
-                filePath: normalizedPath || null,
+                filePath: normalizedPath || undefined,
                 groupId: activeGroupId
             });
             logInfo('已打开拖拽的文件:', fileName);
@@ -1682,7 +1690,7 @@ class OICPPApp {
         }
     }
 
-    async ensurePdfFilePath(file, fileName, existingPath, base64Override = null) {
+    async ensurePdfFilePath(file, fileName, existingPath, base64Override: string | null = null) {
         if (existingPath) {
             const sanitized = this.normalizeFilePathCandidate(existingPath);
             return { filePath: sanitized || existingPath, isTempFile: false, base64Data: null };
@@ -1855,12 +1863,12 @@ class OICPPApp {
         return null;
     }
 
-    async readFileAsBase64(file) {
+    async readFileAsBase64(file: { arrayBuffer?: () => Promise<ArrayBufferLike> } | { text?: () => Promise<string> } | null): Promise<string> {
         if (!file) {
             return '';
         }
         try {
-            if (typeof file.arrayBuffer === 'function' && typeof window.Buffer !== 'undefined') {
+            if ('arrayBuffer' in file && typeof file.arrayBuffer === 'function' && typeof window.Buffer !== 'undefined') {
                 const buffer = await file.arrayBuffer();
                 return window.Buffer.from(buffer).toString('base64');
             }
@@ -1882,7 +1890,7 @@ class OICPPApp {
                         }
                     };
                     reader.onerror = () => reject(reader.error || new Error('读取文件失败'));
-                    reader.readAsDataURL(file);
+                    reader.readAsDataURL(file as unknown as Blob);
                 });
             } catch (error) {
                 logWarn('通过 readAsDataURL 读取拖拽文件失败:', error);
@@ -1965,12 +1973,12 @@ class OICPPApp {
         }
     }
 
-    openFile(filePath, content) {
+    openFile(filePath?: string, content?: string) {
         if (typeof filePath === 'string' && typeof content === 'string') {
             try { logInfo('[渲染进程] 直接打开指定文件内容（不弹窗）:', { filePath, contentBytes: content.length }); } catch (_) {}
             const fileName = (filePath.split(/[\\\/]/).pop()) || filePath;
             if (window.tabManager) {
-                window.tabManager.openFile(fileName, content, false, filePath);
+                window.tabManager.openFile(fileName, content, false, { filePath });
             } else if (this.editorManager) {
                 this.editorManager.openFile(filePath, content);
             } else {
@@ -1986,7 +1994,8 @@ class OICPPApp {
             input.type = 'file';
             input.accept = '.cpp,.c,.h,.hpp,.cc,.cxx,.txt,.in,.out,.ans,.py';
             input.onchange = (e) => {
-                const file = e.target.files[0];
+                const target = e.target as HTMLInputElement | null;
+                const file = target?.files?.[0];
                 if (file) {
                     const reader = new FileReader();
                     reader.onload = (event) => {
@@ -2001,29 +2010,32 @@ class OICPPApp {
         }
     }
 
-    openFolder() {
+    async openFolder(): Promise<void> {
     const isLinux = (window.process && window.process.platform === 'linux');
     if (isLinux && window.folderPicker) {
-            window.folderPicker.show({ startPath: this.settings.lastOpen || '/' }).then(sel => {
-                if (sel) {
+            (window.folderPicker as { show: (opts: { startPath: string }) => Promise<{ path?: string } | null> }).show({ startPath: this.settings.lastOpen || '/' }).then(sel => {
+                if (sel?.path) {
                     if (window.electronAPI) {
-            window.electronAPI.openRecentFile ? window.electronAPI.openRecentFile(sel) : this.onFolderOpened(sel);
+            window.electronAPI.openRecentFile ? window.electronAPI.openRecentFile(sel.path) : this.onFolderOpened(sel.path);
                     } else {
-                        this.onFolderOpened(sel);
+                        this.onFolderOpened(sel.path);
                     }
                 }
             });
             return;
         }
-        if (window.electronAPI) return window.electronAPI.openFolder();
+        if (window.electronAPI) {
+            await window.electronAPI.openFolder();
+            return;
+        }
         alert('打开文件夹功能需要在 Electron 环境中运行');
     }
 
     setWorkspace(path) {
         logInfo('设置工作区:', path);
         if (window.sidebarManager) {
-            const fileExplorer = window.sidebarManager.getPanelManager('files');
-            if (fileExplorer) {
+            const fileExplorer = window.sidebarManager.getPanelManager('files') as { setWorkspace?: (path: string) => void; clearWorkspace?: () => void } | null;
+            if (fileExplorer?.setWorkspace) {
                 fileExplorer.setWorkspace(path);
             }
         }
@@ -2036,8 +2048,8 @@ class OICPPApp {
     clearWorkspace() {
         logInfo('清除工作区');
         if (window.sidebarManager) {
-            const fileExplorer = window.sidebarManager.getPanelManager('files');
-            if (fileExplorer) {
+            const fileExplorer = window.sidebarManager.getPanelManager('files') as { setWorkspace?: (path: string) => void; clearWorkspace?: () => void } | null;
+            if (fileExplorer?.clearWorkspace) {
                 fileExplorer.clearWorkspace();
             }
         }
@@ -2070,7 +2082,7 @@ class OICPPApp {
         return true;
     }
 
-    async openIntegratedTerminal(options = {}) {
+    async openIntegratedTerminal(options: Record<string, unknown> = {}) {
         if (!this.terminalPanel) {
             this.showMessage(this.t('message.terminalUninitialized', null, 'The integrated terminal is not initialized'), 'error');
             return;
@@ -2282,12 +2294,14 @@ class OICPPApp {
                 } else {
                     logInfo('调用 electronAPI.saveAsFile 另存为新文件');
                     try {
-                        const newPath = await window.electronAPI.saveAsFile(content);
+                        const newPath = (await window.electronAPI.saveAsFile(content)) as string | null;
                         if (newPath) {
                             try {
                                 const ed = this.editorManager.currentEditor;
-                                ed.filePath = newPath;
-                                ed.getFilePath = () => ed.filePath;
+                                if (ed) {
+                                    ed.filePath = newPath;
+                                    ed.getFilePath = () => ed.filePath;
+                                }
                             } catch (_) {}
                             try { window.tabManager?.updateTabPathBySource(null, newPath); } catch (_) {}
                             if (window.tabManager) {
@@ -2404,9 +2418,9 @@ class OICPPApp {
         }
     }
 
-    async saveCloudFileToServer(filePath, content) {
+    async saveCloudFileToServer(filePath: string, content: string) {
         try {
-            const cloudPanel = window.sidebarManager?.getPanelManager?.('cloud') || window.cloudSyncPanel;
+            const cloudPanel = (window.sidebarManager?.getPanelManager?.('cloud') || window.cloudSyncPanel) as { saveCloudFile?: (path: string, content: string) => Promise<boolean> } | null;
             if (!cloudPanel || typeof cloudPanel.saveCloudFile !== 'function') {
                 this.showMessage(this.t('message.cloudSyncNotReady', null, 'Cloud sync panel is not ready'), 'error');
                 return false;
@@ -2589,11 +2603,12 @@ class OICPPApp {
 
                 ipcRenderer.on('goto-source-location', async (event, frame) => {
                     try {
-                        const file = frame?.file;
-                        const line = Number(frame?.line) || 1;
+                        const frameData = frame as { file?: string; line?: number } | null;
+                        const file = frameData?.file;
+                        const line = Number(frameData?.line) || 1;
                         if (!file) return;
                         if (window.tabManager && typeof window.tabManager.openFileByPath === 'function') {
-                            await window.tabManager.openFileByPath(file);
+                            await window.tabManager.openFileByPath(file, '');
                         }
                         const ed = window.monacoEditorManager?.getCurrentEditor?.();
                         if (ed && typeof ed.highlightLine === 'function') {
@@ -2753,7 +2768,7 @@ class OICPPApp {
     }
 
     async compileBeforeDebug() {
-        return new Promise((resolve, reject) => {
+        return new Promise<void>((resolve, reject) => {
             logInfo('开始为调试编译代码...');
             
             if (!this.compilerManager) {
@@ -2836,7 +2851,7 @@ class OICPPApp {
         });
     }
 
-    startDebugSession(currentFile, options = {}) {
+    startDebugSession(currentFile: string, options: Record<string, unknown> = {}) {
         if (typeof require !== 'undefined') {
             try {
                 const { ipcRenderer } = require('electron');
@@ -3131,7 +3146,7 @@ ${data.message || '程序已加载，等待开始执行'}
 
     isModernDebugPanelMounted() {
         try {
-            const panelManager = window.sidebarManager?.getPanelManager?.('debug');
+            const panelManager = window.sidebarManager?.getPanelManager?.('debug') as { root?: { isConnected?: boolean } } | null;
             return Boolean(panelManager?.root && panelManager.root.isConnected);
         } catch (_) {
             return false;
@@ -3744,7 +3759,7 @@ ${data.message || '程序已加载，等待开始执行'}
         try {
             if (window.electronAPI && window.electronAPI.getUserIconPath) {
                 const iconPath = await window.electronAPI.getUserIconPath();
-                const iconElement = document.querySelector('#feedback-dialog-icon');
+                const iconElement = document.querySelector('#feedback-dialog-icon') as HTMLImageElement | null;
                 if (iconElement && iconPath) {
                     iconElement.src = iconPath;
                 }
@@ -3796,7 +3811,7 @@ ${data.message || '程序已加载，等待开始执行'}
 
     async showAbout() {
         const fallbackBuildInfo = { version: '1.6.1 (v53)', buildTime: '未知', author: 'mywwzh' };
-        let buildInfo = { ...fallbackBuildInfo };
+        let buildInfo: Record<string, unknown> = { ...fallbackBuildInfo };
         try {
             const buildInfoData = window.electronAPI ? await window.electronAPI.getBuildInfo() : null;
             if (buildInfoData) {
@@ -4279,8 +4294,8 @@ ${data.message || '程序已加载，等待开始执行'}
         }
         
         if (window.sidebarManager) {
-            const fileExplorer = window.sidebarManager.getPanelManager('files');
-            if (fileExplorer) {
+            const fileExplorer = window.sidebarManager.getPanelManager('files') as { setWorkspace?: (path: string) => void } | null;
+            if (fileExplorer?.setWorkspace) {
                 fileExplorer.setWorkspace(folderPath);
             }
             
@@ -4339,8 +4354,8 @@ ${data.message || '程序已加载，等待开始执行'}
         if (window.sidebarManager) {
             window.sidebarManager.showPanel('samples');
         }
-        if (window.sampleTester && typeof window.sampleTester.runAllSamples === 'function') {
-            window.sampleTester.runAllSamples();
+        if ((window.sampleTester as { runAllSamples?: () => void } | undefined)?.runAllSamples) {
+            (window.sampleTester as { runAllSamples: () => void }).runAllSamples();
         }
     }
 
@@ -4530,7 +4545,7 @@ ${data.message || '程序已加载，等待开始执行'}
                 if (!window.dialogManager || typeof window.dialogManager.showConfirm !== 'function') {
                     if (!confirm(confirmText)) return;
                 } else {
-                    const confirmed = await window.dialogManager.showConfirm(confirmText);
+                    const confirmed = await window.dialogManager.showConfirm('确认', confirmText);
                     if (!confirmed) return;
                 }
                 await window.electronAPI.clearFileHistory();
@@ -4552,7 +4567,7 @@ ${data.message || '程序已加载，等待开始执行'}
         if (window.i18n && typeof window.i18n.onChange === 'function') {
             const unsubscribe = window.i18n.onChange(() => {
                 if (!document.body.contains(overlay)) {
-                    unsubscribe();
+                    if (typeof unsubscribe === 'function') unsubscribe();
                     return;
                 }
                 this.applyFileHistoryDialogTexts(overlay, history);
@@ -4606,10 +4621,10 @@ ${data.message || '程序已加载，等待开始执行'}
         });
     }
 
-    formatHistoryTime(date) {
+    formatHistoryTime(date: Date) {
         try {
             const now = new Date();
-            const diffMs = now - date;
+            const diffMs = now.getTime() - date.getTime();
             const diffMin = Math.floor(diffMs / 60000);
             const diffHour = Math.floor(diffMs / 3600000);
             const diffDay = Math.floor(diffMs / 86400000);
