@@ -133,7 +133,7 @@ class BrowserManager {
             }
         };
         fixInternalFrame(webview);
-        (webview as any).addEventListener('did-attach', () => fixInternalFrame(webview), { once: true });
+        (webview as HTMLElement).addEventListener('did-attach', () => fixInternalFrame(webview), { once: true });
 
         // 保存引用
         const state = {
@@ -655,4 +655,4 @@ class BrowserManager {
 }
 
 // 全局实例
-window.browserManager = new BrowserManager() as any;
+window.browserManager = new BrowserManager();

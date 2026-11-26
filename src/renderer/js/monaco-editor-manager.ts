@@ -6556,12 +6556,11 @@ class MonacoEditorManager {
             const modelDir = modelFilePath ? await this.safeDirname(modelFilePath) : null;
 
             if (symbol.kind === 'include') {
-                const sym = symbol as any;
                 let targetPath = null;
-                if (sym.isAngle) {
-                    targetPath = await this.resolveSystemHeader(sym.path);
+                if (symbol.isAngle) {
+                    targetPath = await this.resolveSystemHeader(symbol.path);
                 } else {
-                    targetPath = await this.resolveIncludeTarget(sym, {
+                    targetPath = await this.resolveIncludeTarget(symbol, {
                         baseDir: modelDir || undefined,
                         filePath: modelFilePath || undefined
                     });
@@ -6569,12 +6568,12 @@ class MonacoEditorManager {
                 if (targetPath) {
                     await this.openFileAtPosition(targetPath, new monaco.Position(1, 1));
                 } else {
-                    logWarn('未找到头文件:', sym.path);
+                    logWarn('未找到头文件:', symbol.path);
                 }
                 return;
             }
 
-            const local = this.findDefinitionInModel(model, (symbol as any).word, { skipLine: position.lineNumber });
+            const local = this.findDefinitionInModel(model, symbol.word, { skipLine: position.lineNumber });
             if (local) {
                 this.goToMonacoPosition(editor, local.position);
                 return;
