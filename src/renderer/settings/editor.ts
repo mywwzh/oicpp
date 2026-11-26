@@ -1,4 +1,3 @@
-// @ts-nocheck
 class EditorSettings {
     settings: any;
     _initialLoadedSettings: any;
@@ -6,6 +5,8 @@ class EditorSettings {
     _clangFormatRawDirty: any;
     _clangFormatControlsDirty: any;
     keybindingSchema: any;
+    opacityTimeout: any;
+    previewTimeout: any;
     constructor() {
         this.settings = {
             font: 'Consolas, "Courier New", monospace',
@@ -212,7 +213,7 @@ class EditorSettings {
                 return;
             }
             const key = match[1];
-            let value = match[2].trim();
+            let value: any = match[2].trim();
             if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
                 value = value.slice(1, -1);
             }
@@ -256,7 +257,7 @@ class EditorSettings {
         ].join('\n');
     }
 
-    applyClangFormatStyleToUI(style = null, options = {}) {
+    applyClangFormatStyleToUI(style = null, options: any = {}) {
         const normalized = this.normalizeClangFormatStyle(style || this.settings.clangFormatStyle || this.getDefaultClangFormatStyle());
         const rawTextOverride = Object.prototype.hasOwnProperty.call(options || {}, 'rawText') ? options.rawText : undefined;
         const mapValue = (id, value) => {
@@ -650,7 +651,7 @@ class EditorSettings {
     }
 
     getDefaultSyntaxFontStyles() {
-        const styles = {};
+        const styles: any = {};
         this.getSyntaxTokenKeys().forEach((key) => {
             styles[key] = { bold: false, italic: false };
         });
@@ -827,7 +828,7 @@ class EditorSettings {
         return result;
     }
 
-    getSyntaxStylesFromUI() {
+    getSyntaxStylesFromUI(theme = this.getCurrentThemeFromUI()) {
         const defaults = this.getDefaultSyntaxFontStyles();
         const result = JSON.parse(JSON.stringify(defaults));
         this.getSyntaxTokenKeys().forEach((key) => {
@@ -857,7 +858,7 @@ class EditorSettings {
             preview.style.setProperty(`--syntax-${key}-style`, normalizedStyles[key]?.italic ? 'italic' : 'normal');
         });
 
-        const fontSelect = document.getElementById('editor-font');
+        const fontSelect = document.getElementById('editor-font') as HTMLSelectElement;
         const fontSizeInput = document.getElementById('editor-font-size');
         if (fontSelect && fontSelect.value) {
             preview.style.fontFamily = fontSelect.value;
@@ -1634,7 +1635,7 @@ class EditorSettings {
         const terminalFontSizeInput = document.getElementById('editor-terminal-font-size');
         const lineHeightInput = document.getElementById('editor-line-height');
 
-        const newSettings = {};
+        const newSettings: any = {};
 
         const languageSelect = document.getElementById('editor-language');
         if (languageSelect) {
@@ -1942,7 +1943,7 @@ class EditorSettings {
                 fontValue = fontValue.split(',')[0].trim().replace(/["']/g, '');
             }
             const options = Array.from(fontSelect.options);
-            const matchingOption = options.find(option => option.value === fontValue);
+            const matchingOption = options.find((option: any) => option.value === fontValue);
             if (matchingOption) {
                 fontSelect.value = fontValue;
             } else {
@@ -2001,9 +2002,9 @@ class EditorSettings {
         const clangFormatStyle = this.normalizeClangFormatStyle(this.settings.clangFormatStyle);
         if (clangFormatBasedOnStyleSelect) clangFormatBasedOnStyleSelect.value = clangFormatStyle.BasedOnStyle;
         if (clangFormatUseTabSelect) clangFormatUseTabSelect.value = clangFormatStyle.UseTab;
-        if (clangFormatIndentWidthInput) clangFormatIndentWidthInput.value = clangFormatStyle.IndentWidth;
-        if (clangFormatTabWidthInput) clangFormatTabWidthInput.value = clangFormatStyle.TabWidth;
-        if (clangFormatColumnLimitInput) clangFormatColumnLimitInput.value = clangFormatStyle.ColumnLimit;
+        if (clangFormatIndentWidthInput) clangFormatIndentWidthInput.value = String(clangFormatStyle.IndentWidth);
+        if (clangFormatTabWidthInput) clangFormatTabWidthInput.value = String(clangFormatStyle.TabWidth);
+        if (clangFormatColumnLimitInput) clangFormatColumnLimitInput.value = String(clangFormatStyle.ColumnLimit);
         if (clangFormatBreakBeforeBracesSelect) clangFormatBreakBeforeBracesSelect.value = clangFormatStyle.BreakBeforeBraces;
         if (clangFormatPointerAlignmentSelect) clangFormatPointerAlignmentSelect.value = clangFormatStyle.PointerAlignment;
         if (clangFormatSpaceBeforeParensSelect) clangFormatSpaceBeforeParensSelect.value = clangFormatStyle.SpaceBeforeParens;
@@ -2029,7 +2030,7 @@ class EditorSettings {
         }
         if (autoSaveIntervalInput) {
             const intervalMs = Number.isFinite(this.settings.autoSaveInterval) && this.settings.autoSaveInterval > 0 ? this.settings.autoSaveInterval : 60000;
-            autoSaveIntervalInput.value = Math.max(1, Math.round(intervalMs / 1000));
+            autoSaveIntervalInput.value = String(Math.max(1, Math.round(intervalMs / 1000)));
             this.toggleAutoSaveInterval(autoSaveIntervalInput, autoSaveEnabled);
         }
 
@@ -2045,7 +2046,7 @@ class EditorSettings {
         if (opacityInput && opacityValue) {
             const opacity = typeof this.settings.windowOpacity === 'number' ? this.settings.windowOpacity : 1.0;
             const transparency = Math.max(0, Math.min(0.8, 1 - opacity));
-            opacityInput.value = transparency;
+            opacityInput.value = String(transparency);
             opacityValue.textContent = Math.round(transparency * 100) + '%';
         }
 

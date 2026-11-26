@@ -46,7 +46,7 @@ async function setUserIconPath() {
 async function initializeApp() {
     try {
         logInfo('初始化标题栏管理器...');
-        window.titlebarManager = new (window.TitlebarManager as any)();
+        window.titlebarManager = new (window.TitlebarManager as unknown as new () => unknown)();
   
         logInfo('初始化侧边栏管理器...');
         window.sidebarManager = new SidebarManager();
@@ -68,10 +68,10 @@ async function initializeApp() {
         };
         
         logInfo('初始化标签页管理器...');
-        window.tabManager = new TabManager();
+        window.tabManager = new TabManager() as Window['tabManager'];
 
         logInfo('初始化主应用...');
-        window.oicppApp = new (window as any).OICPPApp();
+        window.oicppApp = new window.OICPPApp();
         logInfo('OICPPApp 实例已创建');
         await window.oicppApp.init();
    

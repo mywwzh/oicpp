@@ -316,5 +316,5 @@ class I18nManager {
 const i18n = new I18nManager();
 
 // Expose globally
-window.i18n = i18n;
+window.i18n = i18n as unknown as { init?: () => Promise<void>; enableAutoTranslate?: () => void; t?: (key: string, params?: Record<string, unknown>) => string; _applyToDOM?: () => void; onChange?: (cb: () => void) => void; getCurrentLanguage?: () => string; getAvailableLanguages?: () => Promise<Array<{ code: string; name: string; nameEn: string }>>; setLanguage?: (lang: string) => void; };
 window.__ = i18n.t.bind(i18n);

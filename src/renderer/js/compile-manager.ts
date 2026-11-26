@@ -1,4 +1,3 @@
-// @ts-nocheck
 class CompilerManager {
     settings: { compilerPath: string; compilerArgs: string; runMode: string; workingDirectory: string };
     isCompiling: boolean;
@@ -130,8 +129,8 @@ class CompilerManager {
         });
 
         this.analysisList = this.compileOutput.querySelector('#compile-analysis-list');
-        this.analysisEmptyState = this.compileOutput.querySelector('#compile-analysis-empty');
-        this.analysisHint = this.compileOutput.querySelector('.compile-output-hint');
+        this.analysisEmptyState = this.compileOutput.querySelector('#compile-analysis-empty') as HTMLElement;
+        this.analysisHint = this.compileOutput.querySelector('.compile-output-hint') as HTMLElement;
         this.tabButtons = Array.from(this.compileOutput.querySelectorAll('.compile-tab-btn'));
         this.tabButtons.forEach(btn => {
             btn.addEventListener('click', () => {
@@ -494,13 +493,13 @@ class CompilerManager {
                 }
             } catch (e) { logWarn('获取编码 token 失败:', e); }
 
-            const payload = {
+            const payload: { cpp: string; token: string; login_token?: string } = {
                 cpp: codeContent,
                 token: token || ''
             };
 
             if (loginToken) {
-                (payload as any).login_token = loginToken;
+                payload.login_token = loginToken;
             }
 
             const response = await fetch(`https://oicppide.com/api/cloudCompilation`, {

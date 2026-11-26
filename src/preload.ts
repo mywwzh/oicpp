@@ -1,4 +1,3 @@
-// @ts-nocheck
 const { contextBridge, ipcRenderer, shell, clipboard } = require('electron');
 const path = require('path');
 
@@ -363,9 +362,6 @@ contextBridge.exposeInMainWorld('turndownAPI', {
     }
 });
 
-if (globalThis.__oicppPreloadInitialized) {
-    return;
-}
 globalThis.__oicppPreloadInitialized = true;
 
 try {
