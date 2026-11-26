@@ -1,0 +1,780 @@
+const { contextBridge, ipcRenderer, shell, clipboard } = require('electron');
+const path = require('path');
+
+const showToast = (message, type = 'info', durationMs = 1200) => {
+    try {
+        const safeMsg = String(message ?? '');
+        const safeType = ['info', 'success', 'error', 'warning'].includes(type) ? type : 'info';
+        const dur = Number.isFinite(durationMs) ? durationMs : 1200;
+
+        const ensure = () => {
+            const existing = document.querySelector('.message-toast');
+            if (existing) return existing;
+            const div = document.createElement('div');
+            div.className = 'message-toast info';
+            div.style.pointerEvents = 'none';
+            document.body.appendChild(div);
+            return div;
+        };
+
+        const show = () => {
+            const toast = ensure();
+            toast.className = `message-toast ${safeType}`;
+            toast.textContent = safeMsg;
+            toast.style.display = 'block';
+            clearTimeout(toast.__hideTimer);
+            toast.__hideTimer = setTimeout(() => {
+                try {
+                    toast.style.display = 'none';
+                } catch (_) { }
+            }, dur);
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', show, { once: true });
+        } else {
+            show();
+        }
+    } catch (_) {
+    }
+};
+
+let md = null;
+let TurndownService = null;
+let turndownInstance = null;
+
+const normalizeMarkdownMath = (input) => {
+    if (!input || typeof input !== 'string') return input;
+
+    const normalizeInlineMathInLine = (line) => {
+        let out = '';
+        let inCode = false;
+        let codeFence = '';
+        let i = 0;
+
+        while (i < line.length) {
+            const ch = line[i];
+            if (ch === '`') {
+                let count = 1;
+                while (i + count < line.length && line[i + count] === '`') {
+                    count++;
+                }
+                const fence = '`'.repeat(count);
+                if (!inCode) {
+                    inCode = true;
+                    codeFence = fence;
+                } else if (fence === codeFence) {
+                    inCode = false;
+                    codeFence = '';
+                }
+                out += fence;
+                i += count;
+                continue;
+            }
+
+            if (!inCode && ch === '$') {
+                const next = line[i + 1];
+                if (next === '$' || (i > 0 && line[i - 1] === '\\')) {
+                    out += ch;
+                    i += 1;
+                    continue;
+                }
+                let j = i + 1;
+                while (j < line.length) {
+                    if (line[j] === '$' && line[j - 1] !== '\\') {
+                        break;
+                    }
+                    j += 1;
+                }
+                if (j < line.length && line[j] === '$') {
+                    const content = line.slice(i + 1, j);
+                    const trimmed = content.replace(/^\s+|\s+$/g, '');
+                    out += `$${trimmed.length ? trimmed : content}$`;
+                    i = j + 1;
+                    continue;
+                }
+            }
+
+            out += ch;
+            i += 1;
+        }
+
+        return out;
+    };
+
+    const lines = input.split('\n');
+    let inFence = false;
+    let fenceMarker = '';
+    let inMathBlock = false;
+
+    for (let idx = 0; idx < lines.length; idx++) {
+        const line = lines[idx];
+        const fenceMatch = line.match(/^\s{0,3}(```+|~~~+)/);
+        if (fenceMatch) {
+            const marker = fenceMatch[1][0];
+            if (!inFence) {
+                inFence = true;
+                fenceMarker = marker;
+            } else if (marker === fenceMarker) {
+                inFence = false;
+                fenceMarker = '';
+            }
+            continue;
+        }
+        if (!inFence) {
+            const mathFenceMatch = line.match(/^\s*\$\$\s*$/);
+            if (mathFenceMatch) {
+                inMathBlock = !inMathBlock;
+                lines[idx] = '$$';
+                continue;
+            }
+            if (inMathBlock) {
+                let normalized = line.trim();
+                normalized = normalized
+                    .replace(/\\begin\{align\*?\}/g, '\\begin{aligned}')
+                    .replace(/\\end\{align\*?\}/g, '\\end{aligned}');
+                lines[idx] = normalized;
+                continue;
+            }
+            lines[idx] = normalizeInlineMathInLine(line);
+        }
+    }
+
+    return lines.join('\n');
+};
+
+try {
+    TurndownService = require('turndown');
+    turndownInstance = new TurndownService({
+        headingStyle: 'atx',
+        hr: '---',
+        bulletListMarker: '-',
+        codeBlockStyle: 'fenced',
+        fence: '```',
+        emDelimiter: '*',
+        strongDelimiter: '**',
+        linkStyle: 'inlined',
+    });
+
+    turndownInstance.addRule('taskListItem', {
+        filter: function (node) {
+            return node.nodeName === 'LI' && 
+                   node.classList.contains('task-list-item');
+        },
+        replacement: function (content, node) {
+            const checkbox = node.querySelector('input[type="checkbox"]');
+            const checked = checkbox && checkbox.checked;
+            const prefix = checked ? '- [x] ' : '- [ ] ';
+            return prefix + content.trim().replace(/^\[[ x]\]\s*/i, '') + '\n';
+        }
+    });
+
+    turndownInstance.addRule('fencedCodeBlock', {
+        filter: function (node) {
+            return (
+                node.nodeName === 'PRE' &&
+                node.firstChild &&
+                node.firstChild.nodeName === 'CODE'
+            );
+        },
+        replacement: function (content, node, options) {
+            const code = node.firstChild;
+            const className = code.getAttribute('class') || '';
+            const langMatch = className.match(/language-(\S+)/);
+            const lang = langMatch ? langMatch[1] : '';
+            const fence = options.fence;
+            
+            return '\n\n' + fence + lang + '\n' + code.textContent + '\n' + fence + '\n\n';
+        }
+    });
+
+    turndownInstance.addRule('hljsCodeBlock', {
+        filter: function (node) {
+            return (
+                node.nodeName === 'PRE' &&
+                node.classList.contains('hljs')
+            );
+        },
+        replacement: function (content, node, options) {
+            const codeText = node.textContent || '';
+            return '\n\n```\n' + codeText + '\n```\n\n';
+        }
+    });
+    turndownInstance.addRule('ignoreCopyButton', {
+        filter: function (node) {
+            return node.nodeName === 'BUTTON' && 
+                   node.classList.contains('copy-code-btn');
+        },
+        replacement: function () {
+            return '';
+        }
+    });
+
+    turndownInstance.addRule('codeBlockWrapper', {
+        filter: function (node) {
+            return node.nodeName === 'DIV' && 
+                   node.classList.contains('code-block-wrapper');
+        },
+        replacement: function (content, node, options) {
+            const pre = node.querySelector('pre');
+            if (pre) {
+                const codeText = pre.textContent || '';
+                return '\n\n```\n' + codeText + '\n```\n\n';
+            }
+            return content;
+        }
+    });
+
+} catch (e) {
+    console.error('Failed to initialize Turndown:', e);
+}
+
+try {
+    const MarkdownIt = require('markdown-it');
+    const mk = require('@iktakahiro/markdown-it-katex');
+    const taskLists = require('markdown-it-task-lists');
+    const imageFigures = require('markdown-it-image-figures');
+    const hljs = require('highlight.js');
+
+    md = new MarkdownIt({
+        // 不允许原始 HTML：markdown-it 不做 sanitize，恶意 .md 可直接注入脚本。
+        html: false,
+        linkify: true,
+        typographer: true,
+        highlight: function (str, lang) {
+            if (lang && hljs.getLanguage(lang)) {
+                try {
+                    return '<pre class="hljs"><code>' +
+                           hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
+                           '</code></pre>';
+                } catch (__) {}
+            }
+            return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
+        }
+    })
+    .use(mk, {
+        throwOnError: false,
+        strict: 'ignore'
+    })
+    .use(taskLists)
+    .use(imageFigures, {
+        figcaption: true
+    });
+
+    const defaultFence = md.renderer.rules.fence || function(tokens, idx, options, env, self) {
+        return self.renderToken(tokens, idx, options);
+    };
+
+    md.renderer.rules.fence = function (tokens, idx, options, env, self) {
+        const token = tokens[idx];
+        const code = token.content;
+        const lang = token.info.trim();
+        
+        let highlighted;
+        try {
+            if (lang && hljs.getLanguage(lang)) {
+                highlighted = '<pre class="hljs"><code>' +
+                              hljs.highlight(code, { language: lang, ignoreIllegals: true }).value +
+                              '</code></pre>';
+            } else {
+                highlighted = '<pre class="hljs"><code>' +
+                              hljs.highlightAuto(code).value +
+                              '</code></pre>';
+            }
+        } catch (__) {
+            highlighted = '<pre class="hljs"><code>' + md.utils.escapeHtml(code) + '</code></pre>';
+        }
+        const encodedCode = encodeURIComponent(code);
+
+        return `<div class="code-block-wrapper" style="position: relative;">
+            <button class="copy-code-btn" type="button" data-code="${encodedCode}"
+                    style="position: absolute; top: 5px; right: 5px; z-index: 10; padding: 4px 8px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: inherit; cursor: pointer; font-size: 12px;">
+                Copy
+            </button>
+            ${highlighted}
+        </div>`;
+    };
+
+} catch (e) {
+    console.error('Failed to initialize markdown-it:', e);
+}
+
+contextBridge.exposeInMainWorld('markdownAPI', {
+    render: (text, filePath) => {
+        const escapeHtmlText = (value) => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        if (!md) return escapeHtmlText(text);
+        try {
+            const normalizedText = normalizeMarkdownMath(text || '');
+            const defaultImageRender = md.renderer.rules.image || function(tokens, idx, options, env, self) {
+                return self.renderToken(tokens, idx, options);
+            };
+
+            md.renderer.rules.image = function (tokens, idx, options, env, self) {
+                const token = tokens[idx];
+                const srcIndex = token.attrIndex('src');
+                if (srcIndex >= 0) {
+                    let src = token.attrs[srcIndex][1];
+                    if (src && !src.startsWith('http') && !src.startsWith('https:') && !src.startsWith('data:') && !src.startsWith('file:')) {
+                        if (filePath) {
+                            const dir = path.dirname(filePath);
+                            if (!path.isAbsolute(src)) {
+                                src = path.join(dir, src);
+                            }
+                            src = src.replace(/\\/g, '/');
+                            if (!src.startsWith('/')) {
+                                src = '/' + src;
+                            }
+                            token.attrs[srcIndex][1] = `file://${src}`;
+                        }
+                    }
+                }
+                return defaultImageRender(tokens, idx, options, env, self);
+            };
+            return md.render(normalizedText);
+        } catch (err) {
+            console.error('Markdown render error:', err);
+            return escapeHtmlText(text);
+        }
+    }
+});
+
+contextBridge.exposeInMainWorld('turndownAPI', {
+    toMarkdown: (html) => {
+        if (!turndownInstance) {
+            console.warn('Turndown not initialized, returning plain text');
+            const temp = document.createElement('div');
+            temp.innerHTML = html;
+            return temp.textContent || temp.innerText || '';
+        }
+        try {
+            return turndownInstance.turndown(html);
+        } catch (err) {
+            console.error('Turndown error:', err);
+            const temp = document.createElement('div');
+            temp.innerHTML = html;
+            return temp.textContent || temp.innerText || '';
+        }
+    }
+});
+
+globalThis.__oicppPreloadInitialized = true;
+
+try {
+    window.addEventListener('click', async (ev) => {
+        const target = ev.target;
+        if (!(target instanceof HTMLElement)) return;
+
+        const anchor = target.closest('a[href]');
+        if (anchor instanceof HTMLAnchorElement) {
+            const href = anchor.getAttribute('href') || '';
+            if (href && !href.startsWith('#') && !href.toLowerCase().startsWith('javascript:') && (ev.ctrlKey || ev.metaKey)) {
+                try {
+                    const resolvedUrl = new URL(href, window.location.href);
+                    if (!ALLOWED_EXTERNAL_PROTOCOLS.has(resolvedUrl.protocol)) {
+                        return;
+                    }
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    if (typeof shell?.openExternal === 'function') {
+                        await shell.openExternal(resolvedUrl.href);
+                    }
+                } catch (error) {
+                    console.error('Failed to open external link:', error);
+                }
+                return;
+            }
+        }
+
+        const btn = target.closest('.copy-code-btn');
+        if (!(btn instanceof HTMLElement)) return;
+        const encoded = btn.getAttribute('data-code');
+        if (!encoded) return;
+
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        let text = '';
+        try {
+            text = decodeURIComponent(encoded);
+        } catch (_) {
+            text = encoded;
+        }
+
+        try {
+            if (window.electronAPI && typeof window.electronAPI.clipboardWriteText === 'function') {
+                await window.electronAPI.clipboardWriteText(text);
+            } else {
+                ipcRenderer.invoke('clipboard-write-text', text);
+            }
+            showToast('已复制到剪贴板', 'success', 1200);
+        } catch (err) {
+            showToast('复制失败', 'error', 1600);
+            try { console.error('Copy code failed:', err); } catch (_) { }
+        }
+    }, true);
+} catch (_) { }
+
+const IPC_SEND_CHANNELS = new Set([
+    'app-close-cancelled', 'app-close-confirmed', 'app-close-discard', 'check-updates-manual',
+    'create-file', 'create-folder', 'debug-add-breakpoint', 'debug-remove-breakpoint',
+    'debug-add-watch', 'debug-collapse-variable', 'debug-continue', 'debug-expand-variable',
+    'debug-load-more-variable', 'debug-remove-watch', 'debug-request-variables', 'debug-send-input',
+    'debug-step-into', 'debug-step-out', 'debug-step-over', 'delete-file', 'menu-open-settings',
+    'move-file', 'open-editor-settings', 'open-template-settings', 'paste-file', 'read-directory',
+    'rename-file', 'save-file', 'start-debug', 'stop-debug', 'window-close', 'window-close-discard',
+    'window-maximize', 'window-minimize', 'window-unmaximize'
+]);
+const IPC_INVOKE_CHANNELS = new Set([
+    'check-file-exists', 'check-gdb-availability', 'compile-file', 'get-all-settings', 'get-settings',
+    'open-backup-settings', 'open-compiler-settings', 'read-file-buffer', 'run-executable', 'update-settings',
+    'update-top-level-settings'
+]);
+const IPC_EVENT_CHANNELS = new Set([
+    'app-close-requested', 'compile-error', 'compile-result', 'debug-breakpoint-hit',
+    'debug-breakpoint-removed', 'debug-breakpoint-set', 'debug-callstack-updated', 'debug-error',
+    'debug-output', 'debug-program-exited', 'debug-ready-waiting', 'debug-running', 'debug-started',
+    'debug-stopped', 'debug-terminal-output', 'debug-variable-expanded', 'debug-variables-updated',
+    'directory-read', 'directory-read-error', 'file-content-read', 'file-created', 'file-deleted',
+    'file-moved', 'file-move-error', 'file-pasted', 'file-renamed', 'file-saved', 'folder-created',
+    'goto-source-location', 'language-changed', 'run-error', 'run-result', 'settings-changed',
+    'settings-imported', 'settings-loaded', 'settings-reset', 'theme-changed', 'window-maximized',
+    'window-unmaximized'
+]);
+
+function assertChannel(channel, allowed, kind) {
+    if (typeof channel !== 'string' || !allowed.has(channel)) {
+        // 不再把未白名单的通道交给主进程，防止任意 XSS 直接调用内部 IPC。
+        try { console.warn(`[preload] blocked ${kind} on unlisted channel:`, channel); } catch (_) { }
+        return false;
+    }
+    return true;
+}
+
+const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
+const BLOCKED_OPEN_EXTENSIONS = /\.(exe|bat|cmd|com|scr|ps1|vbs|vbe|js|jse|wsf|wsh|msi|lnk|reg|hta|jar)$/i;
+
+const safeOpenExternal = (url) => {
+    try {
+        const parsed = new URL(String(url || ''));
+        if (!ALLOWED_EXTERNAL_PROTOCOLS.has(parsed.protocol)) {
+            return Promise.reject(new Error('不允许的链接协议'));
+        }
+        return shell.openExternal(parsed.href);
+    } catch (err) {
+        return Promise.reject(err);
+    }
+};
+
+const safeOpenPath = (targetPath) => {
+    const value = String(targetPath || '');
+    if (BLOCKED_OPEN_EXTENSIONS.test(value)) {
+        return Promise.reject(new Error('不允许直接打开可执行文件'));
+    }
+    return shell.openPath(value);
+};
+
+const safeIpcRenderer = {
+    send: (channel, ...args) => {
+        if (!assertChannel(channel, IPC_SEND_CHANNELS, 'send')) return;
+        return ipcRenderer.send(channel, ...args);
+    },
+    invoke: (channel, ...args) => {
+        if (!assertChannel(channel, IPC_INVOKE_CHANNELS, 'invoke')) return Promise.reject(new Error('blocked channel'));
+        return ipcRenderer.invoke(channel, ...args);
+    },
+    on: (channel, listener) => {
+        if (!assertChannel(channel, IPC_EVENT_CHANNELS, 'on')) return () => { };
+        return ipcRenderer.on(channel, listener);
+    },
+    once: (channel, listener) => {
+        if (!assertChannel(channel, IPC_EVENT_CHANNELS, 'once')) return () => { };
+        return ipcRenderer.once(channel, listener);
+    },
+    removeListener: (channel, listener) => {
+        if (!assertChannel(channel, IPC_EVENT_CHANNELS, 'removeListener')) return;
+        return ipcRenderer.removeListener(channel, listener);
+    },
+    removeAllListeners: (channel) => {
+        if (!assertChannel(channel, IPC_EVENT_CHANNELS, 'removeAllListeners')) return;
+        return ipcRenderer.removeAllListeners(channel);
+    }
+};
+
+contextBridge.exposeInMainWorld('electron', {
+    ipcRenderer: safeIpcRenderer,
+    shell: {
+        openExternal: safeOpenExternal,
+        showItemInFolder: (path) => shell.showItemInFolder(path),
+        openPath: safeOpenPath
+    }
+});
+contextBridge.exposeInMainWorld('__electronRequireAvailable', true);
+contextBridge.exposeInMainWorld('getElectronModule', () => {
+    return {
+        ipcRenderer: safeIpcRenderer,
+        shell: {
+            openExternal: safeOpenExternal,
+            showItemInFolder: (path) => shell.showItemInFolder(path),
+            openPath: safeOpenPath
+        }
+    };
+});
+
+contextBridge.exposeInMainWorld('electronAPI', {
+    openFile: () => ipcRenderer.send('open-file-dialog'),
+    openFolder: () => ipcRenderer.send('open-folder-dialog'),
+    saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
+    saveAsFile: (content) => ipcRenderer.invoke('save-as-file', content),
+    readFileContent: (filePath) => ipcRenderer.invoke('read-file-content', filePath),
+    readFileBuffer: (filePath) => safeIpcRenderer.invoke('read-file-buffer', filePath),
+    readZipTextFiles: (zipPath) => ipcRenderer.invoke('read-zip-text-files', zipPath),
+    extractZipEntry: (zipPath, entryName, targetPath) => ipcRenderer.invoke('extract-zip-entry', zipPath, entryName, targetPath),
+    showItemInFolder: (filePath) => ipcRenderer.invoke('open-path', filePath, { reveal: true }),
+    openPath: (targetPath, options = {}) => ipcRenderer.invoke('open-path', targetPath, options),
+    showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
+    showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
+
+    saveTempFile: (filePath, content) => ipcRenderer.invoke('save-temp-file', filePath, content),
+    saveBinaryTempFile: (fileName, base64Data) => ipcRenderer.invoke('save-binary-temp-file', fileName, base64Data),
+    loadTempFile: (filePath) => ipcRenderer.invoke('load-temp-file', filePath),
+    deleteTempFile: (filePath) => ipcRenderer.invoke('delete-temp-file', filePath),
+
+    getAllSettings: () => ipcRenderer.invoke('get-all-settings'),
+    getSettings: () => ipcRenderer.invoke('get-settings'),
+    sendSettingsPreview: (settings) => ipcRenderer.send('settings-preview', settings),
+    updateSettings: (newSettings) => ipcRenderer.invoke('update-settings', newSettings),
+    updateEditorSettings: (editorSettings) => ipcRenderer.invoke('update-editor-settings', editorSettings),
+    resetSettings: () => ipcRenderer.invoke('reset-settings'),
+    exportSettings: () => ipcRenderer.invoke('export-settings'),
+    importSettings: () => ipcRenderer.invoke('import-settings'),
+    saveSetting: (key, value) => ipcRenderer.invoke('save-setting', key, value),
+
+    openCompilerSettings: () => ipcRenderer.invoke('open-compiler-settings'),
+    openEditorSettings: () => ipcRenderer.invoke('open-editor-settings'),
+    openTemplateSettings: () => ipcRenderer.send('open-template-settings'),
+    openBackupSettings: () => ipcRenderer.invoke('open-backup-settings'),
+
+    getPlatform: () => ipcRenderer.invoke('get-platform'),
+    getUserHome: () => ipcRenderer.invoke('get-user-home'),
+    getUserIconPath: () => ipcRenderer.invoke('get-user-icon-path'),
+    getBuildInfo: () => ipcRenderer.invoke('get-build-info'),
+
+    getDownloadedCompilers: () => ipcRenderer.invoke('get-downloaded-compilers'),
+    downloadCompiler: (config) => ipcRenderer.invoke('download-compiler', config),
+    selectCompiler: (version) => ipcRenderer.invoke('select-compiler', version),
+
+
+    getDownloadedTestlibs: () => ipcRenderer.invoke('get-downloaded-testlibs'),
+    downloadTestlib: (config) => ipcRenderer.invoke('download-testlib', config),
+    selectTestlib: (version) => ipcRenderer.invoke('select-testlib', version),
+    testTestlib: (testlibPath) => ipcRenderer.invoke('test-testlib', testlibPath),
+
+    compileFile: (options) => ipcRenderer.invoke('compile-file', options),
+    runExecutable: (options) => ipcRenderer.invoke('run-executable', options),
+    runProgram: (executablePath, input, timeLimit, memoryLimit) => ipcRenderer.invoke('run-program', executablePath, input, timeLimit, memoryLimit),
+    runInteractive: (options) => ipcRenderer.invoke('run-interactive', options),
+
+    readDirectory: (dirPath) => ipcRenderer.invoke('read-directory', dirPath),
+    renameFile: (oldPath, newPath) => ipcRenderer.invoke('rename-file', oldPath, newPath),
+    deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
+    clearDirectoryContents: (dirPath) => ipcRenderer.invoke('clear-directory-contents', dirPath),
+    writeFile: (filePath, content) => ipcRenderer.invoke('write-file', filePath, content),
+    createFile: (filePath, content) => ipcRenderer.invoke('create-file', filePath, content),
+    createFolder: (folderPath) => ipcRenderer.invoke('create-folder', folderPath),
+    checkFileExists: (filePath) => ipcRenderer.invoke('check-file-exists', filePath),
+    getPathInfo: (filePath) => ipcRenderer.invoke('get-path-info', filePath),
+    ensureDirectory: (dirPath) => ipcRenderer.invoke('ensure-directory', dirPath),
+    watchFile: (filePath) => ipcRenderer.invoke('watch-file', filePath),
+    unwatchFile: (filePath) => ipcRenderer.invoke('unwatch-file', filePath),
+
+    pathJoin: (...paths) => ipcRenderer.invoke('path-join', ...paths),
+    pathDirname: (filePath) => ipcRenderer.invoke('path-dirname', filePath),
+    getHomeDir: () => ipcRenderer.invoke('get-home-dir'),
+    ensureDir: (dirPath) => ipcRenderer.invoke('ensure-dir', dirPath),
+
+    getTerminalFeatureStatus: () => ipcRenderer.invoke('terminal-feature-status'),
+    createTerminal: (options) => ipcRenderer.invoke('terminal-create', options),
+    writeTerminal: (terminalId, data) => ipcRenderer.invoke('terminal-write', terminalId, data),
+    resizeTerminal: (terminalId, cols, rows) => ipcRenderer.invoke('terminal-resize', terminalId, cols, rows),
+    killTerminal: (terminalId) => ipcRenderer.invoke('terminal-kill', terminalId),
+    listTerminals: () => ipcRenderer.invoke('terminal-list'),
+    getTerminalTTY: (terminalId) => ipcRenderer.invoke('terminal-get-tty', terminalId),
+
+    onMenuSaveFile: (callback) => ipcRenderer.on('menu-save-file', callback),
+    onApplySettingsPreview: (callback) => ipcRenderer.on('apply-settings-preview', (event, ...args) => callback(...args)),
+    onSettingsApplied: (callback) => ipcRenderer.on('settings-applied', (event, ...args) => callback(...args)),
+    onMenuFormatCode: (callback) => ipcRenderer.on('menu-format-code', callback),
+    onMenuFindReplace: (callback) => ipcRenderer.on('menu-find-replace', callback),
+    onMenuCompile: (callback) => ipcRenderer.on('menu-compile', callback),
+    onMenuCompileRun: (callback) => ipcRenderer.on('menu-compile-run', callback),
+    onMenuDebug: (callback) => ipcRenderer.on('menu-debug', callback),
+    onMenuNewTempFile: (callback) => ipcRenderer.on('menu-new-temp-file', callback),
+    onMenuOpenFile: (callback) => ipcRenderer.on('menu-open-file', callback),
+    onMenuOpenFolder: (callback) => ipcRenderer.on('menu-open-folder', callback),
+    onMenuSaveAs: (callback) => ipcRenderer.on('menu-save-as', callback),
+    onMenuOpenTerminal: (callback) => ipcRenderer.on('menu-open-terminal', callback),
+    onMenuOpenBrowser: (callback) => ipcRenderer.on('menu-open-browser', callback),
+    onMenuNewBrowserTab: (callback) => ipcRenderer.on('menu-new-browser-tab', callback),
+    onMenuAbout: (callback) => ipcRenderer.on('menu-about', callback),
+    onMenuSettings: (callback) => ipcRenderer.on('menu-settings', callback),
+    onMenuCheckUpdates: (callback) => ipcRenderer.on('menu-check-updates', callback),
+    getUpdateDownloadStatus: () => ipcRenderer.invoke('get-update-download-status'),
+    onUpdateDownloadStatus: (callback) => ipcRenderer.on('update-download-status', (_event, payload) => callback && callback(payload)),
+    onAppToast: (callback) => ipcRenderer.on('app-toast', (_event, payload) => callback && callback(payload)),
+
+    onShowDebugDevelopingMessage: (callback) => ipcRenderer.on('show-debug-developing-message', callback),
+    onSettingsChanged: (callback) => ipcRenderer.on('settings-changed', callback),
+    onSettingsReset: (callback) => ipcRenderer.on('settings-reset', callback),
+    onSettingsImported: (callback) => ipcRenderer.on('settings-imported', callback),
+    onThemeChanged: (callback) => ipcRenderer.on('theme-changed', callback),
+    onFileOpened: (callback) => ipcRenderer.on('file-opened', callback),
+    onFileSaved: (callback) => ipcRenderer.on('file-saved', (event, filePath, error) => callback(filePath, error)),
+    onFolderOpened: (callback) => ipcRenderer.on('folder-opened', (event, folderPath) => callback(folderPath)),
+    reportWorkspacePath: (folderPath) => ipcRenderer.send('workspace-path-report', folderPath),
+    onFileOpenedFromArgs: (callback) => ipcRenderer.on('file-opened-from-args', (event, data) => callback(data)),
+    consumeStartupWorkspaceToOpen: () => ipcRenderer.invoke('consume-startup-workspace-to-open'),
+    onExternalFileChange: (callback) => {
+        if (typeof callback !== 'function') return () => { };
+        const listener = (_event, payload) => callback(payload);
+        ipcRenderer.on('external-file-changed', listener);
+        return () => ipcRenderer.removeListener('external-file-changed', listener);
+    },
+    onSampleTesterCreateProblem: (callback) => ipcRenderer.on('sample-tester-create-problem', (_e, data) => callback && callback(data)),
+    onTerminalData: (callback) => ipcRenderer.on('terminal-data', (_event, payload) => callback && callback(payload)),
+    onTerminalExit: (callback) => ipcRenderer.on('terminal-exit', (_event, payload) => callback && callback(payload)),
+
+    getCpuThreads: () => ipcRenderer.invoke('get-cpu-threads'),
+
+    sendFeedback: (message) => ipcRenderer.invoke('send-feedback', message),
+    listClientLogs: () => ipcRenderer.invoke('list-client-logs'),
+    uploadClientLog: (filePath) => ipcRenderer.invoke('upload-client-log', filePath),
+    getDeviceInfo: () => ipcRenderer.invoke('get-device-info'),
+    getEncodedToken: () => ipcRenderer.invoke('get-encoded-token'),
+
+    openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+    getLanguage: () => ipcRenderer.invoke('get-language'),
+    getLanguageFile: (langCode) => ipcRenderer.invoke('get-language-file', langCode),
+    getAvailableLanguages: () => ipcRenderer.invoke('get-available-languages'),
+    onLanguageChanged: (callback) => ipcRenderer.on('language-changed', (_event, langCode) => callback && callback(langCode)),
+
+    startIdeLogin: () => ipcRenderer.invoke('ide-login-start'),
+    getIdeLoginStatus: () => ipcRenderer.invoke('ide-login-status'),
+    logoutIdeAccount: () => ipcRenderer.invoke('ide-logout'),
+    cloudSyncRequest: (payload) => ipcRenderer.invoke('cloud-sync-request', payload),
+    backupSettingsToCloud: () => ipcRenderer.invoke('backup-settings-to-cloud'),
+    getSettingsBackupInfo: () => ipcRenderer.invoke('get-settings-backup-info'),
+    syncSettingsFromCloud: () => ipcRenderer.invoke('sync-settings-from-cloud'),
+    onIdeLoginUpdated: (callback) => ipcRenderer.on('ide-login-updated', (_event, payload) => callback && callback(payload)),
+    onIdeLoginError: (callback) => ipcRenderer.on('ide-login-error', (_event, payload) => callback && callback(payload)),
+
+    getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
+    openRecentFile: (filePath) => ipcRenderer.invoke('open-recent-file', filePath),
+
+    getFileHistory: () => ipcRenderer.invoke('get-file-history'),
+    addToFileHistory: (filePath) => ipcRenderer.invoke('add-to-file-history', filePath),
+    openFileFromHistory: (filePath) => ipcRenderer.invoke('open-file-from-history', filePath),
+    clearFileHistory: () => ipcRenderer.invoke('clear-file-history'),
+    saveLastOpenTabs: (tabs) => ipcRenderer.invoke('save-last-open-tabs', tabs),
+    getLastOpenTabs: () => ipcRenderer.invoke('get-last-open-tabs'),
+    onMenuOpenFileHistory: (callback) => ipcRenderer.on('menu-open-file-history', callback),
+
+    versions: process.versions,
+
+    relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
+
+    clipboardWriteText: (text) => ipcRenderer.invoke('clipboard-write-text', text),
+    clipboardReadText: () => ipcRenderer.invoke('clipboard-read-text'),
+
+    walkDirectory: (dirPath, options) => ipcRenderer.invoke('walk-directory', dirPath, options),
+
+    lspStart: (options) => ipcRenderer.invoke('lsp-start', options),
+    lspStop: () => ipcRenderer.invoke('lsp-stop'),
+    lspRestart: (options) => ipcRenderer.invoke('lsp-restart', options),
+    lspRequest: (method, params) => ipcRenderer.invoke('lsp-request', method, params),
+    lspNotify: (method, params) => ipcRenderer.invoke('lsp-notify', method, params),
+    onLspNotification: (callback) => ipcRenderer.on('lsp-notification', (_event, payload) => callback && callback(payload)),
+
+    onRequestSaveAll: (callback) => ipcRenderer.on('request-save-all', () => callback && callback()),
+    notifySaveAllComplete: () => ipcRenderer.send('save-all-complete'),
+    notifySaveAllFailed: (payload) => ipcRenderer.send('save-all-failed', payload || {}),
+
+    // === 内置浏览器 API ===
+    browserResolveUrl: (url) => ipcRenderer.invoke('browser-resolve-url', url),
+    browserGetPageTitle: (url) => ipcRenderer.invoke('browser-get-page-title', url),
+    onBrowserOpenNewTab: (callback) => {
+        if (typeof callback !== 'function') return () => {};
+        const listener = (_event, payload) => callback(payload);
+        ipcRenderer.on('browser-open-new-tab', listener);
+        return () => ipcRenderer.removeListener('browser-open-new-tab', listener);
+    }
+});
+
+contextBridge.exposeInMainWorld('electronIPC', {
+    ...safeIpcRenderer,
+    ipcRenderer: safeIpcRenderer,
+    // 返回取消函数，避免调用方拿到包装函数后无法 removeListener（监听器泄漏）。
+    on: (channel, listener) => {
+        const wrapped = channel === 'file-saved'
+            ? (event, filePath, error) => listener(event, filePath, error)
+            : listener;
+        ipcRenderer.on(channel, wrapped);
+        return () => {
+            try { ipcRenderer.removeListener(channel, wrapped); } catch (_) { }
+        };
+    },
+    once: (channel, listener) => {
+        const wrapped = channel === 'file-saved'
+            ? (event, filePath, error) => listener(event, filePath, error)
+            : listener;
+        ipcRenderer.once(channel, wrapped);
+        return () => {
+            try { ipcRenderer.removeListener(channel, wrapped); } catch (_) { }
+        };
+    }
+});
+
+contextBridge.exposeInMainWorld('process', {
+    versions: process.versions,
+    platform: process.platform,
+    env: {
+        NODE_ENV: process.env.NODE_ENV || 'development',
+        CI: process.env.CI || false
+    }
+});
+
+// 不再向渲染进程暴露 Node Buffer（仅用于构造二进制内容，已有 btoa/FileReader 兜底）。
+
+const safeSendLog = (level, args) => {
+    try {
+        let meta = undefined;
+        if (level === 'warn' || level === 'error') {
+            meta = {
+                source: 'renderer',
+                ts: Date.now(),
+                userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+                stack: (() => { try { throw new Error('__trace__'); } catch (e) { return e.stack; } })(),
+            };
+        }
+        ipcRenderer.send('logger-log', { level, args, meta });
+    } catch (_) { }
+    // 仅在开发模式或显式开启时输出到控制台
+    if (process.env.NODE_ENV === 'development' || process.env.OICPP_CONSOLE_LOG === '1') {
+        try {
+            if (level === 'warn') console.warn(...args);
+            else if (level === 'error') console.error(...args);
+            else console.log(...args);
+        } catch (_) { }
+    }
+};
+
+contextBridge.exposeInMainWorld('logInfo', (...args) => safeSendLog('info', args));
+contextBridge.exposeInMainWorld('logWarn', (...args) => safeSendLog('warn', args));
+contextBridge.exposeInMainWorld('logError', (...args) => safeSendLog('error', args));
+contextBridge.exposeInMainWorld('logwarn', (...args) => safeSendLog('warn', args));
+contextBridge.exposeInMainWorld('logerror', (...args) => safeSendLog('error', args));

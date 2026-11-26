@@ -1,0 +1,2103 @@
+class CodeComparer {
+    activeTaskKey: any;
+    standardCodePath: any;
+    testCodePath: any;
+    generatorPath: any;
+    useTestlib: any;
+    spjPath: any;
+    freopenInputFile: any;
+    freopenOutputFile: any;
+    maxParallelThreads: any;
+    tasks: any;
+    eventsbound: any;
+    constructor() {
+        this.activeTaskKey = null;
+        this.standardCodePath = '';
+        this.testCodePath = '';
+        this.generatorPath = '';
+        this.useTestlib = false;
+        this.spjPath = '';
+        this.freopenInputFile = '';
+        this.freopenOutputFile = '';
+        this.maxParallelThreads = 1;
+        this.tasks = new Map();
+        this.eventsbound = false;
+
+        this.setupEventListeners();
+        this.setupActiveFileListener();
+    }
+
+    normalizeTaskKey(taskKey) {
+        if (!taskKey || typeof taskKey !== 'string') return '';
+        const isWin = typeof window !== 'undefined' && window.process?.platform === 'win32';
+        const normalized = String(taskKey).trim();
+        if (!isWin) return normalized;
+        return normalized.replace(/\//g, '\\').toLowerCase();
+    }
+
+    setupActiveFileListener() {
+        try {
+            window.addEventListener('oicpp:active-file-changed', (e) => {
+                const filePath = e?.detail?.filePath;
+                if (!filePath || typeof filePath !== 'string') return;
+                if (!this.isSupportedCodeFile(filePath)) return;
+                this.setActiveTaskKey(filePath, { syncTestCodePath: true });
+            });
+        } catch (error) {
+            logWarn('[对拍器] 注册活动文件监听失败:', error);
+        }
+    }
+
+    isSupportedCodeFile(filePath) {
+        const lower = String(filePath || '').toLowerCase();
+        return lower.endsWith('.cpp') || lower.endsWith('.cc') || lower.endsWith('.cxx') || lower.endsWith('.c');
+    }
+
+    isPythonGenerator(filePath) {
+        const lower = String(filePath || '').trim().toLowerCase();
+        return lower.endsWith('.py');
+    }
+
+    async promptMissingPythonInterpreter(task) {
+        this.showTaskCompileError(task, 'settings', window.i18n ? window.i18n.t('compare.setPythonFirst') : 'Please set the Python interpreter path first');
+        try {
+            await window.electronAPI?.openCompilerSettings?.();
+        } catch (error) {
+            logWarn('打开编译器设置失败:', error);
+        }
+    }
+
+    getOrCreateTask(taskKey) {
+        const normalizedKey = this.normalizeTaskKey(taskKey);
+        if (!normalizedKey) return null;
+        let task = this.tasks.get(normalizedKey);
+        if (!task) {
+            task = {
+                key: normalizedKey,
+                config: {
+                    standardCodePath: '',
+                    testCodePath: taskKey,
+                    generatorPath: '',
+                    useTestlib: false,
+                    spjPath: '',
+                    freopenInputFile: '',
+                    freopenOutputFile: '',
+                    threadCount: 1,
+                    compareCount: 100,
+                    timeLimit: 1000
+                },
+                state: {
+                    isRunning: false,
+                    shouldStop: false,
+                    currentTest: 0,
+                    totalTests: 0,
+                    statusText: (window.i18n ? window.i18n.t('compare.ready') : 'Ready'),
+                    mode: 'idle', // idle | running | error | complete
+                    errorResult: null,
+                    warningMessage: null
+                },
+                compiledExecutables: null
+            };
+            this.tasks.set(normalizedKey, task);
+        }
+        return task;
+    }
+
+    getActiveTask() {
+        const key = this.activeTaskKey || this.testCodePath || null;
+        if (!key) return null;
+        return this.getOrCreateTask(key);
+    }
+
+    setActiveTaskKey(taskKey, options: { syncTestCodePath?: boolean } = {}) {
+        if (!taskKey || typeof taskKey !== 'string') return;
+        const normalizedKey = this.normalizeTaskKey(taskKey);
+        if (!normalizedKey) return;
+
+        const task = this.getOrCreateTask(taskKey);
+        if (!task) return;
+
+        this.activeTaskKey = normalizedKey;
+
+        if (options.syncTestCodePath) {
+            task.config.testCodePath = taskKey;
+            this.testCodePath = task.config.testCodePath;
+        }
+
+        this.applyTaskConfigToInstance(task);
+        this.renderTask(task);
+    }
+
+    applyTaskConfigToInstance(task) {
+        const cfg = task?.config;
+        if (!cfg) return;
+        this.standardCodePath = cfg.standardCodePath || '';
+        this.testCodePath = cfg.testCodePath || '';
+        this.generatorPath = cfg.generatorPath || '';
+        this.useTestlib = !!cfg.useTestlib;
+        this.spjPath = cfg.spjPath || '';
+        this.freopenInputFile = cfg.freopenInputFile || '';
+        this.freopenOutputFile = cfg.freopenOutputFile || '';
+    }
+
+    syncInstanceConfigToTask(task) {
+        if (!task?.config) return;
+        task.config.standardCodePath = this.standardCodePath || '';
+        task.config.testCodePath = this.testCodePath || task.key;
+        task.config.generatorPath = this.generatorPath || '';
+        task.config.useTestlib = !!this.useTestlib;
+        task.config.spjPath = this.spjPath || '';
+        const freopenInputEl = document.getElementById('compare-freopen-input-file');
+        const freopenOutputEl = document.getElementById('compare-freopen-output-file');
+        task.config.freopenInputFile = this.normalizeFreopenFileName(freopenInputEl?.value || this.freopenInputFile || '');
+        task.config.freopenOutputFile = this.normalizeFreopenFileName(freopenOutputEl?.value || this.freopenOutputFile || '');
+
+        const compareCountEl = document.getElementById('compare-count');
+        const timeLimitEl = document.getElementById('time-limit');
+        const threadCountEl = document.getElementById('compare-threads');
+        const compareCount = parseInt(compareCountEl?.value);
+        const timeLimit = parseInt(timeLimitEl?.value);
+        const threadCount = parseInt(threadCountEl?.value);
+        if (Number.isFinite(compareCount)) task.config.compareCount = Math.max(1, Math.min(compareCount, 100000));
+        if (Number.isFinite(timeLimit)) task.config.timeLimit = timeLimit;
+        if (Number.isFinite(threadCount)) {
+            const capped = Math.max(1, Math.min(threadCount, this.maxParallelThreads || threadCount));
+            task.config.threadCount = capped;
+            if (threadCountEl && capped !== threadCount) threadCountEl.value = String(capped);
+        }
+    }
+
+    mergeTaskConfigIfEmpty(targetTask, sourceConfig) {
+        if (!targetTask?.config || !sourceConfig) return;
+
+        const t = targetTask.config;
+        const s = sourceConfig;
+        if (!t.standardCodePath && s.standardCodePath) t.standardCodePath = s.standardCodePath;
+        if (!t.generatorPath && s.generatorPath) t.generatorPath = s.generatorPath;
+        if (!t.spjPath && s.spjPath) t.spjPath = s.spjPath;
+        if (!t.freopenInputFile && s.freopenInputFile) t.freopenInputFile = s.freopenInputFile;
+        if (!t.freopenOutputFile && s.freopenOutputFile) t.freopenOutputFile = s.freopenOutputFile;
+
+        if (!t.useTestlib && s.useTestlib) t.useTestlib = !!s.useTestlib;
+
+        if (!Number.isFinite(t.compareCount) && Number.isFinite(s.compareCount)) t.compareCount = s.compareCount;
+        if (!Number.isFinite(t.timeLimit) && Number.isFinite(s.timeLimit)) t.timeLimit = s.timeLimit;
+        if (!Number.isFinite(t.threadCount) && Number.isFinite(s.threadCount)) t.threadCount = s.threadCount;
+
+        t.testCodePath = targetTask.key;
+    }
+
+    activate() {
+        logInfo('激活代码对拍器面板');
+        setTimeout(() => {
+            this.checkCompilerAndUpdate();
+        }, 100);
+
+        try {
+            const currentEditor = window.editorManager?.getCurrentEditor?.();
+            const filePath = currentEditor?.filePath || (currentEditor?.getFilePath && currentEditor.getFilePath());
+            if (filePath && this.isSupportedCodeFile(filePath)) {
+                this.setActiveTaskKey(filePath, { syncTestCodePath: true });
+            } else {
+                const task = this.getActiveTask();
+                if (task) this.renderTask(task);
+            }
+        } catch (_) { }
+    }
+
+    async checkCompilerAndUpdate() {
+        try {
+            if (window.electronAPI && window.electronAPI.getAllSettings) {
+                const settings = await window.electronAPI.getAllSettings();
+                const hasCompiler = settings && settings.compilerPath;
+
+                const noCompilerMessage = document.getElementById('no-compiler-message');
+                const compareFileSection = document.getElementById('compare-file-section');
+
+                if (hasCompiler) {
+                    noCompilerMessage.style.display = 'none';
+                    // 不要写死 display:block：.compare-file-section 在 CSS 里是 flex 列布局，
+                    // 内联的 block 会覆盖它并让 gap 失效，导致各区块紧紧贴在一起。
+                    compareFileSection.style.display = '';
+                } else {
+                    noCompilerMessage.style.display = 'flex';
+                    compareFileSection.style.display = 'none';
+                }
+            }
+        } catch (error) {
+            logError('检查编译器设置失败:', error);
+        }
+    }
+
+    setupEventListeners() {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                this.bindEvents();
+            });
+        } else {
+            setTimeout(() => this.bindEvents(), 100);
+        }
+    }
+
+    bindEvents() {
+        if (this.eventsbound) {
+            return;
+        }
+        this.eventsbound = true;
+
+        this.ensureThreadLimitUI();
+
+        const stdCodeBrowse = document.getElementById('std-code-browse');
+        const testCodeBrowse = document.getElementById('test-code-browse');
+        const generatorBrowse = document.getElementById('generator-browse');
+
+        if (stdCodeBrowse) {
+            stdCodeBrowse.addEventListener('click', () => this.browseStandardCode());
+        }
+        if (testCodeBrowse) {
+            testCodeBrowse.addEventListener('click', () => this.browseTestCode());
+        }
+        if (generatorBrowse) {
+            generatorBrowse.addEventListener('click', () => this.browseGenerator());
+        }
+
+        const startBtn = document.getElementById('compare-start-btn');
+        const stopBtn = document.getElementById('compare-stop-btn');
+        const resetBtn = document.getElementById('compare-reset-btn');
+        const exportBtn = document.getElementById('export-btn');
+        const inputExpandBtn = document.getElementById('input-expand-btn');
+        const stdOutputExpandBtn = document.getElementById('std-output-expand-btn');
+        const testOutputExpandBtn = document.getElementById('test-output-expand-btn');
+
+        if (startBtn) {
+            startBtn.addEventListener('click', () => this.startComparison());
+        }
+        if (stopBtn) {
+            stopBtn.addEventListener('click', () => this.stopComparison());
+        }
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => this.resetComparison());
+        }
+        if (exportBtn) {
+            exportBtn.addEventListener('click', () => this.exportResults());
+        }
+        if (inputExpandBtn) {
+            inputExpandBtn.addEventListener('click', () => this.toggleErrorOutputExpand('input'));
+        }
+        if (stdOutputExpandBtn) {
+            stdOutputExpandBtn.addEventListener('click', () => this.toggleErrorOutputExpand('std'));
+        }
+        if (testOutputExpandBtn) {
+            testOutputExpandBtn.addEventListener('click', () => this.toggleErrorOutputExpand('test'));
+        }
+
+        const useTestlibCheckbox = document.getElementById('compare-use-testlib');
+        const spjBrowseBtn = document.getElementById('compare-spj-browse');
+        const compareCountInput = document.getElementById('compare-count');
+        const threadCountInput = document.getElementById('compare-threads');
+        const timeLimitInput = document.getElementById('time-limit');
+        const freopenInputInput = document.getElementById('compare-freopen-input-file');
+        const freopenOutputInput = document.getElementById('compare-freopen-output-file');
+
+        if (useTestlibCheckbox) {
+            useTestlibCheckbox.addEventListener('change', (e) => {
+                this.useTestlib = (e.target as HTMLInputElement).checked;
+                const task = this.getActiveTask();
+                if (task) {
+                    task.config.useTestlib = !!this.useTestlib;
+                    this.renderTask(task);
+                }
+            });
+        }
+
+        if (spjBrowseBtn) {
+            spjBrowseBtn.addEventListener('click', () => this.browseSpjFile());
+        }
+
+        if (compareCountInput) {
+            compareCountInput.addEventListener('change', () => {
+                const task = this.getActiveTask();
+                if (!task) return;
+                this.syncInstanceConfigToTask(task);
+            });
+        }
+        if (threadCountInput) {
+            threadCountInput.addEventListener('change', () => {
+                const task = this.getActiveTask();
+                if (!task) return;
+                this.syncInstanceConfigToTask(task);
+            });
+        }
+        if (timeLimitInput) {
+            timeLimitInput.addEventListener('change', () => {
+                const task = this.getActiveTask();
+                if (!task) return;
+                this.syncInstanceConfigToTask(task);
+            });
+        }
+
+        if (freopenInputInput) {
+            freopenInputInput.addEventListener('change', (e) => {
+                const normalized = this.normalizeFreopenFileName(e.target.value);
+                e.target.value = normalized;
+                this.freopenInputFile = normalized;
+                const task = this.getActiveTask();
+                if (!task) return;
+                task.config.freopenInputFile = normalized;
+            });
+        }
+
+        if (freopenOutputInput) {
+            freopenOutputInput.addEventListener('change', (e) => {
+                const normalized = this.normalizeFreopenFileName(e.target.value);
+                e.target.value = normalized;
+                this.freopenOutputFile = normalized;
+                const task = this.getActiveTask();
+                if (!task) return;
+                task.config.freopenOutputFile = normalized;
+            });
+        }
+    }
+
+    async browseStandardCode() {
+        try {
+            const result = await window.electronAPI.showOpenDialog({
+                title: window.i18n ? window.i18n.t('compare.selectStdCode') : 'Select Standard/Brute Force Code File',
+                filters: [
+                    { name: window.i18n ? window.i18n.t('compare.cppFilter') : 'C++ Files', extensions: ['cpp', 'cc', 'cxx', 'c'] },
+                    { name: window.i18n ? window.i18n.t('compare.allFilter') : 'All Files', extensions: ['*'] }
+                ],
+                properties: ['openFile']
+            });
+
+            if (!result.canceled && result.filePaths.length > 0) {
+                this.standardCodePath = result.filePaths[0];
+                this.updateFilePath('std-code-path', this.standardCodePath);
+
+                const task = this.getActiveTask();
+                if (task) {
+                    task.config.standardCodePath = this.standardCodePath;
+                }
+            }
+        } catch (error) {
+            logError('选择标准代码文件失败:', error);
+        }
+    }
+
+    async browseTestCode() {
+        try {
+            const prevTask = this.getActiveTask();
+            if (prevTask) {
+                this.syncInstanceConfigToTask(prevTask);
+            }
+
+            const result = await window.electronAPI.showOpenDialog({
+                title: window.i18n ? window.i18n.t('compare.selectTestCode') : 'Select Code to Compare',
+                filters: [
+                    { name: window.i18n ? window.i18n.t('compare.cppFilter') : 'C++ Files', extensions: ['cpp', 'cc', 'cxx', 'c'] },
+                    { name: window.i18n ? window.i18n.t('compare.allFilter') : 'All Files', extensions: ['*'] }
+                ],
+                properties: ['openFile']
+            });
+
+            if (!result.canceled && result.filePaths.length > 0) {
+                this.testCodePath = result.filePaths[0];
+                this.updateFilePath('test-code-path', this.testCodePath);
+
+                const prevConfig = prevTask?.config ? { ...prevTask.config } : {
+                    standardCodePath: this.standardCodePath,
+                    generatorPath: this.generatorPath,
+                    useTestlib: this.useTestlib,
+                    spjPath: this.spjPath,
+                    freopenInputFile: this.freopenInputFile,
+                    freopenOutputFile: this.freopenOutputFile,
+                    compareCount: parseInt(document.getElementById('compare-count')?.value) || 100,
+                    timeLimit: parseInt(document.getElementById('time-limit')?.value) || 1000
+                };
+
+                this.setActiveTaskKey(this.testCodePath, { syncTestCodePath: true });
+                const newTask = this.getActiveTask();
+                this.mergeTaskConfigIfEmpty(newTask, prevConfig);
+
+                if (newTask) {
+                    this.applyTaskConfigToInstance(newTask);
+                    this.renderTask(newTask);
+                }
+            }
+        } catch (error) {
+            logError('选择测试代码文件失败:', error);
+        }
+    }
+
+    async browseGenerator() {
+        try {
+            const result = await window.electronAPI.showOpenDialog({
+                title: window.i18n ? window.i18n.t('compare.selectGenerator') : 'Select Data Generator File',
+                filters: [
+                    { name: window.i18n ? window.i18n.t('compare.genFilter') : 'Generator Files', extensions: ['cpp', 'cc', 'cxx', 'c', 'py'] },
+                    { name: '所有文件', extensions: ['*'] }
+                ],
+                properties: ['openFile']
+            });
+
+            if (!result.canceled && result.filePaths.length > 0) {
+                this.generatorPath = result.filePaths[0];
+                this.updateFilePath('generator-path', this.generatorPath);
+
+                const task = this.getActiveTask();
+                if (task) {
+                    task.config.generatorPath = this.generatorPath;
+                }
+            }
+        } catch (error) {
+            logError('选择数据生成器文件失败:', error);
+        }
+    }
+
+    async browseSpjFile() {
+        try {
+            const result = await window.electronAPI.showOpenDialog({
+                title: window.i18n ? window.i18n.t('compare.selectSpjFile') : 'Select Special Judge File',
+                filters: [
+                    { name: window.i18n ? window.i18n.t('compare.cppFilter') : 'C++ Files', extensions: ['cpp', 'cc', 'cxx', 'c'] },
+                    { name: window.i18n ? window.i18n.t('compare.allFilter') : 'All Files', extensions: ['*'] }
+                ],
+                properties: ['openFile']
+            });
+
+            if (!result.canceled && result.filePaths.length > 0) {
+                this.spjPath = result.filePaths[0];
+                const spjPathInput = document.getElementById('compare-spj-path');
+                if (spjPathInput) {
+                    spjPathInput.value = this.spjPath;
+                }
+
+                const task = this.getActiveTask();
+                if (task) {
+                    task.config.spjPath = this.spjPath;
+                }
+            }
+        } catch (error) {
+            logError('选择SPJ文件失败:', error);
+        }
+    }
+
+    updateFilePath(elementId, filePath) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            const value = (filePath && String(filePath).trim()) ? String(filePath) : (window.i18n ? window.i18n.t('compare.noFileSelected') : 'No file selected');
+            element.textContent = value;
+            if (value === 'No file selected' || value === '未选择文件') {
+                element.classList.remove('selected');
+            } else {
+                element.classList.add('selected');
+            }
+        }
+    }
+
+    renderTask(task) {
+        if (!task) return;
+
+        this.updateFilePath('std-code-path', task.config.standardCodePath || '');
+        this.updateFilePath('test-code-path', task.config.testCodePath || '');
+        this.updateFilePath('generator-path', task.config.generatorPath || '');
+
+        const compareCountInput = document.getElementById('compare-count');
+        if (compareCountInput && Number.isFinite(task.config.compareCount)) {
+            compareCountInput.value = String(task.config.compareCount);
+        }
+        const threadCountInput = document.getElementById('compare-threads');
+        if (threadCountInput && Number.isFinite(task.config.threadCount)) {
+            threadCountInput.value = String(task.config.threadCount);
+        }
+        const timeLimitInput = document.getElementById('time-limit');
+        if (timeLimitInput && Number.isFinite(task.config.timeLimit)) {
+            timeLimitInput.value = String(task.config.timeLimit);
+        }
+        const useTestlibCheckbox = document.getElementById('compare-use-testlib');
+        if (useTestlibCheckbox) {
+            useTestlibCheckbox.checked = !!task.config.useTestlib;
+        }
+        const spjPathInput = document.getElementById('compare-spj-path');
+        if (spjPathInput) {
+            spjPathInput.value = task.config.spjPath || '';
+        }
+        const freopenInputInput = document.getElementById('compare-freopen-input-file');
+        if (freopenInputInput) {
+            freopenInputInput.value = task.config.freopenInputFile || '';
+        }
+        const freopenOutputInput = document.getElementById('compare-freopen-output-file');
+        if (freopenOutputInput) {
+            freopenOutputInput.value = task.config.freopenOutputFile || '';
+        }
+
+        this.updateUIForTask(task);
+
+        if (task.state.mode === 'running') {
+            this.showStatus();
+            this.updateStatusText(task.state.statusText || (window.i18n ? window.i18n.t('compare.running') : 'Running...'));
+            this.updateProgress(task.state.currentTest, task.state.totalTests);
+        } else if (task.state.mode === 'error') {
+            this.showError(task.state.errorResult);
+        } else if (task.state.mode === 'complete') {
+            this.showComplete(task.state.totalTests, task.state.warningMessage);
+        } else {
+            this.hideStatus();
+            this.hideError();
+            this.hideComplete();
+        }
+    }
+
+    async startComparison() {
+        if (!this.testCodePath) {
+            const task = this.getActiveTask();
+            this.showTaskCompileError(task, 'general', window.i18n ? window.i18n.t('compare.selectTestCodeFirst') : 'Please select the code to compare first');
+            return;
+        }
+
+        const task = this.getOrCreateTask(this.testCodePath);
+        if (!task) return;
+
+        // 在入口同步占位：双击“开始”或“停止后立刻开始”会并发跑两轮同一任务。
+        if (task.state.starting || task.state.isRunning) {
+            this.showTaskCompileError(task, 'general', window.i18n ? window.i18n.t('compare.taskRunning') : 'A comparison task is already running for this file');
+            return;
+        }
+        task.state.starting = true;
+
+        try {
+        await this.autoSaveCurrentFile();
+
+        this.syncInstanceConfigToTask(task);
+
+        if (!task.config.standardCodePath || !task.config.testCodePath || !task.config.generatorPath) {
+            this.showTaskCompileError(task, 'general', window.i18n ? window.i18n.t('compare.selectAllFilesFirst') : 'Please select all required files (standard code, test code, data generator)');
+            return;
+        }
+
+        if (task.state.isRunning) {
+            this.showTaskCompileError(task, 'general', window.i18n ? window.i18n.t('compare.taskRunning') : 'A comparison task is already running for this file');
+            return;
+        }
+
+        logInfo('对拍器文件检查:');
+        logInfo('标准代码:', task.config.standardCodePath);
+        logInfo('测试代码:', task.config.testCodePath);
+        logInfo('数据生成器:', task.config.generatorPath);
+
+        try {
+            const settings = await window.electronAPI.getAllSettings();
+            if (!settings || !settings.compilerPath) {
+                this.showTaskCompileError(task, 'general', window.i18n ? window.i18n.t('compare.setCompilerFirst') : 'Please set the compiler path first');
+                return;
+            }
+            if (this.isPythonGenerator(task.config.generatorPath) && !String(settings.pythonInterpreterPath || '').trim()) {
+                await this.promptMissingPythonInterpreter(task);
+                return;
+            }
+        } catch (error) {
+            logError('获取编译器设置失败:', error);
+            this.showTaskCompileError(task, 'general', window.i18n ? window.i18n.t('compare.noCompilerSettings') : 'Cannot get compiler settings');
+            return;
+        }
+
+        let compareCount = parseInt(document.getElementById('compare-count').value) || task.config.compareCount || 100;
+        compareCount = Math.max(1, Math.min(compareCount, 100000));
+        const timeLimit = parseInt(document.getElementById('time-limit').value);
+        const effectiveTimeLimit = Number.isFinite(timeLimit) ? timeLimit : (task.config.timeLimit || 1000);
+        const { cpuThreads, maxParallel } = await this.getMaxParallelThreads();
+        this.maxParallelThreads = maxParallel;
+        const requestedThreadsRaw = parseInt(document.getElementById('compare-threads')?.value);
+        const requestedThreads = Number.isFinite(requestedThreadsRaw) ? Math.max(1, requestedThreadsRaw) : 1;
+
+        task.config.compareCount = compareCount;
+        task.config.timeLimit = Number.isFinite(timeLimit) ? timeLimit : task.config.timeLimit;
+        task.config.threadCount = requestedThreads;
+
+        task.state.totalTests = compareCount;
+        task.state.currentTest = 0;
+        task.state.isRunning = true;
+        task.state.shouldStop = false;
+        task.state.errorResult = null;
+        task.state.warningMessage = null;
+        task.state.statusText = (window.i18n ? window.i18n.t('compare.ready') : 'Ready');
+        task.state.mode = 'running';
+
+        this.setActiveTaskKey(task.key, { syncTestCodePath: true });
+        this.updateUIForTask(task);
+        this.showStatus();
+        this.updateStatusText(task.state.statusText);
+        this.updateProgress(0, task.state.totalTests);
+
+        const workerCount = Math.max(1, Math.min(requestedThreads, maxParallel, task.state.totalTests));
+        logInfo('[对拍器] 并行配置', { cpuThreads, maxParallel, requestedThreads, workerCount, totalTests: task.state.totalTests });
+
+        this.runTask(task, effectiveTimeLimit, workerCount, maxParallel).catch((error) => {
+            logError('对拍过程出错:', error);
+            this.showTaskCompileError(task, 'general', (window.i18n ? window.i18n.t('compare.compareError') : 'Comparison error: ') + (error?.message || String(error)));
+        });
+        } finally {
+            task.state.starting = false;
+        }
+    }
+
+    async runTask(task, effectiveTimeLimit, workerCount, maxParallel) {
+        try {
+            logInfo(`开始对拍！计划执行 ${task.state.totalTests} 组测试，时间限制 ${task.config.timeLimit}ms`);
+
+            const compiledPrograms = await this.compilePrograms(task);
+            if (!compiledPrograms) {
+                return;
+            }
+
+            logInfo('所有程序编译成功，开始执行对拍');
+            await this.runComparison(task, compiledPrograms, effectiveTimeLimit, workerCount, maxParallel);
+        } finally {
+            task.state.isRunning = false;
+            if (task.state.mode === 'running') {
+                task.state.mode = 'idle';
+            }
+            await this.cleanupCompiledExecutables(task);
+            if (this.activeTaskKey === task.key) {
+                this.updateUIForTask(task);
+            }
+        }
+    }
+
+    async compilePrograms(task) {
+        const createdExes = [];
+        const cleanupCreated = async () => {
+            if (createdExes.length === 0) return;
+            for (const exe of createdExes) {
+                if (!exe) continue;
+                try { await window.electronAPI.deleteTempFile(exe); } catch (_) { }
+            }
+            createdExes.length = 0;
+        };
+        try {
+            const settings = await window.electronAPI.getAllSettings();
+            const compilerPath = settings.compilerPath as string;
+            let compilerArgs = settings.compilerArgs || '-std=c++14 -O2';
+
+            if (task.config.useTestlib) {
+                const compilerDir = await window.electronAPI.pathDirname(compilerPath);
+                const testlibIncludePath = await window.electronAPI.pathJoin(compilerDir, '..', 'include');
+                compilerArgs += ` -I"${testlibIncludePath}"`;
+            }
+
+            const homeDir = await window.electronAPI.getHomeDir();
+            const tempDir = await window.electronAPI.pathJoin(homeDir, '.oicpp', 'compare');
+
+            await window.electronAPI.ensureDir(tempDir);
+
+            const timestamp = Date.now();
+            const isWin = (typeof window !== 'undefined' && window.process && window.process.platform === 'win32');
+            const exeSuffix = isWin ? '.exe' : '';
+            const stdExe = await window.electronAPI.pathJoin(tempDir, `std_${timestamp}${exeSuffix}`);
+            const testExe = await window.electronAPI.pathJoin(tempDir, `test_${timestamp}${exeSuffix}`);
+            let generatorExe = null;
+            let generatorRunTarget = null;
+
+            this.updateTaskStatus(task, window.i18n ? window.i18n.t('compare.compileStd') : 'Compiling standard program...');
+            const stdResult = await window.electronAPI.compileFile({
+                inputFile: task.config.standardCodePath,
+                outputFile: stdExe,
+                compilerPath: compilerPath,
+                compilerArgs: compilerArgs,
+                workingDirectory: await window.electronAPI.pathDirname(task.config.standardCodePath)
+            });
+            createdExes.push(stdExe);
+
+            if (!stdResult.success) {
+                await cleanupCreated();
+                this.showTaskCompileError(task, 'standard', stdResult.stderr || stdResult.stdout || '编译失败');
+                return null;
+            }
+
+            this.updateTaskStatus(task, window.i18n ? window.i18n.t('compare.compileTest') : 'Compiling test program...');
+            const testResult = await window.electronAPI.compileFile({
+                inputFile: task.config.testCodePath,
+                outputFile: testExe,
+                compilerPath: compilerPath,
+                compilerArgs: compilerArgs,
+                workingDirectory: await window.electronAPI.pathDirname(task.config.testCodePath)
+            });
+            createdExes.push(testExe);
+
+            if (!testResult.success) {
+                await cleanupCreated();
+                this.showTaskCompileError(task, 'test', testResult.stderr || testResult.stdout || '编译失败');
+                return null;
+            }
+
+            const generatorIsPython = this.isPythonGenerator(task.config.generatorPath);
+            if (generatorIsPython) {
+                const interpreterPath = String(settings.pythonInterpreterPath || '').trim();
+                if (!interpreterPath) {
+                    await cleanupCreated();
+                    await this.promptMissingPythonInterpreter(task);
+                    return null;
+                }
+                const interpreterExists = await window.electronAPI.checkFileExists(interpreterPath);
+                if (!interpreterExists) {
+                    await cleanupCreated();
+                    this.showTaskCompileError(task, 'settings', window.i18n ? window.i18n.t('compare.pythonPathInvalid') : 'Python interpreter path is invalid. Please reconfigure.');
+                    try {
+                        await window.electronAPI?.openCompilerSettings?.();
+                    } catch (_) { }
+                    return null;
+                }
+
+                this.updateTaskStatus(task, window.i18n ? window.i18n.t('compare.preparePythonGen') : 'Preparing Python generator...');
+                generatorRunTarget = {
+                    executablePath: interpreterPath,
+                    args: [task.config.generatorPath],
+                    workingDirectory: await window.electronAPI.pathDirname(task.config.generatorPath)
+                };
+            } else {
+                generatorExe = await window.electronAPI.pathJoin(tempDir, `generator_${timestamp}${exeSuffix}`);
+                this.updateTaskStatus(task, window.i18n ? window.i18n.t('compare.compileGen') : 'Compiling data generator...');
+                const generatorResult = await window.electronAPI.compileFile({
+                    inputFile: task.config.generatorPath,
+                    outputFile: generatorExe,
+                    compilerPath: compilerPath,
+                    compilerArgs: compilerArgs,
+                    workingDirectory: await window.electronAPI.pathDirname(task.config.generatorPath)
+                });
+                createdExes.push(generatorExe);
+
+                if (!generatorResult.success) {
+                    await cleanupCreated();
+                    this.showTaskCompileError(task, 'generator', generatorResult.stderr || generatorResult.stdout || '编译失败');
+                    return null;
+                }
+                generatorRunTarget = generatorExe;
+            }
+
+            let spjExe = null;
+
+            if (task.config.useTestlib && task.config.spjPath) {
+                this.updateTaskStatus(task, window.i18n ? window.i18n.t('compare.compileSpj') : 'Compiling Special Judge...');
+                spjExe = await window.electronAPI.pathJoin(tempDir, `spj_${timestamp}${exeSuffix}`);
+
+                let spjCompilerArgs = compilerArgs;
+
+
+                if (settings.testlibPath) {
+                    const testlibPathInfo = await window.electronAPI.getPathInfo(settings.testlibPath as string);
+                    const testlibIncludePath = testlibPathInfo.dirname;
+                    spjCompilerArgs += ` -I"${testlibIncludePath}"`;
+                } else {
+                    const pathInfo = await window.electronAPI.getPathInfo(compilerPath);
+                    const testlibIncludePath = await window.electronAPI.pathJoin(pathInfo.dirname, '..', 'include');
+                    spjCompilerArgs += ` -I"${testlibIncludePath}"`;
+                }
+
+
+
+                const spjResult = await window.electronAPI.compileFile({
+                    inputFile: task.config.spjPath,
+                    outputFile: spjExe,
+                    compilerPath: compilerPath,
+                    compilerArgs: spjCompilerArgs,
+                    workingDirectory: await window.electronAPI.pathDirname(task.config.spjPath)
+                });
+                createdExes.push(spjExe);
+
+                if (!spjResult.success) {
+                    await cleanupCreated();
+                    this.showTaskCompileError(task, 'spj', spjResult.stderr || spjResult.stdout || '编译失败');
+                    return null;
+                }
+            }
+
+            task.compiledExecutables = {
+                stdExe,
+                testExe,
+                generatorExe,
+                spjExe
+            };
+
+            return {
+                stdExe,
+                testExe,
+                generatorExe,
+                generatorRunTarget,
+                spjExe
+            };
+
+        } catch (error) {
+            await cleanupCreated();
+            logError('编译程序失败:', error);
+            this.showTaskCompileError(task, 'general', (window.i18n ? window.i18n.t('compare.compileError') : 'Compilation failed') + ': ' + error.message);
+            return null;
+        }
+    }
+
+    async runComparison(task, programs, timeLimit, workerCountFromConfig = 1, maxParallelFromStart = 1) {
+        const { stdExe, testExe, generatorExe, generatorRunTarget, spjExe } = programs;
+        let failedGenerations = 0;
+
+        const maxParallel = Math.max(1, maxParallelFromStart || 1);
+        const workerCount = Math.max(1, Math.min(workerCountFromConfig || 1, maxParallel, task.state.totalTests));
+        const totalTests = task.state.totalTests;
+
+        let nextIndex = 1;
+        let completed = 0;
+        let errorOccurred = false;
+
+        const worker = async () => {
+            while (true) {
+                if (task.state.shouldStop || errorOccurred) return;
+
+                const i = nextIndex++;
+                if (i > totalTests) return;
+
+                if (this.activeTaskKey === task.key) {
+                    this.updateTaskStatus(task, window.i18n ? window.i18n.t('compare.testGroup', { i }) : `Test ${i}`);
+                    this.updateProgress(completed, totalTests);
+                }
+
+                try {
+                    const generation = await this.generateTestData(generatorRunTarget || generatorExe, 0);
+                    if (!generation || generation.success !== true) {
+                        const generatorMessage = generation?.message || (window.i18n ? window.i18n.t('compare.genRunError') : 'Failed to run data generator');
+                        const generatedOutput = generation?.result?.output || '';
+                        const generatorType = generation?.type || 'unknown';
+                        try {
+                            logError(`第 ${i} 组：数据生成失败 (${generatorType})`, generatorMessage);
+                        } catch (_) { }
+
+                        task.state.errorResult = {
+                            testNumber: i,
+                            input: generatedOutput ? this.limitOutputLines(generatedOutput, 50) : (window.i18n ? window.i18n.t('compare.noGenInput') : '[Generator did not produce valid input]'),
+                            stdOutput: generatorMessage,
+                            testOutput: window.i18n ? window.i18n.t('compare.noRunOutput') : 'Standard/Test program did not run',
+                            errorType: 'generator_program_error',
+                            generatorErrorType: generatorType
+                        };
+                        task.state.mode = 'error';
+                        errorOccurred = true;
+                        this.renderIfActive(task);
+                        return;
+                    }
+
+                    const inputData = generation.input;
+
+                    const stdFreopenContext = await this.prepareFreopenContext(task, 'std', i, inputData);
+                    let stdOutput;
+                    try {
+                        const stdRunOptions = stdFreopenContext.workingDirectory
+                            ? { executablePath: stdExe, workingDirectory: stdFreopenContext.workingDirectory }
+                            : stdExe;
+                        stdOutput = await this.runProgram(stdRunOptions, stdFreopenContext.runInput, 0);
+                        stdOutput.output = await this.resolveProgramOutput(stdOutput.output, stdFreopenContext);
+                    } finally {
+                        await this.cleanupFreopenContext(stdFreopenContext);
+                    }
+                    if (stdOutput.outputLimitExceeded || stdOutput.timeout || stdOutput.error || stdOutput.exitCode !== 0) {
+                        const limitMbStd = Math.max(1, Math.floor((stdOutput.outputLimitBytes || 0) / (1024 * 1024)));
+                        const errorMsg = stdOutput.outputLimitExceeded ? `标准程序输出超过限制 (${limitMbStd} MB)` :
+                            stdOutput.timeout ? '标准程序超时 (TLE)' :
+                                stdOutput.error ? `标准程序运行错误 (RE): ${stdOutput.error}` :
+                                    `标准程序异常退出，退出码: ${stdOutput.exitCode}`;
+                        try {
+                            if (stdOutput.outputLimitExceeded) {
+                                logWarn('[对拍器][OLE][STD]', {
+                                    test: i,
+                                    durationMs: stdOutput.time,
+                                    limitBytes: stdOutput.outputLimitBytes,
+                                    capturedBytes: stdOutput.capturedOutputBytes,
+                                    observedBytes: stdOutput.observedOutputBytes
+                                });
+                            } else if (stdOutput.timeout) {
+                                logWarn('[对拍器][TLE][STD]', { test: i, durationMs: stdOutput.time, limitMs: 0 });
+                            } else {
+                                logWarn('[对拍器][RE][STD]', { test: i, exitCode: stdOutput.exitCode, durationMs: stdOutput.time });
+                            }
+                        } catch (_) { }
+                        task.state.errorResult = {
+                            testNumber: i,
+                            input: inputData,
+                            stdOutput: errorMsg,
+                            testOutput: window.i18n ? window.i18n.t('compare.programNotRun') : 'Program did not run',
+                            errorType: 'standard_program_error'
+                        };
+                        task.state.mode = 'error';
+                        errorOccurred = true;
+                        this.renderIfActive(task);
+                        return;
+                    }
+
+                    const testFreopenContext = await this.prepareFreopenContext(task, 'test', i, inputData);
+                    let testOutput;
+                    try {
+                        const testRunOptions = testFreopenContext.workingDirectory
+                            ? { executablePath: testExe, workingDirectory: testFreopenContext.workingDirectory }
+                            : testExe;
+                        testOutput = await this.runProgram(testRunOptions, testFreopenContext.runInput, timeLimit);
+                        testOutput.output = await this.resolveProgramOutput(testOutput.output, testFreopenContext);
+                    } finally {
+                        await this.cleanupFreopenContext(testFreopenContext);
+                    }
+                    if (testOutput.outputLimitExceeded || testOutput.timeout || testOutput.error || testOutput.exitCode !== 0) {
+                        const limitMbTest = Math.max(1, Math.floor((testOutput.outputLimitBytes || 0) / (1024 * 1024)));
+                        const errorMsg = testOutput.outputLimitExceeded ? `测试程序输出超过限制 (${limitMbTest} MB)` :
+                            testOutput.timeout ? '测试程序超时 (TLE)' :
+                                testOutput.error ? `测试程序运行错误 (RE):  ${testOutput.error}` :
+                                    `测试程序异常退出，退出码: ${testOutput.exitCode}`;
+                        try {
+                            if (testOutput.outputLimitExceeded) {
+                                logWarn('[对拍器][OLE][TEST]', {
+                                    test: i,
+                                    durationMs: testOutput.time,
+                                    limitBytes: testOutput.outputLimitBytes,
+                                    capturedBytes: testOutput.capturedOutputBytes,
+                                    observedBytes: testOutput.observedOutputBytes
+                                });
+                            } else if (testOutput.timeout) {
+                                logWarn('[对拍器][TLE][TEST]', { test: i, durationMs: testOutput.time, limitMs: timeLimit });
+                            } else {
+                                logWarn('[对拍器][RE][TEST]', { test: i, exitCode: testOutput.exitCode, durationMs: testOutput.time });
+                            }
+                        } catch (_) { }
+                        task.state.errorResult = {
+                            testNumber: i,
+                            input: inputData,
+                            stdOutput: stdOutput.output,
+                            testOutput: errorMsg,
+                            errorType: 'test_program_error'
+                        };
+                        task.state.mode = 'error';
+                        errorOccurred = true;
+                        this.renderIfActive(task);
+                        return;
+                    }
+
+                    if (task.config.useTestlib && spjExe) {
+                        const spjResult = await this.judgeWithSpj(spjExe, inputData, testOutput.output, stdOutput.output, timeLimit);
+                        if (spjResult !== 'AC') {
+                            task.state.errorResult = {
+                                testNumber: i,
+                                input: inputData,
+                                stdOutput: stdOutput.output,
+                                testOutput: testOutput.output,
+                                errorType: 'spj_error',
+                                errorMessage: `SPJ 结果: ${spjResult}`
+                            };
+                            task.state.mode = 'error';
+                            errorOccurred = true;
+                            this.renderIfActive(task);
+                            return;
+                        }
+                    } else {
+                        const outputsMatch = this.compareOutputs(stdOutput.output, testOutput.output);
+                        if (!outputsMatch) {
+                            try {
+                                const diff = this.getDifferenceInfo((testOutput.output || '').trimEnd(), (stdOutput.output || '').trimEnd());
+                                const diffText = diff ? `${diff.line}:${diff.char}` : 'none';
+                                logInfo(`[对拍器][WA] test=${i} actualLen=${(testOutput.output || '').length} expectedLen=${(stdOutput.output || '').length} firstDiff=${diffText}`);
+                            } catch (_) { }
+                            task.state.errorResult = {
+                                testNumber: i,
+                                input: inputData,
+                                stdOutput: stdOutput.output,
+                                testOutput: testOutput.output,
+                                usedSpj: false
+                            };
+                            task.state.mode = 'error';
+                            errorOccurred = true;
+                            this.renderIfActive(task);
+                            return;
+                        }
+                    }
+
+                    completed++;
+                    task.state.currentTest = completed;
+                    this.updateTaskProgress(task);
+
+                } catch (error) {
+                    failedGenerations++;
+                    logError(`第 ${i} 组测试出错:`, error);
+                    continue;
+                }
+            }
+        };
+
+        const workers = Array.from({ length: workerCount }, worker);
+        await Promise.all(workers);
+
+        task.state.currentTest = completed;
+        this.updateTaskProgress(task);
+
+        if (task.state.shouldStop) {
+            logInfo(`对拍被手动停止，已执行 ${completed} 组测试，其中有 ${failedGenerations} 组生成失败`);
+            return;
+        }
+
+        if (errorOccurred) {
+            return;
+        }
+
+        const successfulTests = task.state.totalTests - failedGenerations;
+        if (failedGenerations === 0) {
+            logInfo(`对拍完成！共执行 ${successfulTests} 组测试，未发现差异`);
+            task.state.mode = 'complete';
+            task.state.warningMessage = null;
+            this.renderIfActive(task);
+        } else {
+            logInfo(`对拍完成，但有 ${failedGenerations} 组数据生成失败。共成功执行 ${successfulTests} 组测试，未在成功组中发现差异`);
+            task.state.mode = 'complete';
+            task.state.warningMessage = `有 ${failedGenerations} 组数据生成失败，请检查数据生成器`;
+            this.renderIfActive(task);
+        }
+    }
+
+    renderIfActive(task) {
+        if (!task) return;
+        if (this.activeTaskKey === task.key) {
+            this.renderTask(task);
+        }
+    }
+
+    async generateTestData(generatorProgram, timeLimit) {
+        try {
+            const result = await this.runProgram(generatorProgram, '', timeLimit);
+
+            if (result.outputLimitExceeded) {
+                const limitBytes = result.outputLimitBytes || (256 * 1024 * 1024);
+                const limitMb = Math.max(1, Math.floor(limitBytes / (1024 * 1024)));
+                try {
+                    logWarn('[对拍器][OLE][GEN]', {
+                        durationMs: result.time,
+                        limitBytes,
+                        capturedBytes: result.capturedOutputBytes,
+                        observedBytes: result.observedOutputBytes
+                    });
+                } catch (_) { }
+                return {
+                    success: false,
+                    type: 'ole',
+                    message: `数据生成器输出超限 (${limitMb} MB)`,
+                    result
+                };
+            }
+
+            if (result.timeout) {
+                try { logWarn('[对拍器][TLE][GEN]', { durationMs: result.time, limitMs: timeLimit }); } catch (_) { }
+                return {
+                    success: false,
+                    type: 'tle',
+                    message: '数据生成器运行超时',
+                    result
+                };
+            }
+
+            if (result.error || result.exitCode !== 0) {
+                try {
+                    logWarn('[对拍器][RE][GEN]', { exitCode: result.exitCode, durationMs: result.time });
+                } catch (_) { }
+                return {
+                    success: false,
+                    type: 're',
+                    message: result.error || `数据生成器异常退出，退出码: ${result.exitCode}`,
+                    result
+                };
+            }
+
+            return {
+                success: true,
+                input: result.output,
+                result
+            };
+        } catch (error) {
+            logError('生成测试数据失败:', error);
+            return {
+                success: false,
+                type: 'exception',
+                message: error?.message || '生成测试数据失败',
+                result: null
+            };
+        }
+    }
+
+    async runProgram(executablePath, input, timeLimit) {
+        const execOptions = typeof executablePath === 'object'
+            ? { ...executablePath, skipPreKill: true }
+            : { executablePath, skipPreKill: true };
+        const result = await window.electronAPI.runProgram(execOptions, input, timeLimit);
+        // 不能 trim：生成器输出的前导空白属于测试数据，程序输出的前导空白也会影响判题。
+        const rawOutput = result.output || '';
+        const trimmedOutput = rawOutput.trim();
+        const outputLimitExceeded = !!result.outputLimitExceeded;
+        let errorMessage = '';
+        if (outputLimitExceeded) {
+            const limitBytes = result.outputLimitBytes || (256 * 1024 * 1024);
+            const limitMb = Math.max(1, Math.floor(limitBytes / (1024 * 1024)));
+            errorMessage = `输出超过限制 (${limitMb} MB)`;
+        } else if (result.exitCode !== 0) {
+            errorMessage = trimmedOutput || result.stderr || `退出码: ${result.exitCode}`;
+        }
+        return {
+            output: rawOutput,
+            error: errorMessage,
+            timeout: !!result.timeout,
+            time: result.time,
+            exitCode: result.exitCode,
+            outputLimitExceeded,
+            outputLimitBytes: result.outputLimitBytes,
+            capturedOutputBytes: result.capturedOutputBytes,
+            observedOutputBytes: result.observedOutputBytes
+        };
+    }
+
+    normalizeFreopenFileName(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        return raw.replace(/[\\/]/g, '').replace(/[<>:"|?*]/g, '').trim();
+    }
+
+    buildFreopenTaskDirName(taskKey) {
+        const normalized = String(taskKey || 'task').replace(/[\\/]/g, '_');
+        return normalized.replace(/[<>:"|?*]/g, '_').slice(0, 120);
+    }
+
+    async prepareFreopenContext(task, role, caseIndex, inputData) {
+        const inputFileName = this.normalizeFreopenFileName(task?.config?.freopenInputFile || '');
+        const outputFileName = this.normalizeFreopenFileName(task?.config?.freopenOutputFile || '');
+
+        if (!inputFileName && !outputFileName) {
+            return {
+                runInput: inputData,
+                workingDirectory: null,
+                outputFilePath: null,
+                cleanupFiles: []
+            };
+        }
+
+        const homeDir = await window.electronAPI.getHomeDir();
+        const taskDirName = this.buildFreopenTaskDirName(task?.key || 'task');
+        const baseDir = await window.electronAPI.pathJoin(homeDir, '.oicpp', 'compare', 'freopen_runs', taskDirName);
+        const runDirName = `${role || 'program'}_${caseIndex || 0}`;
+        const runDir = await window.electronAPI.pathJoin(baseDir, runDirName);
+
+        await window.electronAPI.ensureDir(baseDir);
+        await window.electronAPI.ensureDir(runDir);
+
+        const cleanupFiles = [];
+        let outputFilePath = null;
+
+        if (inputFileName) {
+            const inputFilePath = await window.electronAPI.pathJoin(runDir, inputFileName);
+            await window.electronAPI.writeFile(inputFilePath, inputData || '');
+            cleanupFiles.push(inputFilePath);
+        }
+
+        if (outputFileName) {
+            outputFilePath = await window.electronAPI.pathJoin(runDir, outputFileName);
+            cleanupFiles.push(outputFilePath);
+        }
+
+        return {
+            runInput: inputFileName ? '' : inputData,
+            workingDirectory: runDir,
+            outputFilePath,
+            cleanupFiles
+        };
+    }
+
+    async cleanupFreopenContext(context) {
+        if (!context || !Array.isArray(context.cleanupFiles)) return;
+        for (const filePath of context.cleanupFiles) {
+            try {
+                const exists = await window.electronAPI.checkFileExists(filePath);
+                if (exists) {
+                    await window.electronAPI.deleteFile(filePath);
+                }
+            } catch (_) { }
+        }
+    }
+
+    async resolveProgramOutput(stdoutOutput, freopenContext) {
+        if (!freopenContext?.outputFilePath) {
+            return stdoutOutput || '';
+        }
+
+        try {
+            const exists = await window.electronAPI.checkFileExists(freopenContext.outputFilePath);
+            if (!exists) {
+                return stdoutOutput || '';
+            }
+            const output = await window.electronAPI.readFileContent(freopenContext.outputFilePath);
+            return String(output || '').trim();
+        } catch (_) {
+            return stdoutOutput || '';
+        }
+    }
+
+    compareOutputs(output1, output2) {
+        const normalize = (str) => {
+            return str.split('\n')
+                .map(line => line.trimEnd())
+                .join('\n')
+                .replace(/\n+$/, '');
+        };
+
+        const normalized1 = normalize(output1 || '');
+        const normalized2 = normalize(output2 || '');
+
+        return normalized1 === normalized2;
+    }
+
+    async judgeWithSpj(spjExecutablePath, inputData, actualOutput, expectedOutput, timeLimit) {
+        try {
+            const timestamp = Date.now();
+            const inputFile = await window.electronAPI.saveTempFile(`spj_input_${timestamp}.txt`, inputData);
+            const actualFile = await window.electronAPI.saveTempFile(`spj_actual_${timestamp}.txt`, actualOutput);
+            const expectedFile = await window.electronAPI.saveTempFile(`spj_expected_${timestamp}.txt`, expectedOutput);
+
+            try {
+                const workingDir = await window.electronAPI.pathDirname(spjExecutablePath);
+                const spjParams = {
+                    executablePath: spjExecutablePath,
+                    args: [inputFile, actualFile, expectedFile],
+                    timeLimit: timeLimit,
+                    workingDirectory: workingDir,
+                    skipPreKill: true
+                };
+
+                const spjResult = await window.electronAPI.runProgram(spjParams);
+
+                if (spjResult.outputLimitExceeded) {
+                    return 'OLE';
+                } else if (spjResult.timeout) {
+                    return 'TLE';
+                } else if (spjResult.exitCode === 0) {
+                    return 'AC';
+                } else {
+                    return 'WA';
+                }
+            } finally {
+                await window.electronAPI.deleteTempFile(inputFile);
+                await window.electronAPI.deleteTempFile(actualFile);
+                await window.electronAPI.deleteTempFile(expectedFile);
+            }
+        } catch (error) {
+            return 'SPJ Error';
+        }
+    }
+
+    async getMaxParallelThreads() {
+        const fallbackThreads = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 2;
+        let cpuThreads = fallbackThreads;
+        try {
+            const remoteCount = await window.electronAPI?.getCpuThreads?.();
+            if (Number.isFinite(remoteCount) && remoteCount > 0) {
+                cpuThreads = remoteCount;
+            }
+        } catch (_) { }
+        const maxParallel = Math.max(1, Math.floor(cpuThreads / 2));
+        return { cpuThreads, maxParallel };
+    }
+
+    async ensureThreadLimitUI() {
+        try {
+            const { cpuThreads, maxParallel } = await this.getMaxParallelThreads();
+            this.maxParallelThreads = maxParallel;
+            const input = document.getElementById('compare-threads');
+            const hint = document.getElementById('compare-threads-hint');
+            if (input) {
+                input.max = String(maxParallel);
+                const current = parseInt(input.value);
+                if (Number.isFinite(current)) {
+                    const capped = Math.max(1, Math.min(current, maxParallel));
+                    if (capped !== current) input.value = String(capped);
+                }
+            }
+            if (hint) {
+                hint.textContent = window.i18n ? window.i18n.t('compare.threadHint') : 'Max = CPU threads/2';
+            }
+            logInfo('[对拍器] 线程上限已更新', { cpuThreads, maxParallel });
+        } catch (error) {
+            logWarn('[对拍器] 获取线程上限失败', error);
+        }
+    }
+
+    stopComparison() {
+        const task = this.getActiveTask();
+        if (!task) return;
+        task.state.shouldStop = true;
+        // 保留 isRunning，直到 runTask 的 finally 复位；否则用户可立即再开始，
+        // 导致两轮并发共用临时目录/可执行文件。
+        if (task.state.mode === 'running') {
+            task.state.mode = 'idle';
+        }
+        this.updateUIForTask(task);
+    }
+
+    resetComparison() {
+        const task = this.getActiveTask();
+        if (!task) return;
+        task.state.shouldStop = true;
+        task.state.isRunning = false;
+        task.state.currentTest = 0;
+        task.state.totalTests = 0;
+        task.state.statusText = (window.i18n ? window.i18n.t('compare.ready') : '准备中');
+        task.state.errorResult = null;
+        task.state.warningMessage = null;
+        task.state.mode = 'idle';
+        this.renderTask(task);
+    }
+
+    updateUIForTask(task) {
+        const startBtn = document.getElementById('compare-start-btn');
+        const stopBtn = document.getElementById('compare-stop-btn');
+        const resetBtn = document.getElementById('compare-reset-btn');
+
+        const running = !!task?.state?.isRunning;
+
+        if (startBtn) startBtn.disabled = running;
+        if (stopBtn) stopBtn.disabled = !running || !!task?.state?.shouldStop;
+        if (resetBtn) resetBtn.disabled = running;
+    }
+
+    updateStatusText(text) {
+        const statusText = document.getElementById('status-text');
+        if (statusText) statusText.textContent = text;
+    }
+
+    updateTaskStatus(task, text) {
+        if (!task) return;
+        task.state.statusText = text;
+        if (this.activeTaskKey === task.key) {
+            this.updateStatusText(text);
+        }
+    }
+
+    updateProgress(currentTest, totalTests) {
+        const currentTestEl = document.getElementById('current-test');
+        const progressFill = document.getElementById('progress-fill');
+
+        if (currentTestEl) {
+            currentTestEl.textContent = window.i18n ? window.i18n.t('compare.statusGroup', { current: currentTest }) : `Test ${currentTest}`;
+        }
+
+        if (progressFill && totalTests > 0) {
+            const percentage = (currentTest / totalTests) * 100;
+            progressFill.style.width = `${percentage}%`;
+        }
+    }
+
+    updateTaskProgress(task) {
+        if (!task) return;
+        if (this.activeTaskKey !== task.key) return;
+        this.updateProgress(task.state.currentTest, task.state.totalTests);
+    }
+
+    showStatus() {
+        const statusSection = document.getElementById('compare-status');
+        if (statusSection) {
+            statusSection.style.display = 'block';
+        }
+        this.hideError();
+        this.hideComplete();
+    }
+
+    hideStatus() {
+        const statusSection = document.getElementById('compare-status');
+        if (statusSection) {
+            statusSection.style.display = 'none';
+        }
+    }
+
+    showError(errorResult) {
+        const errorSection = document.getElementById('compare-result');
+        const errorTitle = document.getElementById('error-title');
+        const errorTestNum = document.getElementById('error-test-num');
+        const inputDiff = document.getElementById('input-diff');
+        const stdOutputDiff = document.getElementById('std-output-diff');
+        const testOutputDiff = document.getElementById('test-output-diff');
+        const stdOutputDiffLabel = document.getElementById('std-output-diff-label');
+        const testOutputDiffLabel = document.getElementById('test-output-diff-label');
+        const inputExpandBtn = document.getElementById('input-expand-btn');
+        const stdOutputExpandBtn = document.getElementById('std-output-expand-btn');
+        const testOutputExpandBtn = document.getElementById('test-output-expand-btn');
+
+        this.updateErrorOutputExpandButton(inputExpandBtn, errorResult, 'input');
+        this.updateErrorOutputExpandButton(stdOutputExpandBtn, errorResult, 'std');
+        this.updateErrorOutputExpandButton(testOutputExpandBtn, errorResult, 'test');
+
+        if (errorResult && errorSection) {
+            errorSection.style.display = 'block';
+
+            if (errorTitle) {
+                const errType = errorResult.errorType;
+                if (errType === 'generator_program_error') {
+                    const generatorType = errorResult.generatorErrorType || '';
+                    let detailLabel = window.i18n ? window.i18n.t('compare.errorRuntime') : 'Run Error (RE)';
+                    if (generatorType === 'ole') {
+                        detailLabel = window.i18n ? window.i18n.t('compare.errorOverLimit') : 'Output exceeds limit (OLE)';
+                    } else if (generatorType === 'tle') {
+                        detailLabel = window.i18n ? window.i18n.t('compare.errorTimeout') : 'Timeout (TLE)';
+                    } else if (generatorType === 're') {
+                        detailLabel = window.i18n ? window.i18n.t('compare.errorRuntime') : 'Run Error (RE)';
+                    }
+                    errorTitle.textContent = (window.i18n ? window.i18n.t('compare.errorDataGeneratorPrefix') : 'Data Generator') + detailLabel;
+                } else if (errType === 'standard_program_error' || errType === 'test_program_error') {
+                    errorTitle.textContent = window.i18n ? window.i18n.t('compare.errorRunTimeout') : 'Run timeout/error';
+                } else if (errType === 'compile_error') {
+                    const compileTypeMap = {
+                        'standard': window.i18n ? window.i18n.t('compare.stdCompileFail') : 'Standard program compilation failed',
+                        'test': window.i18n ? window.i18n.t('compare.testCompileFail') : 'Test program compilation failed',
+                        'generator': window.i18n ? window.i18n.t('compare.genCompileFail') : 'Data generator compilation failed',
+                        'settings': window.i18n ? window.i18n.t('compare.envNotSet') : 'Runtime environment not set',
+                        'general': window.i18n ? window.i18n.t('compare.compileFail') : 'Compilation failed'
+                    };
+                    errorTitle.textContent = compileTypeMap[errorResult.compileType] || (window.i18n ? window.i18n.t('compare.compileFail') : 'Compilation failed');
+                } else {
+                    errorTitle.textContent = window.i18n ? window.i18n.t('compare.foundDiff') : 'Difference Found';
+                }
+            }
+
+            if (errorTestNum) {
+                errorTestNum.textContent = window.i18n ? window.i18n.t('compare.errorGroup', { number: errorResult.testNumber }) : `Test ${errorResult.testNumber}`;
+            }
+
+            if (inputDiff) {
+                const inputFull = errorResult.input || '';
+                inputDiff.textContent = errorResult.inputExpanded ? inputFull : this.limitOutputLines(inputFull, 100);
+            }
+
+            if (stdOutputDiff) {
+                const errType = errorResult.errorType;
+                if (errType === 'compile_error') {
+                    stdOutputDiff.textContent = errorResult.errorMessage;
+                    if (stdOutputDiffLabel) {
+                        stdOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorStandardOutput') : 'Standard Program Output';
+                    }
+                } else if (errType === 'generator_program_error') {
+                    const stdFullOutput = errorResult.stdOutput || '';
+                    stdOutputDiff.textContent = errorResult.stdOutputExpanded ? stdFullOutput : this.limitOutputLines(stdFullOutput, 100);
+                    if (stdOutputDiffLabel) {
+                        stdOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorGeneratorOutput') : 'Generator Output/Error';
+                    }
+                } else if (errType === 'standard_program_error' || errType === 'test_program_error') {
+                    const stdFullOutput = errorResult.stdOutput || '';
+                    stdOutputDiff.textContent = errorResult.stdOutputExpanded ? stdFullOutput : this.limitOutputLines(stdFullOutput, 100);
+                    if (stdOutputDiffLabel) {
+                        stdOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorStandardOutput') : 'Standard Program Output';
+                    }
+                } else {
+                    if (errorResult.usedSpj) {
+                        if (stdOutputDiffLabel) {
+                            stdOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorStandardOutput') : 'Standard Program Output';
+                        }
+                        const stdFullOutput = errorResult.stdOutput || '';
+                        stdOutputDiff.textContent = errorResult.stdOutputExpanded ? stdFullOutput : this.limitOutputLines(stdFullOutput, 100);
+                    } else {
+                        const diffPosition = this.getDifferenceInfo(errorResult.stdOutput, errorResult.testOutput);
+                        if (stdOutputDiffLabel) {
+                            if (diffPosition) {
+                                const diffMsg = window.i18n ? window.i18n.t('compare.diffPosition', { line: diffPosition.line, char: diffPosition.char }) : `Difference at line ${diffPosition.line}, char ${diffPosition.char}`;
+                                stdOutputDiffLabel.innerHTML = (window.i18n ? window.i18n.t('compare.errorStandardOutput') : 'Standard Program Output') + ` <span class="diff-info">(${diffMsg})</span>`;
+                            } else {
+                                stdOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorStandardOutput') : 'Standard Program Output';
+                            }
+                        }
+                        if (errorResult.stdOutputExpanded) {
+                            this.renderExpandedOutput(stdOutputDiff, errorResult.stdOutput);
+                        } else {
+                            stdOutputDiff.innerHTML = this.formatCompareOutput(errorResult.stdOutput, errorResult.testOutput, 'standard');
+                        }
+                    }
+                }
+            }
+
+            if (testOutputDiff) {
+                const errType = errorResult.errorType;
+                if (errType === 'compile_error') {
+                    testOutputDiff.textContent = '';
+                    if (testOutputDiffLabel) {
+                        testOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorTestOutput') : 'Test Program Output';
+                    }
+                } else if (errType === 'generator_program_error') {
+                    const testFullOutput = errorResult.testOutput || '';
+                    testOutputDiff.textContent = errorResult.testOutputExpanded ? testFullOutput : this.limitOutputLines(testFullOutput, 100);
+                    if (testOutputDiffLabel) {
+                        testOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorStdTestOutput') : 'Standard/Test Program Output';
+                    }
+                } else if (errType === 'standard_program_error' || errType === 'test_program_error') {
+                    const testFullOutput = errorResult.testOutput || '';
+                    testOutputDiff.textContent = errorResult.testOutputExpanded ? testFullOutput : this.limitOutputLines(testFullOutput, 100);
+                    if (testOutputDiffLabel) {
+                        testOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorTestOutput') : 'Test Program Output';
+                    }
+                } else {
+                    if (errorResult.usedSpj) {
+                        if (testOutputDiffLabel) {
+                            testOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorTestOutput') : 'Test Program Output';
+                        }
+                        const testFullOutput = errorResult.testOutput || '';
+                        testOutputDiff.textContent = errorResult.testOutputExpanded ? testFullOutput : this.limitOutputLines(testFullOutput, 100);
+                    } else {
+                        const diffPosition = this.getDifferenceInfo(errorResult.testOutput, errorResult.stdOutput);
+                        if (testOutputDiffLabel) {
+                            if (diffPosition) {
+                                const diffMsg = window.i18n ? window.i18n.t('compare.diffPosition', { line: diffPosition.line, char: diffPosition.char }) : `Difference at line ${diffPosition.line}, char ${diffPosition.char}`;
+                                testOutputDiffLabel.innerHTML = (window.i18n ? window.i18n.t('compare.errorTestOutput') : 'Test Program Output') + ` <span class="diff-info">(${diffMsg})</span>`;
+                            } else {
+                                testOutputDiffLabel.textContent = window.i18n ? window.i18n.t('compare.errorTestOutput') : 'Test Program Output';
+                            }
+                        }
+                        if (errorResult.testOutputExpanded) {
+                            this.renderExpandedOutput(testOutputDiff, errorResult.testOutput);
+                        } else {
+                            testOutputDiff.innerHTML = this.formatCompareOutput(errorResult.testOutput, errorResult.stdOutput, 'test');
+                        }
+                    }
+                }
+            }
+
+            this.updateErrorOutputExpandButton(inputExpandBtn, errorResult, 'input');
+            this.updateErrorOutputExpandButton(stdOutputExpandBtn, errorResult, 'std');
+            this.updateErrorOutputExpandButton(testOutputExpandBtn, errorResult, 'test');
+        }
+
+        this.hideStatus();
+        this.hideComplete();
+    }
+
+    hideError() {
+        const errorSection = document.getElementById('compare-result');
+        if (errorSection) {
+            errorSection.style.display = 'none';
+        }
+    }
+
+    showComplete(totalTests, warningMessage = null) {
+        const completeSection = document.getElementById('compare-complete');
+        const completedTests = document.getElementById('completed-tests');
+        const completeInfo = completeSection?.querySelector('.complete-info span');
+
+        if (completeSection) {
+            // 交给 CSS 控制（.compare-complete 是 block + 居中的卡片）；
+            // 写成 flex 会变成横向排列，把图标/文字/信息挤在一行。
+            completeSection.style.display = '';
+        }
+
+        if (completedTests) {
+            completedTests.textContent = totalTests;
+        }
+
+        if (warningMessage && completeInfo) {
+            completeInfo.innerHTML = (window.i18n ? window.i18n.t('compare.completedWithWarning', { count: totalTests, warning: warningMessage }) : `Completed <span id="completed-tests">${totalTests}</span> tests, no differences found<br><span style="color: #ffc107; font-size: 11px; margin-top: 4px; display: inline-block;">${warningMessage}</span>`);
+        } else if (completeInfo) {
+            completeInfo.innerHTML = (window.i18n ? window.i18n.t('compare.completedText', { count: totalTests }) : `Completed <span id="completed-tests">${totalTests}</span> tests, no differences found`);
+        }
+
+        this.hideStatus();
+        this.hideError();
+    }
+
+    hideComplete() {
+        const completeSection = document.getElementById('compare-complete');
+        if (completeSection) {
+            completeSection.style.display = 'none';
+        }
+    }
+
+    showTaskCompileError(task, errorType, errorMessage) {
+        if (!task) {
+            this.showError({
+                errorType: 'compile_error',
+                compileType: errorType,
+                errorMessage: errorMessage,
+                testNumber: 0,
+                input: '',
+                stdOutput: '',
+                testOutput: ''
+            });
+            this.hideStatus();
+            this.hideComplete();
+            return;
+        }
+
+        task.state.errorResult = {
+            errorType: 'compile_error',
+            compileType: errorType,
+            errorMessage: errorMessage,
+            testNumber: 0,
+            input: '',
+            stdOutput: '',
+            testOutput: ''
+        };
+        task.state.mode = 'error';
+        task.state.isRunning = false;
+        task.state.shouldStop = true;
+
+        if (this.activeTaskKey === task.key) {
+            this.renderTask(task);
+        }
+
+        try {
+            logError('[CompareCompileError]', {
+                type: errorType,
+                message: String(errorMessage || ''),
+                context: {
+                    standardCode: task.config.standardCodePath,
+                    testCode: task.config.testCodePath,
+                    generator: task.config.generatorPath,
+                    useTestlib: task.config.useTestlib,
+                    spjPath: task.config.spjPath,
+                    freopenInputFile: task.config.freopenInputFile,
+                    freopenOutputFile: task.config.freopenOutputFile
+                }
+            });
+        } catch (_) { }
+        try {
+            const text = String(errorMessage || '');
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            const diags = [];
+            for (const line of lines) {
+                const m = line.match(/^(.+?):(\d+):(?:(\d+):)?\s*(fatal error|error|warning|note):\s*(.+)$/i);
+                if (m) {
+                    const [, file, lineNum, colNum, sev, msg] = m;
+                    diags.push({
+                        file,
+                        line: parseInt(lineNum, 10) || 1,
+                        column: colNum ? parseInt(colNum, 10) : 1,
+                        severity: /fatal error|error/i.test(sev) ? 'error' : (/warning/i.test(sev) ? 'warning' : 'note'),
+                        message: msg,
+                        raw: line
+                    });
+                }
+            }
+            if (diags.length && window.editorManager && window.editorManager.applyDiagnostics) {
+                window.editorManager.applyDiagnostics(diags);
+            }
+        } catch { }
+    }
+
+    showSuccessMessage(message) {
+        this.showComplete(message);
+    }
+
+    renderExpandedOutput(element, output) {
+        if (!element) {
+            return;
+        }
+        element.textContent = output == null ? '' : String(output);
+    }
+
+    getOutputSizeBytes(output) {
+        const safeOutput = output == null ? '' : String(output);
+        try {
+            return new TextEncoder().encode(safeOutput).length;
+        } catch (_) {
+            return safeOutput.length;
+        }
+    }
+
+    getOutputSizeMbText(output) {
+        const bytes = this.getOutputSizeBytes(output);
+        return (bytes / (1024 * 1024)).toFixed(2);
+    }
+
+    isLineLimitedOutputTruncated(output, maxLines = 100) {
+        const safeOutput = output == null ? '' : String(output);
+        return safeOutput.split('\n').length > maxLines;
+    }
+
+    isCompareOutputTruncated(currentOutput, otherOutput) {
+        const currentLines = (currentOutput || '').split('\n');
+        const otherLines = (otherOutput || '').split('\n');
+        const maxLines = 100;
+        const contextLines = 10;
+
+        let firstDiffLine = -1;
+        const maxCompareLines = Math.max(currentLines.length, otherLines.length);
+        for (let i = 0; i < maxCompareLines; i++) {
+            const currentLine = currentLines[i] || '';
+            const otherLine = otherLines[i] || '';
+            if (currentLine.trimEnd() !== otherLine.trimEnd()) {
+                firstDiffLine = i;
+                break;
+            }
+        }
+
+        if (firstDiffLine === -1) {
+            return currentLines.length > maxLines;
+        }
+
+        const startLine = Math.max(0, firstDiffLine - contextLines);
+        const endLine = Math.min(currentLines.length, firstDiffLine + contextLines + 1);
+        const displayLines = Math.min(maxLines, endLine - startLine);
+        const actualEndLine = startLine + displayLines;
+
+        return startLine > 0 || actualEndLine < currentLines.length;
+    }
+
+    isErrorOutputTruncated(errorResult, outputType) {
+        if (!errorResult) return false;
+
+        if (outputType === 'input') {
+            return this.isLineLimitedOutputTruncated(errorResult.input || '', 100);
+        }
+
+        const output = outputType === 'std'
+            ? (errorResult.stdOutput || '')
+            : (errorResult.testOutput || '');
+        const errType = errorResult.errorType;
+
+        if (errType === 'compile_error') {
+            return false;
+        }
+
+        if (errType === 'generator_program_error' || errType === 'standard_program_error' || errType === 'test_program_error' || errorResult.usedSpj) {
+            return this.isLineLimitedOutputTruncated(output, 100);
+        }
+
+        const otherOutput = outputType === 'std'
+            ? (errorResult.testOutput || '')
+            : (errorResult.stdOutput || '');
+        return this.isCompareOutputTruncated(output, otherOutput);
+    }
+
+    updateErrorOutputExpandButton(button, errorResult, outputType) {
+        if (!button) return;
+        const truncated = this.isErrorOutputTruncated(errorResult, outputType);
+        if (!truncated) {
+            button.style.display = 'none';
+            return;
+        }
+        let expanded = false;
+        if (outputType === 'input') {
+            expanded = !!errorResult?.inputExpanded;
+        } else if (outputType === 'std') {
+            expanded = !!errorResult?.stdOutputExpanded;
+        } else {
+            expanded = !!errorResult?.testOutputExpanded;
+        }
+        button.style.display = 'inline-flex';
+        button.textContent = expanded ? (window.i18n ? window.i18n.t('compare.collapse') : 'Collapse') : (window.i18n ? window.i18n.t('compare.expand') : 'Expand');
+        button.title = expanded ? 'Collapse output' : 'Expand full output';
+    }
+
+    async toggleErrorOutputExpand(outputType) {
+        const task = this.getActiveTask();
+        const errorResult = task?.state?.errorResult;
+        if (!task || !errorResult) {
+            return;
+        }
+
+        const key = outputType === 'input'
+            ? 'inputExpanded'
+            : (outputType === 'std' ? 'stdOutputExpanded' : 'testOutputExpanded');
+        if (!this.isErrorOutputTruncated(errorResult, outputType)) {
+            return;
+        }
+
+        if (errorResult[key]) {
+            errorResult[key] = false;
+            this.renderIfActive(task);
+            return;
+        }
+
+        const output = outputType === 'input'
+            ? (errorResult.input || '')
+            : (outputType === 'std' ? (errorResult.stdOutput || '') : (errorResult.testOutput || ''));
+        const sizeMbText = this.getOutputSizeMbText(output);
+        const message = `当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`;
+
+        let shouldExpand = false;
+        try {
+            if (window.dialogManager?.showActionDialog) {
+                const action = await window.dialogManager.showActionDialog('展开完整输出确认', message, [
+                    { id: 'cancel', label: '取消', className: 'dialog-btn-cancel' },
+                    { id: 'expand', label: '仍要展开', className: 'dialog-btn-confirm' }
+                ]);
+                shouldExpand = action === 'expand';
+            } else if (window.dialogManager?.showConfirmDialog) {
+                shouldExpand = (await window.dialogManager.showConfirmDialog('展开完整输出确认', `当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`)) as boolean;
+            } else {
+                shouldExpand = window.confirm(`当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`);
+            }
+        } catch (error) {
+            logWarn('展开输出确认失败，已取消展开:', error);
+            shouldExpand = false;
+        }
+
+        if (!shouldExpand) {
+            return;
+        }
+
+        errorResult[key] = true;
+        this.renderIfActive(task);
+    }
+
+    limitOutputLines(output, maxLines) {
+        const safeOutput = output == null ? '' : String(output);
+        const lines = safeOutput.split('\n');
+        if (lines.length > maxLines) {
+            return lines.slice(0, maxLines).join('\n') + '\n[输出过大，已省略]';
+        }
+        return safeOutput;
+    }
+
+    formatCompareOutput(currentOutput, otherOutput, outputType) {
+        const currentLines = currentOutput.split('\n');
+        const otherLines = otherOutput.split('\n');
+        const maxLines = 100;
+
+        let firstDiffLine = -1;
+        const maxCompareLines = Math.max(currentLines.length, otherLines.length);
+
+        for (let i = 0; i < maxCompareLines; i++) {
+            const currentLine = currentLines[i] || '';
+            const otherLine = otherLines[i] || '';
+            if (currentLine.trimEnd() !== otherLine.trimEnd()) {
+                firstDiffLine = i;
+                break;
+            }
+        }
+
+        if (firstDiffLine === -1) {
+            return this.addLineNumbers(this.limitOutputLines(currentOutput, maxLines));
+        }
+
+        const contextLines = 10;
+        const startLine = Math.max(0, firstDiffLine - contextLines);
+        const endLine = Math.min(currentLines.length, firstDiffLine + contextLines + 1);
+
+        const displayLines = Math.min(maxLines, endLine - startLine);
+        const actualEndLine = startLine + displayLines;
+
+        let result = '';
+
+        for (let i = startLine; i < actualEndLine && i < currentLines.length; i++) {
+            const lineNum = i + 1;
+            const line = currentLines[i] || '';
+            const isDiffLine = i === firstDiffLine;
+
+            if (isDiffLine && outputType === 'test') {
+                const otherLine = otherLines[i] || '';
+                const highlightedLine = this.highlightCharacterDifferences(line, otherLine);
+                result += `<div class="diff-line"><span class="line-number">${lineNum.toString().padStart(4)} </span>${highlightedLine}</div>`;
+            } else {
+                result += `<div class="diff-line"><span class="line-number">${lineNum.toString().padStart(4)} </span>${this.escapeHtml(line)}</div>`;
+            }
+        }
+
+        if (actualEndLine < currentLines.length) {
+            result += '<div class="diff-truncated">[输出过大，已省略]</div>';
+        }
+
+        return result;
+    }
+
+    addLineNumbers(output) {
+        const lines = output.split('\n');
+        let result = '';
+
+        for (let i = 0; i < lines.length; i++) {
+            const lineNum = i + 1;
+            const line = lines[i];
+            if (line === '[输出过大，已省略]') {
+                result += `<div class="diff-truncated">${line}</div>`;
+            } else {
+                result += `<div class="diff-line"><span class="line-number">${lineNum.toString().padStart(4)} </span>${this.escapeHtml(line)}</div>`;
+            }
+        }
+
+        return result;
+    }
+
+    highlightCharacterDifferences(text1, text2) {
+        if (!text1 && !text2) return '';
+        if (!text1) return `<span class="diff-highlight">${this.escapeHtml(text2)}</span>`;
+        if (!text2) return this.escapeHtml(text1);
+
+        const t1 = this.normalizeForCompare(text1);
+        const t2 = this.normalizeForCompare(text2);
+
+        let diffIndex = 0;
+        const minLength = Math.min(t1.length, t2.length);
+        while (diffIndex < minLength && t1[diffIndex] === t2[diffIndex]) diffIndex++;
+
+        if (diffIndex < t1.length) {
+            const beforeDiff = this.escapeHtml(t1.substring(0, diffIndex));
+            const diffChar = this.escapeHtml(t1.substring(diffIndex, diffIndex + 1));
+            const afterDiff = this.escapeHtml(t1.substring(diffIndex + 1));
+            return beforeDiff + `<span class="diff-highlight">${diffChar}</span>` + afterDiff;
+        }
+        const result = this.escapeHtml(t1);
+        if (t1.length < t2.length) {
+            const icon = (window.uiIcons && typeof window.uiIcons.svg === 'function') ? window.uiIcons.svg('emptyBox') : '';
+            return result + `<span class="diff-highlight">${icon}</span>`;
+        }
+        return result;
+    }
+
+    getDifferenceInfo(actual, expected) {
+        const normActual = this.normalizeForCompare(actual);
+        const normExpected = this.normalizeForCompare(expected);
+
+        if (normActual === normExpected) return null;
+
+        const actualLines = normActual.split('\n');
+        const expectedLines = normExpected.split('\n');
+
+        for (let i = 0; i < Math.max(actualLines.length, expectedLines.length); i++) {
+            const actualLine = actualLines[i] || '';
+            const expectedLine = expectedLines[i] || '';
+
+            if (actualLine !== expectedLine) {
+                for (let j = 0; j < Math.max(actualLine.length, expectedLine.length); j++) {
+                    if (actualLine[j] !== expectedLine[j]) {
+                        return {
+                            line: i + 1,
+                            char: j + 1
+                        };
+                    }
+                }
+                return {
+                    line: i + 1,
+                    char: Math.min(actualLine.length, expectedLine.length) + 1
+                };
+            }
+        }
+
+        return null;
+    }
+
+    normalizeForCompare(text) {
+        if (text == null) return '';
+        let s = String(text);
+        s = s.replace(/^\uFEFF/, '');
+        s = s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        s = s.replace(/\uFEFF/g, '');
+        return s;
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    highlightDifferences(text1, text2) {
+        return this.highlightCharacterDifferences(text1, text2);
+    }
+
+    async exportResults() {
+        const task = this.getActiveTask();
+        const errorResult = task?.state?.errorResult;
+        if (!errorResult) {
+            this.showTaskCompileError(task, 'general', '没有可导出的错误结果');
+            return;
+        }
+
+        try {
+            const result = await window.electronAPI.showOpenDialog({
+                title: '选择导出目录',
+                defaultPath: 'test_data',
+                properties: ['openDirectory', 'createDirectory']
+            });
+
+            if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
+                const exportDir = result.filePaths[0];
+
+                await window.electronAPI.ensureDir(exportDir);
+
+                const inputFile = await window.electronAPI.pathJoin(exportDir, 'input.in');
+                const stdOutputFile = await window.electronAPI.pathJoin(exportDir, 'std_or_force_output.out');
+                const testOutputFile = await window.electronAPI.pathJoin(exportDir, 'code_output.out');
+
+                await window.electronAPI.createFile(inputFile, errorResult.input);
+                await window.electronAPI.createFile(stdOutputFile, errorResult.stdOutput);
+                await window.electronAPI.createFile(testOutputFile, errorResult.testOutput);
+
+                this.showSuccessMessage(`测试数据已导出到: ${exportDir}`);
+            }
+        } catch (error) {
+            logError('导出失败:', error);
+            this.showTaskCompileError(task, 'general', '导出失败: ' + (error?.message || String(error)));
+        }
+    }
+
+    async cleanupCompiledExecutables(task) {
+        if (!task?.compiledExecutables) {
+            return;
+        }
+
+        const { stdExe, testExe, generatorExe, spjExe } = task.compiledExecutables;
+        const executables = [stdExe, testExe, generatorExe, spjExe].filter(Boolean);
+
+        for (const exe of executables) {
+            try {
+                await window.electronAPI.deleteTempFile(exe);
+                logInfo('[对拍器] 已清理编译产物:', exe);
+            } catch (error) {
+                logWarn('[对拍器] 清理编译产物失败:', exe, error);
+            }
+        }
+
+        task.compiledExecutables = null;
+    }
+
+    async autoSaveCurrentFile() {
+        try {
+            const currentEditor = window.editorManager?.getCurrentEditor();
+            if (!currentEditor) {
+                logInfo('[对拍器-自动保存] 没有当前编辑器');
+                return;
+            }
+
+            const filePath = currentEditor.filePath || (currentEditor.getFilePath && currentEditor.getFilePath());
+            if (!filePath || filePath.startsWith('untitled')) {
+                logInfo('[对拍器-自动保存] 文件未保存或为临时文件，跳过自动保存');
+                return;
+            }
+
+            const content = currentEditor.getValue();
+            if (content === null || content === undefined) {
+                logInfo('[对拍器-自动保存] 无法获取文件内容');
+                return;
+            }
+
+            if (window.tabManager) {
+                const fileName = filePath.split(/[\\/]/).pop();
+                const tab = window.tabManager.getTabByFileName && window.tabManager.getTabByFileName(fileName);
+                if (tab && !(tab as { modified?: boolean }).modified) {
+                    logInfo('[对拍器-自动保存] 文件未修改，跳过保存');
+                    return;
+                }
+            }
+
+            logInfo('[对拍器-自动保存] 开始保存文件:', filePath);
+
+            if (window.electronAPI && window.electronAPI.saveFile) {
+                await window.electronAPI.saveFile(filePath, content);
+                logInfo('[对拍器-自动保存] 文件保存成功');
+
+                if (window.tabManager) {
+                    const fileName = filePath.split(/[\\/]/).pop();
+                    if (window.tabManager.markTabAsSaved) {
+                        window.tabManager.markTabAsSaved(fileName);
+                    }
+                    if (window.tabManager.markTabAsSavedByUniqueKey) {
+                        window.tabManager.markTabAsSavedByUniqueKey(filePath);
+                    }
+                }
+            } else {
+                logWarn('[对拍器-自动保存] electronAPI 不可用');
+            }
+        } catch (error) {
+            logError('[对拍器-自动保存] 保存文件失败:', error);
+        }
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.CodeComparer = CodeComparer;
+}
