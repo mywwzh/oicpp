@@ -1,4 +1,21 @@
 class SampleTester {
+    samples: any;
+    currentFile: any;
+    samplesFilePath: any;
+    nextId: any;
+    mainCompileCache: any;
+    spjCompileCache: any;
+    graderCompileCache: any;
+    spjTempFiles: any;
+    spjTempSequence: any;
+    interactiveTempSequence: any;
+    deferSpjTempCleanup: any;
+    isRunningAll: any;
+    isOperating: any;
+    editorChangeInterval: any;
+    statusFilter: any;
+    globalSettings: any;
+    globalSettingsPanelHeight: any;
     constructor() {
         this.samples = [];
         this.currentFile = null;
@@ -51,7 +68,7 @@ class SampleTester {
                             window.alert?.(window.i18n ? window.i18n.t('tester.openWorkspaceFirst') : '请先打开工作区，然后重新发送题目。');
                             return;
                         }
-                        const nameRaw = (data.problemName || '').trim();
+                        const nameRaw = ((data as { problemName?: string }).problemName || '').trim();
                         const fileName = this.buildProblemFileName(nameRaw, data.OJ);
                         this.isOperating = true;
                         (async () => {
@@ -67,7 +84,7 @@ class SampleTester {
                                 }
                                 try {
                                     const content = await window.electronAPI.readFileContent(targetPath);
-                                    window.tabManager?.openFile?.(fileName, content, false, targetPath);
+                                    window.tabManager?.openFile?.(fileName, content, false, { filePath: targetPath });
                                 } catch (e) { logWarn('[样例测试器] 打开题目文件失败', e); }
                                 const waitEditor = async () => {
                                     for (let i = 0; i < 20; i++) {
@@ -89,7 +106,7 @@ class SampleTester {
                                     } catch (_) { }
                                 }
                                 const baseId = existing.length;
-                                const newSamples = data.samples.map((s, idx) => ({
+                                const newSamples = (data as { samples: Array<{ input?: string; output?: string; timeLimit?: number }> }).samples.map((s, idx) => ({
                                     id: baseId + idx + 1,
                                     title: `样例 ${baseId + idx + 1}`,
                                     input: s.input || '',
@@ -346,7 +363,7 @@ class SampleTester {
         if (globalTimeLimit) {
             globalTimeLimit.addEventListener('change', (e) => {
                 const parsed = this.sanitizeTimeLimit(e.target.value, this.globalSettings.defaultTimeLimit);
-                e.target.value = parsed;
+                e.target.value = String(parsed);
                 this.updateGlobalSetting('defaultTimeLimit', parsed);
             });
         }
@@ -355,7 +372,7 @@ class SampleTester {
         if (globalMemoryLimit) {
             globalMemoryLimit.addEventListener('change', (e) => {
                 const parsed = this.sanitizeMemoryLimit(e.target.value, this.globalSettings.defaultMemoryLimit);
-                e.target.value = parsed;
+                e.target.value = String(parsed);
                 this.updateGlobalSetting('defaultMemoryLimit', parsed);
             });
         }
@@ -484,8 +501,8 @@ class SampleTester {
                 filePath = currentEditor.getFilePath();
             } else if (currentEditor.filePath) {
                 filePath = currentEditor.filePath;
-            } else if (currentEditor.fileName) {
-                filePath = currentEditor.fileName;
+            } else if ((currentEditor as { fileName?: string }).fileName) {
+                filePath = (currentEditor as { fileName?: string }).fileName;
             }
 
             if (filePath &&
@@ -1251,7 +1268,7 @@ class SampleTester {
                 );
                 enableFreopen = action === 'enable';
             } else if (window.dialogManager?.showConfirmDialog) {
-                enableFreopen = await window.dialogManager.showConfirmDialog('导入设置', '是否为本次导入样例启用文件读写（freopen）？');
+                enableFreopen = (await window.dialogManager.showConfirmDialog('导入设置', '是否为本次导入样例启用文件读写（freopen）？')) as boolean;
             } else {
                 enableFreopen = window.confirm('是否为本次导入样例启用文件读写（freopen）？');
             }
@@ -1445,7 +1462,7 @@ class SampleTester {
                 ]);
                 shouldImport = action === 'import';
             } else if (window.dialogManager?.showConfirmDialog) {
-                shouldImport = await window.dialogManager.showConfirmDialog('导入样例预览', `识别到 ${pairs.length} 组可导入样例。识别文件数：${importPlan.recognizedCount}，未配对文件：${importPlan.unmatchedCount}。是否继续导入？`);
+                shouldImport = (await window.dialogManager.showConfirmDialog('导入样例预览', `识别到 ${pairs.length} 组可导入样例。识别文件数：${importPlan.recognizedCount}，未配对文件：${importPlan.unmatchedCount}。是否继续导入？`)) as boolean;
             }
             if (!shouldImport) {
                 return;
@@ -2073,7 +2090,7 @@ class SampleTester {
                 }
             });
 
-            const compileResult = await this.compileCurrentFile(useTestlib);
+            const compileResult = (await this.compileCurrentFile(useTestlib)) as { cached?: boolean; executablePath?: any; success?: boolean; stderr?: string; stdout?: string; };
             if (!compileResult.success) {
                 for (const sample of runSamples) {
                     sample.result = {
@@ -2119,7 +2136,7 @@ class SampleTester {
                     return;
                 }
 
-                const graderCompileResult = await this.compileGraderFile(graderPath);
+                const graderCompileResult = (await this.compileGraderFile(graderPath)) as { cached?: boolean; executablePath?: any; success?: boolean; stderr?: string; stdout?: string; };
                 if (!graderCompileResult.success) {
                     for (const sample of runSamples) {
                         sample.result = {
@@ -2147,7 +2164,7 @@ class SampleTester {
                 }
                 graderExecutablePath = graderCompileResult.executablePath;
             } else if (useTestlib && spjPath) {
-                const spjCompileResult = await this.compileSpjFile(spjPath);
+                const spjCompileResult = (await this.compileSpjFile(spjPath)) as { cached?: boolean; executablePath?: any; success?: boolean; stderr?: string; stdout?: string; };
                 if (!spjCompileResult.success) {
                     for (const sample of runSamples) {
                         sample.result = {
@@ -2481,7 +2498,7 @@ class SampleTester {
 
         if (statusCallback) statusCallback('compiling');
 
-        const compileResult = await this.compileCurrentFile(useTestlib);
+        const compileResult = (await this.compileCurrentFile(useTestlib)) as { cached?: boolean; executablePath?: any; success?: boolean; stderr?: string; stdout?: string; };
         if (!compileResult.success) {
             return {
                 status: 'CE',
@@ -2508,7 +2525,7 @@ class SampleTester {
                     };
                 }
 
-                const graderCompileResult = await this.compileGraderFile(graderPath);
+                const graderCompileResult = (await this.compileGraderFile(graderPath)) as { cached?: boolean; executablePath?: any; success?: boolean; stderr?: string; stdout?: string; };
                 if (!graderCompileResult.success) {
                     return {
                         status: 'CE',
@@ -2523,7 +2540,7 @@ class SampleTester {
                 graderExecutablePath = graderCompileResult.executablePath;
             } else if (useTestlib && spjPath) {
                 logInfo('[样例测试器] 开始编译SPJ程序:', spjPath);
-                const spjCompileResult = await this.compileSpjFile(spjPath);
+                const spjCompileResult = (await this.compileSpjFile(spjPath)) as { cached?: boolean; executablePath?: any; success?: boolean; stderr?: string; stdout?: string; };
 
                 if (!spjCompileResult.success) {
                     return {
@@ -2792,11 +2809,11 @@ class SampleTester {
 
         if (useTestlib) {
             if (settings.testlibPath) {
-                const pathInfo = await window.electronAPI.getPathInfo(settings.testlibPath);
-                testlibIncludePath = pathInfo.dirname;
+                const pathInfo = await window.electronAPI.getPathInfo(settings.testlibPath as string);
+                testlibIncludePath = (pathInfo.dirname ?? '') as string;
             } else {
-                const pathInfo = await window.electronAPI.getPathInfo(compilerPath);
-                testlibIncludePath = await window.electronAPI.pathJoin(pathInfo.dirname, '..', 'include');
+                const pathInfo = await window.electronAPI.getPathInfo(compilerPath as string);
+                testlibIncludePath = await window.electronAPI.pathJoin((pathInfo.dirname ?? '') as string, '..', 'include');
             }
             compilerArgs += ` -I"${testlibIncludePath}"`;
         }
@@ -3221,7 +3238,7 @@ class SampleTester {
                 ]);
                 shouldExpand = action === 'expand';
             } else if (window.dialogManager?.showConfirmDialog) {
-                shouldExpand = await window.dialogManager.showConfirmDialog('展开完整输出确认', `当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`);
+                shouldExpand = (await window.dialogManager.showConfirmDialog('展开完整输出确认', `当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`)) as boolean;
             } else {
                 shouldExpand = window.confirm(`当前输出大小约 ${sizeMbText} MB。\n\n过大的输出可能导致界面或进程无响应，是否仍要展开完整输出？`);
             }
@@ -3261,7 +3278,7 @@ class SampleTester {
 
             if (window.tabManager) {
                 const fileName = filePath.split(/[\\/]/).pop();
-                const tab = window.tabManager.getTabByFileName && window.tabManager.getTabByFileName(fileName);
+                const tab = window.tabManager.getTabByFileName && (window.tabManager.getTabByFileName(fileName) as { modified?: boolean });
                 if (tab && !tab.modified) {
                     logInfo('[样例测试器-自动保存] 文件未修改，跳过保存');
                     return;
@@ -3317,12 +3334,12 @@ class SampleTester {
         }
 
         if (settings.testlibPath) {
-            const testlibPathInfo = await window.electronAPI.getPathInfo(settings.testlibPath);
-            testlibIncludePath = testlibPathInfo.dirname;
+            const testlibPathInfo = await window.electronAPI.getPathInfo(settings.testlibPath as string);
+            testlibIncludePath = (testlibPathInfo.dirname ?? '') as string;
             compilerArgs += ` -I"${testlibIncludePath}"`;
         } else {
-            const pathInfo = await window.electronAPI.getPathInfo(compilerPath);
-            testlibIncludePath = await window.electronAPI.pathJoin(pathInfo.dirname, '..', 'include');
+            const pathInfo = await window.electronAPI.getPathInfo(compilerPath as string);
+            testlibIncludePath = await window.electronAPI.pathJoin((pathInfo.dirname ?? '') as string, '..', 'include');
             compilerArgs += ` -I"${testlibIncludePath}"`;
         }
 
@@ -3421,11 +3438,11 @@ class SampleTester {
 
         if (this.globalSettings.useTestlib) {
             if (settings.testlibPath) {
-                const testlibPathInfo = await window.electronAPI.getPathInfo(settings.testlibPath);
-                testlibIncludePath = testlibPathInfo.dirname;
+                const testlibPathInfo = await window.electronAPI.getPathInfo(settings.testlibPath as string);
+                testlibIncludePath = (testlibPathInfo.dirname ?? '') as string;
             } else {
-                const pathInfo = await window.electronAPI.getPathInfo(compilerPath);
-                testlibIncludePath = await window.electronAPI.pathJoin(pathInfo.dirname, '..', 'include');
+                const pathInfo = await window.electronAPI.getPathInfo(compilerPath as string);
+                testlibIncludePath = await window.electronAPI.pathJoin((pathInfo.dirname ?? '') as string, '..', 'include');
             }
             compilerArgs += ' -I"' + testlibIncludePath + '"';
         }
@@ -3619,10 +3636,10 @@ class SampleTester {
             globalFreopenOutputFile.value = this.globalSettings.freopenOutputFile || '';
         }
         if (globalTimeLimit) {
-            globalTimeLimit.value = this.sanitizeTimeLimit(this.globalSettings.defaultTimeLimit, 1000);
+            globalTimeLimit.value = String(this.sanitizeTimeLimit(this.globalSettings.defaultTimeLimit, 1000));
         }
         if (globalMemoryLimit) {
-            globalMemoryLimit.value = this.sanitizeMemoryLimit(this.globalSettings.defaultMemoryLimit, 0);
+            globalMemoryLimit.value = String(this.sanitizeMemoryLimit(this.globalSettings.defaultMemoryLimit, 0));
         }
     }
 
