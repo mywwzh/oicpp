@@ -1,4 +1,25 @@
 class CompilerManager {
+    settings: { compilerPath: string; compilerArgs: string; runMode: string; workingDirectory: string };
+    isCompiling: boolean;
+    isRunning: boolean;
+    compileOutput: HTMLElement | null;
+    shouldRunAfterCompile: boolean;
+    isCloudCompiling: boolean;
+    cloudCompileTaskId: string | null;
+    cloudCompilePollTimer: any;
+    cloudCompileAbortController: any;
+    cloudProgressLine: HTMLElement | null;
+    cloudQueueLastCount: number | null;
+    cloudCompileStartTime: number | null;
+    cloudCompileRunId: number;
+    analysisList: any;
+    analysisEmptyState: HTMLElement | null;
+    activePane: string;
+    analysisHasContent: boolean;
+    tabButtons: any[];
+    analysisHint: HTMLElement | null;
+    analysisAvailable: boolean;
+
     t(key, params, fallback) {
         return window.i18n?.t?.(key, params) || fallback || key;
     }
@@ -108,8 +129,8 @@ class CompilerManager {
         });
 
         this.analysisList = this.compileOutput.querySelector('#compile-analysis-list');
-        this.analysisEmptyState = this.compileOutput.querySelector('#compile-analysis-empty');
-        this.analysisHint = this.compileOutput.querySelector('.compile-output-hint');
+        this.analysisEmptyState = this.compileOutput.querySelector('#compile-analysis-empty') as HTMLElement;
+        this.analysisHint = this.compileOutput.querySelector('.compile-output-hint') as HTMLElement;
         this.tabButtons = Array.from(this.compileOutput.querySelectorAll('.compile-tab-btn'));
         this.tabButtons.forEach(btn => {
             btn.addEventListener('click', () => {
@@ -220,11 +241,12 @@ class CompilerManager {
 
             ipcRenderer.on('settings-changed', (_event, _settingsType, newSettings) => {
                 logInfo('编译管理器收到设置变化通知:', newSettings);
-                if (newSettings && (newSettings.compilerPath !== undefined || newSettings.compilerArgs !== undefined || newSettings.runMode !== undefined)) {
+                const ns = newSettings as { compilerPath?: string; compilerArgs?: string; runMode?: string };
+                if (ns && (ns.compilerPath !== undefined || ns.compilerArgs !== undefined || ns.runMode !== undefined)) {
                     this.updateSettings({
-                        compilerPath: newSettings.compilerPath !== undefined ? newSettings.compilerPath : this.settings.compilerPath,
-                        compilerArgs: newSettings.compilerArgs !== undefined ? newSettings.compilerArgs : this.settings.compilerArgs,
-                        runMode: newSettings.runMode !== undefined ? newSettings.runMode : this.settings.runMode
+                        compilerPath: ns.compilerPath !== undefined ? ns.compilerPath : this.settings.compilerPath,
+                        compilerArgs: ns.compilerArgs !== undefined ? ns.compilerArgs : this.settings.compilerArgs,
+                        runMode: ns.runMode !== undefined ? ns.runMode : this.settings.runMode
                     });
                     logInfo('编译管理器设置已更新:', this.settings);
                 }
@@ -243,13 +265,14 @@ class CompilerManager {
             if (window.electronAPI && window.electronAPI.getAllSettings) {
                 const allSettings = await window.electronAPI.getAllSettings();
                 if (allSettings) {
-                    const loadedCompilerArgs = allSettings.compilerArgs || (isMacPlatform ? '-std=c++14 -O2' : '-std=c++14 -O2 -static');
+                    const s = allSettings as { compilerPath?: string; compilerArgs?: string; runMode?: string };
+                    const loadedCompilerArgs = s.compilerArgs || (isMacPlatform ? '-std=c++14 -O2' : '-std=c++14 -O2 -static');
                     this.updateSettings({
-                        compilerPath: allSettings.compilerPath || '',
+                        compilerPath: s.compilerPath || '',
                         compilerArgs: isMacPlatform
-                            ? loadedCompilerArgs.replace(/\s-static\b/g, ' ').replace(/\s+/g, ' ').trim()
+                            ? (loadedCompilerArgs as string).replace(/\s-static\b/g, ' ').replace(/\s+/g, ' ').trim()
                             : loadedCompilerArgs,
-                        runMode: isIntegratedOnlyPlatform ? 'integrated-terminal' : (allSettings.runMode || 'popup')
+                        runMode: isIntegratedOnlyPlatform ? 'integrated-terminal' : (s.runMode || 'popup')
                     });
                     logInfo('编译器设置已加载:', this.settings);
                 }
@@ -340,7 +363,7 @@ class CompilerManager {
                 compilerArgs = compilerArgs.replace(/\s-static\b/g, ' ').replace(/\s+/g, ' ').trim();
                 this.appendOutput('检测到 macOS 平台，已自动移除不兼容参数 -static\n', 'warning');
             }
-            if (options.forDebug) {
+            if ((options as { forDebug?: boolean }).forDebug) {
                 if (!compilerArgs.includes('-g')) {
                     compilerArgs = compilerArgs + ' -g';
                 }
@@ -466,11 +489,11 @@ class CompilerManager {
                 }
                 if (window.electronAPI && window.electronAPI.getIdeLoginStatus) {
                     const status = await window.electronAPI.getIdeLoginStatus();
-                    loginToken = status?.loginToken || '';
+                    loginToken = (status as { loginToken?: string })?.loginToken || '';
                 }
             } catch (e) { logWarn('获取编码 token 失败:', e); }
 
-            const payload = {
+            const payload: { cpp: string; token: string; login_token?: string } = {
                 cpp: codeContent,
                 token: token || ''
             };
@@ -986,7 +1009,7 @@ class CompilerManager {
         try {
             if (typeof monaco === 'undefined' || !monaco.editor) return false;
             const editor = window.editorManager?.getCurrentEditor?.();
-            const model = editor?.getModel ? editor.getModel() : null;
+            const model = editor?.getModel ? (editor.getModel() as { uri?: { fsPath?: string; path?: string } }) : null;
             if (!model) return false;
 
             const markers = monaco.editor.getModelMarkers
@@ -1022,7 +1045,7 @@ class CompilerManager {
         }
     }
 
-    buildAnalysisItems(payload = {}) {
+    buildAnalysisItems(payload = {} as { diagnostics?: any[]; errors?: any[]; warnings?: any[]; stderr?: string; stdout?: string }) {
         const items = [];
         const seen = new Set();
 
@@ -1318,7 +1341,7 @@ class CompilerManager {
         }));
     }
 
-    showExternalCompileResult(result = {}, options = {}) {
+    showExternalCompileResult(result = {} as { success?: boolean; stdout?: string; stderr?: string; errors?: any[]; warnings?: any[]; diagnostics?: any[] }, options = {} as { title?: string }) {
         const title = options.title || '样例编译';
         this.showOutput();
         this.clearOutput();
@@ -1491,7 +1514,7 @@ class CompilerManager {
                             const content = await window.electronAPI?.readFileContent?.(file);
                             if (typeof content === 'string') {
                                 const name = targetPath.split('/').pop() || file;
-                                await window.tabManager?.openFile?.(name, content, false, file);
+                                await window.tabManager?.openFile?.(name, content, false, { filePath: file });
                                 revealIn(window.editorManager?.getCurrentEditor?.());
                                 return;
                             }
@@ -1584,7 +1607,7 @@ class CompilerManager {
 
             if (window.tabManager) {
                 const fileName = filePath.split(/[\\/]/).pop();
-                const tab = window.tabManager.getTabByFileName && window.tabManager.getTabByFileName(fileName);
+                const tab = window.tabManager.getTabByFileName && (window.tabManager.getTabByFileName(fileName) as { modified?: boolean });
                 if (tab && !tab.modified) {
                     logInfo('[自动保存] 文件未修改，跳过保存');
                     return;

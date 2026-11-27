@@ -10,6 +10,13 @@
  *   __('message.updateDownloading', { version: ' v2.0', progress: 50 });
  */
 class I18nManager {
+    _messages: any;
+    _fallbackMessages: any;
+    _currentLang: any;
+    _loaded: any;
+    _readyPromise: any;
+    _listeners: any;
+    _observer: any;
     constructor() {
         this._messages = {};
         this._fallbackMessages = {};
@@ -54,8 +61,9 @@ class I18nManager {
             if (window.electronIPC && window.electronIPC.on) {
                 const originalOn = window.electronIPC.on.bind(window.electronIPC);
                 window.electronIPC.on('settings-changed', async (_event, _settingsType, newSettings) => {
-                    if (newSettings && newSettings.language && newSettings.language !== this._currentLang) {
-                        this._currentLang = newSettings.language;
+                    const ns = newSettings as { language?: string } | undefined;
+                    if (ns && ns.language && ns.language !== this._currentLang) {
+                        this._currentLang = ns.language;
                         await this._loadCurrentLanguage();
                         this._notifyListeners();
                         this._applyToDOM();
@@ -100,7 +108,7 @@ class I18nManager {
      * @param {object} [params] - Template parameters for substitution
      * @returns {string}
      */
-    t(key, params) {
+    t(key, params?) {
         if (!key || typeof key !== 'string') {
             return key || '';
         }
@@ -233,7 +241,7 @@ class I18nManager {
             document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
                 const key = el.getAttribute('data-i18n-placeholder');
                 if (key) {
-                    el.placeholder = this.t(key);
+                    (el as HTMLInputElement).placeholder = this.t(key);
                 }
             });
 
@@ -241,7 +249,7 @@ class I18nManager {
             document.querySelectorAll('[data-i18n-title]').forEach(el => {
                 const key = el.getAttribute('data-i18n-title');
                 if (key) {
-                    el.title = this.t(key);
+                    (el as HTMLElement).title = this.t(key);
                 }
             });
 
@@ -264,11 +272,12 @@ class I18nManager {
                     if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
                         for (const node of mutation.addedNodes) {
                             if (node.nodeType === 1) { // Element
-                                if (node.hasAttribute && (
-                                    node.hasAttribute('data-i18n') ||
-                                    node.hasAttribute('data-i18n-placeholder') ||
-                                    node.hasAttribute('data-i18n-title') ||
-                                    node.querySelector('[data-i18n],[data-i18n-placeholder],[data-i18n-title]')
+                                const el = node as Element;
+                                if (el.hasAttribute && (
+                                    el.hasAttribute('data-i18n') ||
+                                    el.hasAttribute('data-i18n-placeholder') ||
+                                    el.hasAttribute('data-i18n-title') ||
+                                    el.querySelector('[data-i18n],[data-i18n-placeholder],[data-i18n-title]')
                                 )) {
                                     needsTranslate = true;
                                     break;
@@ -307,5 +316,5 @@ class I18nManager {
 const i18n = new I18nManager();
 
 // Expose globally
-window.i18n = i18n;
+window.i18n = i18n as unknown as { init?: () => Promise<void>; enableAutoTranslate?: () => void; t?: (key: string, params?: Record<string, unknown>) => string; _applyToDOM?: () => void; onChange?: (cb: () => void) => void; getCurrentLanguage?: () => string; getAvailableLanguages?: () => Promise<Array<{ code: string; name: string; nameEn: string }>>; setLanguage?: (lang: string) => void; };
 window.__ = i18n.t.bind(i18n);

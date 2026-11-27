@@ -123,10 +123,10 @@
             }
             const content = await window.electronAPI.readFileContent(item.path);
             const fileName = item.name;
-            if (window.tabManager?.openFile) {
-                window.tabManager.openFile(fileName, content, false, item.path);
-            } else if (window.editorManager?.openFile) {
-                window.editorManager.openFile(item.path, content);
+            if ((window.tabManager as { openFile?: (name: string, content: string, readonly: boolean, options?: { filePath?: string; viewType?: string }) => void })?.openFile) {
+                (window.tabManager as { openFile: (name: string, content: string, readonly: boolean, options?: { filePath?: string; viewType?: string }) => void }).openFile(fileName, content, false, item.path);
+            } else if ((window.editorManager as { openFile?: (path: string, content: string) => void })?.openFile) {
+                (window.editorManager as { openFile: (path: string, content: string) => void }).openFile(item.path, content);
             }
             close();
         } catch (e) {
@@ -166,7 +166,7 @@
     function ensureActiveVisible() {
         const items = results.querySelectorAll('.quick-open-item');
         if (!items || !items.length || activeIndex < 0) return;
-        const el = items[activeIndex];
+        const el = items[activeIndex] as HTMLElement;
         if (!el) return;
         const rTop = results.scrollTop;
         const rBottom = rTop + results.clientHeight;

@@ -72,7 +72,7 @@
         return normalized;
     }
 
-    function formatCpp(code, options = {}) {
+    function formatCpp(code, options: { clangFormatStyle?: any; clangFormat?: any; tabSize?: number } = {}) {
         if (!code || typeof code !== 'string') return code || '';
 
         const clangFormatStyle = normalizeClangFormatStyle(options.clangFormatStyle || options.clangFormat || {});

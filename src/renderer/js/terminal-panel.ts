@@ -28,7 +28,26 @@ const TERMINAL_NERD_FONT_FALLBACKS = [
 ];
 
 class IntegratedTerminalPanel {
-    constructor(options = {}) {
+    getApp: any;
+    sessions: any;
+    activeId: any;
+    visible: any;
+    initialized: any;
+    status: any;
+    panel: any;
+    resizer: any;
+    tabs: any;
+    body: any;
+    empty: any;
+    statusNode: any;
+    newBtn: any;
+    hideBtn: any;
+    counter: any;
+    panelHeight: any;
+    _dragState: any;
+    fixedTerminalFontSize: any;
+    _resizeObserver: any;
+    constructor(options: { getApp?: () => any } = {}) {
         this.getApp = typeof options.getApp === 'function' ? options.getApp : () => null;
         this.sessions = new Map();
         this.activeId = null;
@@ -188,7 +207,7 @@ class IntegratedTerminalPanel {
         // Status line intentionally removed from UI.
     }
 
-    async open(options = {}) {
+    async open(options: { forceCreate?: boolean; createIfNone?: boolean } = {}) {
         await this.init();
         await this.refreshFeatureStatus();
 
@@ -337,7 +356,7 @@ class IntegratedTerminalPanel {
         this.applyTerminalFontSettings();
     }
 
-    async createTerminal(options = {}) {
+    async createTerminal(options: { cwd?: string } = {}) {
         if (!this.status.available) {
             this.renderEmptyState();
             return;
@@ -940,7 +959,7 @@ class IntegratedTerminalPanel {
         return `${quoted}\r`;
     }
 
-    async runExecutableInNewTerminal(executablePath, options = {}) {
+    async runExecutableInNewTerminal(executablePath: string, options: { workingDirectory?: string } = {}) {
         if (!executablePath) {
             throw new Error(window.i18n ? window.i18n.t('panel.terminalExePathEmpty') : '可执行文件路径为空');
         }

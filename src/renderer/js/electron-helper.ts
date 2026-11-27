@@ -5,7 +5,7 @@
         return;
     }
 
-    window.require = function (module) {
+    window.require = ((module: string) => {
         if (module === 'electron') {
             if (window.getElectronModule) {
                 return window.getElectronModule();
@@ -13,7 +13,7 @@
             throw new Error('Electron module not available');
         }
         throw new Error(`Module '${module}' is not available in renderer process`);
-    };
+    });
 
     window.require.__electronHelper = true;
 

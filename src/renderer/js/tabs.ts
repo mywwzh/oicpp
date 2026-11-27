@@ -1,4 +1,31 @@
 class TabManager {
+    tabs: any;
+    groups: any;
+    groupOrder: any;
+    activeGroupId: any;
+    activeTab: any;
+    activeTabKey: any;
+    tabOrder: any;
+    monacoEditorManager: any;
+    editorGroupsElement: any;
+    welcomeContainer: any;
+    splitOverlay: any;
+    groupCounter: any;
+    draggedTabInfo: any;
+    draggedTab: any;
+    placeholder: any;
+    tabDragInProgress: any;
+    lastTabDropInfo: any;
+    dropHandled: any;
+    _openingKeys: any;
+    _watchedFiles: any;
+    _fileWatchListenerBound: any;
+    _externalFileChangeUnsubscribe: any;
+    _fileWatchCleanupBound: any;
+    _tabContextMenu: any;
+    _altWheelListenerBound: any;
+    _lastAltWheelSwitchTs: any;
+    _isWindowsPlatform = false;
     constructor() {
         this.tabs = new Map();
         this.groups = new Map();
@@ -193,9 +220,10 @@ class TabManager {
                 if (!file) {
                     return;
                 }
-                const fpRaw = typeof file.path === 'string' ? file.path : null;
+                const f = file as { path?: string; name?: string };
+                const fpRaw = typeof f.path === 'string' ? f.path : null;
                 const fp = this.normalizeDroppedPath(fpRaw);
-                const name = file.name || (fp && fp.split(/[\\\/]/).pop()) || 'untitled';
+                const name = f.name || (fp && fp.split(/[\\\/]/).pop()) || 'untitled';
                 entries.push({
                     fileName: name,
                     filePath: fp,
@@ -764,8 +792,8 @@ class TabManager {
                 const container = window.browserManager.moveContainerToGroup(uniqueKey, targetGroupId);
                 if (container) {
                     // appendChild 会自动从旧父节点移除，保留 iframe 内容
-                    targetArea.appendChild(container);
-                    container.style.display = 'none';
+                    targetArea.appendChild(container as HTMLElement);
+                    (container as HTMLElement).style.display = 'none';
                 }
             }
         } else if (this.monacoEditorManager && tabData.tabId) {
@@ -828,7 +856,7 @@ class TabManager {
         if (!group?.tabBar) {
             return null;
         }
-        const tabs = Array.from(group.tabBar.querySelectorAll('.tab'));
+        const tabs = Array.from(group.tabBar.querySelectorAll('.tab')) as Element[];
         if (tabs.length === 0) {
             return null;
         }
@@ -855,7 +883,7 @@ class TabManager {
         return null;
     }
 
-    ensureGroupHasActiveTab(groupId, options = {}) {
+    ensureGroupHasActiveTab(groupId, options: any = {}) {
         const group = this.groups.get(groupId);
         if (!group?.tabBar) {
             return;
@@ -1075,7 +1103,7 @@ class TabManager {
 
     refreshGroupResizers() {
         if (!this.editorGroupsElement) return;
-        const oldResizers = Array.from(this.editorGroupsElement.querySelectorAll('.editor-group-resizer'));
+        const oldResizers = Array.from(this.editorGroupsElement.querySelectorAll('.editor-group-resizer')) as Element[];
         oldResizers.forEach(r => r.parentNode && r.parentNode.removeChild(r));
 
         if (!this.groupOrder || this.groupOrder.length <= 1) return;
@@ -1323,15 +1351,15 @@ class TabManager {
                 return;
             }
             const targetGroup = this.groups.get(tabData.groupId);
-            const state = window.browserManager.getBrowserState(uniqueKey);
-            let container = state?.container;
+            const state = window.browserManager.getBrowserState(uniqueKey) as { container?: HTMLElement } | undefined;
+            let container: HTMLElement | undefined = state?.container;
             if (!container) {
                 // 创建新的浏览器容器
                 container = window.browserManager.getOrCreateContainer({
                     groupId: tabData.groupId,
                     uniqueKey,
                     url: tabData.browserUrl || 'about:blank'
-                });
+                }) as HTMLElement;
                 if (targetGroup?.editorArea) {
                     targetGroup.editorArea.appendChild(container);
                 }
@@ -1399,7 +1427,7 @@ class TabManager {
         }
     }
 
-    closeTabByUniqueKey(uniqueKey, options = {}) {
+    closeTabByUniqueKey(uniqueKey, options: any = {}) {
         const tabData = this.tabs.get(uniqueKey);
         if (!tabData) {
             logError('标签页不存在 (uniqueKey):', uniqueKey);
@@ -1531,9 +1559,10 @@ class TabManager {
         if (this._fileWatchListenerBound) {
             return;
         }
-        if (window.electronAPI?.onExternalFileChange) {
+        const ea = window.electronAPI;
+        if (ea?.onExternalFileChange) {
             try {
-                const unsubscribe = window.electronAPI.onExternalFileChange((payload) => {
+                const unsubscribe = ea.onExternalFileChange((payload) => {
                     this.handleExternalFileChange(payload);
                 });
                 if (typeof unsubscribe === 'function') {
@@ -1598,7 +1627,7 @@ class TabManager {
                 entry = { path: filePath, tabs: new Set(), lastChangeType: null };
                 this._watchedFiles.set(key, entry);
                 try {
-                    const result = await window.electronAPI.watchFile(filePath);
+                    const result = (await window.electronAPI.watchFile(filePath)) as { success?: boolean; error?: string };
                     if (result && result.success === false) {
                         this._watchedFiles.delete(key);
                         logWarn('TabManager: 主进程拒绝监听文件', { filePath, error: result.error });
@@ -1660,8 +1689,9 @@ class TabManager {
         this._watchedFiles.clear();
         if (window.electronAPI?.unwatchFile) {
             entries.forEach((entry) => {
-                if (!entry?.path) return;
-                window.electronAPI.unwatchFile(entry.path).catch(() => { });
+                const e = entry as { path?: string };
+                if (!e?.path) return;
+                window.electronAPI.unwatchFile(e.path).catch(() => { });
             });
         }
     }
@@ -1708,7 +1738,7 @@ class TabManager {
         }
     }
 
-    handleExternalFileChange(payload = {}) {
+    handleExternalFileChange(payload: any = {}) {
         try {
             const key = this.normalizeWatchKey(payload.filePath);
             if (!key) {
@@ -1789,7 +1819,7 @@ class TabManager {
         }
     }
 
-    async maybePromptExternalReload(tabData, options = {}) {
+    async maybePromptExternalReload(tabData: { viewType?: string; externalModified?: boolean; externalPromptInProgress?: boolean; externalPromptDismissed?: boolean; pendingExternalPrompt?: boolean; externalChangeType?: string; fileName?: string; filePath?: string; modified?: boolean; [key: string]: unknown }, options: { force?: boolean } = {}) {
         if (!tabData || tabData.viewType === 'pdf') {
             return;
         }
@@ -2004,7 +2034,7 @@ class TabManager {
                                     window.electronAPI.saveAsFile(content)
                                         .then((newPath) => {
                                             if (newPath) {
-                                                const uniq = newPath.replace(/\\/g, '/');
+                                                const uniq = (newPath as string).replace(/\\/g, '/');
                                                 if (uniq && this.markTabAsSavedByUniqueKey) this.markTabAsSavedByUniqueKey(uniq);
                                             }
                                         })
@@ -2052,7 +2082,7 @@ class TabManager {
         this.tabOrder = [];
         this.groups.forEach((group) => {
             group.tabs = group.tabs || new Map();
-            const tabElements = group.tabBar ? Array.from(group.tabBar.querySelectorAll('.tab')) : [];
+            const tabElements = group.tabBar ? Array.from(group.tabBar.querySelectorAll('.tab')) as Element[] : [];
             tabElements.forEach((tabEl) => {
                 const labelEl = tabEl.querySelector('.tab-label');
                 const labelText = labelEl?.querySelector?.('.tab-label-text')?.textContent || labelEl?.textContent || '';
@@ -2080,8 +2110,8 @@ class TabManager {
                 this.setTabElementUniqueKey(tabEl, uniqueKey);
                 tabEl.dataset.groupId = group.id;
 
-                if (!tabEl.draggable) {
-                    tabEl.draggable = true;
+                if (!(tabEl as HTMLElement).draggable) {
+                    (tabEl as HTMLElement).draggable = true;
                 }
 
                 this.attachTabEventHandlers(tabEl);
@@ -2255,7 +2285,7 @@ class TabManager {
         return '// 新文件\n';
     }
 
-    closeTab(fileName, options = {}) {
+    closeTab(fileName, options: any = {}) {
         logInfo('关闭标签页:', fileName);
         const explicitKey = options.uniqueKeyOverride;
         let tabData = null;
@@ -2444,7 +2474,7 @@ class TabManager {
             tabData.previewContainer = null;
         } else if (tabData.viewType === 'browser') {
             // 清理浏览器标签页
-            if (window.browserManager && typeof window.browserManager.destroyBrowserTab === 'function') {
+            if (window.browserManager?.destroyBrowserTab) {
                 window.browserManager.destroyBrowserTab(uniqueKey);
             }
         } else if (tabId && window.monacoEditorManager) {
@@ -2880,7 +2910,7 @@ class TabManager {
         return container;
     }
 
-    buildPdfViewerSrc({ filePath, tabId, zoom, inline = false } = {}) {
+    buildPdfViewerSrc({ filePath, tabId, zoom, inline = false }: { filePath?: string; tabId?: string; zoom?: number; inline?: boolean } = {}) {
         if (!filePath && !inline) {
             return '';
         }
@@ -2896,7 +2926,7 @@ class TabManager {
             if (tabId) {
                 viewerUrl.searchParams.set('tabId', tabId);
             }
-            viewerUrl.searchParams.set('zoom', zoom || 'page-width');
+            viewerUrl.searchParams.set('zoom', String(zoom || 'page-width'));
             viewerUrl.searchParams.set('disableFullscreen', 'true');
             const theme = this.getCurrentTheme();
             if (theme) {
@@ -3408,7 +3438,9 @@ class TabManager {
             groupId: targetGroupId,
             viewType: 'pdf',
             isTempFile,
-            pdfBase64
+            pdfBase64,
+            viewerContainer: null,
+            viewerFrame: null
         };
 
         this.tabs.set(uniqueKey, tabData);
@@ -3445,7 +3477,7 @@ class TabManager {
      * @param {string} [options.groupId] - 目标分组 ID
      * @param {string} [options.title] - 标签标题
      */
-    async openBrowserTab(options = {}) {
+    async openBrowserTab(options: any = {}) {
         const url = options.url || '';
         const targetGroupId = options.groupId || this.activeGroupId || this.groupOrder[0] || 'group-1';
         const title = options.title || (window.i18n ? window.i18n.t('browser.newTab') : '新建浏览器标签页');
@@ -3729,7 +3761,8 @@ class TabManager {
             viewType: 'markdown-preview',
             isTempFile: false,
             isPreviewTab: true,
-            sourceTabKey: sourceTabData.uniqueKey
+            sourceTabKey: sourceTabData.uniqueKey,
+            previewContainer: null
         };
 
         this.tabs.set(previewUniqueKey, previewTabData);
@@ -3785,7 +3818,7 @@ class TabManager {
         }
     }
 
-    async openFile(fileName, content = '', isNew = false, filePath = null) {
+    async openFile(fileName, content = '', isNew = false, filePathOrOptions = null) {
         if (this.tabs && typeof this.tabs.has === 'function' && this.tabs.has('Welcome')) {
             try {
                 this.closeWelcomePage();
@@ -3793,11 +3826,14 @@ class TabManager {
                 logWarn('关闭欢迎页面失败:', e);
             }
         }
-        let openOptions = {};
+        let openOptions: any = {};
         let pdfBase64 = null;
-        if (filePath && typeof filePath === 'object' && !Array.isArray(filePath)) {
-            openOptions = filePath;
+        let filePath: string | null = null;
+        if (filePathOrOptions && typeof filePathOrOptions === 'object' && !Array.isArray(filePathOrOptions)) {
+            openOptions = filePathOrOptions;
             filePath = openOptions.filePath || null;
+        } else if (typeof filePathOrOptions === 'string') {
+            filePath = filePathOrOptions;
         }
         if (openOptions && typeof openOptions === 'object' && typeof openOptions.pdfBase64 === 'string' && openOptions.pdfBase64.trim()) {
             pdfBase64 = openOptions.pdfBase64.trim();
@@ -4624,7 +4660,7 @@ class TabManager {
     }
 
     getModifiedTabs() {
-        return Array.from(this.tabs.values())
+        return Array.from(this.tabs.values() as Iterable<any>)
             .filter(tab => tab.modified)
             .map(tab => tab.fileName);
     }
@@ -4642,7 +4678,7 @@ class TabManager {
             this.tryGetEditorManagerReference();
         }
 
-        const modifiedEntries = Array.from(this.tabs.entries()).filter(([, tabData]) => {
+        const modifiedEntries = Array.from(this.tabs.entries() as Iterable<[string, any]>).filter(([, tabData]) => {
             return tabData && tabData.modified && !tabData.isTempFile && tabData.viewType !== 'pdf' && !tabData.externalModified;
         });
 
@@ -4837,7 +4873,7 @@ class TabManager {
 
     async loadRecentFiles(container) {
         try {
-            const recentFiles = await window.electronAPI.getRecentFiles();
+            const recentFiles = (await window.electronAPI.getRecentFiles()) as Array<{ path?: string; name?: string }>;
             const recentContainer = container.querySelector('#welcome-recent');
 
             if (!recentContainer) return;
@@ -4895,13 +4931,13 @@ class TabManager {
                 this.createNewCppFile();
                 break;
             case 'open-file':
-                if (window.oicppApp && window.oicppApp.openFile) {
-                    window.oicppApp.openFile();
+                if (window.app?.fileExplorer?.openFile) {
+                    window.app.fileExplorer.openFile();
                 }
                 break;
             case 'open-folder':
-                if (window.oicppApp && window.oicppApp.openFolder) {
-                    window.oicppApp.openFolder();
+                if (window.app?.fileExplorer?.openFolder) {
+                    window.app.fileExplorer.openFolder();
                 }
                 break;
             case 'open-template':
@@ -4962,7 +4998,7 @@ class TabManager {
     }
 
     getAllFileNames() {
-        return Array.from(this.tabs.values()).map(tabData => tabData.fileName);
+        return Array.from(this.tabs.values() as Iterable<any>).map(tabData => tabData.fileName);
     }
 
     getUnsavedFiles() {
@@ -5103,14 +5139,14 @@ class TabManager {
         input.click();
 
         input.addEventListener('change', (e) => {
-            const files = e.target.files;
+            const files = (e.target as HTMLInputElement).files;
             if (files.length > 0) {
                 const file = files[0];
                 const fileName = file.name;
 
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    const content = e.target.result;
+                    const content = (e.target as FileReader).result as string;
                     this.openFile(fileName, content);
                 };
                 reader.readAsText(file);
@@ -5130,14 +5166,14 @@ class TabManager {
         input.click();
 
         input.addEventListener('change', (e) => {
-            const files = e.target.files;
-            const fileNames = Array.from(files).map(file => file.webkitRelativePath.split('/').pop());
+            const files = (e.target as HTMLInputElement).files;
+            const fileNames = Array.from(files as FileList).map((file: any) => file.webkitRelativePath.split('/').pop());
 
             fileNames.forEach(fileName => {
-                const file = Array.from(files).find(f => f.webkitRelativePath.endsWith(fileName));
+                const file = Array.from(files as FileList).find((f: any) => f.webkitRelativePath.endsWith(fileName));
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    const content = e.target.result;
+                    const content = (e.target as FileReader).result as string;
                     this.openFile(fileName, content);
                 };
                 reader.readAsText(file);
@@ -5478,7 +5514,7 @@ void hello() {
         const norm = (p) => String(p || '').replace(/\\/g, '/');
         const oldPrefix = norm(oldDir).replace(/\/+$/, '') + '/';
         const newPrefix = norm(newDir).replace(/\/+$/, '') + '/';
-        const entries = Array.from(this.tabs.entries());
+        const entries = Array.from(this.tabs.entries() as Iterable<[string, any]>);
         for (const [, tab] of entries) {
             const oldPath = norm(tab.filePath || '');
             if (!oldPath.startsWith(oldPrefix)) continue;

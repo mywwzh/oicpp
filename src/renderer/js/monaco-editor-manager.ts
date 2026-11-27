@@ -10,7 +10,68 @@ if (!self.MonacoEnvironment) {
     };
 }
 
+type SymbolInfo =
+    | { kind: 'url'; url: string; range: any; lineText: string }
+    | { kind: 'include'; path: string; isAngle: boolean; range: any; lineText: string }
+    | { kind: 'symbol'; word: string; range: any; lineText: string }
+    | null;
+
 class MonacoEditorManager {
+    currentEditor: any;
+    editors: any;
+    isInitialized: any;
+    currentFilePath: any;
+    currentFileName: any;
+    tabIdToFilePath: any;
+    groupContainers: any;
+    tabIdToGroupId: any;
+    groupActiveTab: any;
+    tabIdToContainer: any;
+    diffEditors: any;
+    markerOwner: any;
+    lspMarkerOwner: any;
+    _compilerErrorDecorations: any;
+    breakpoints: any;
+    _execHighlights: any;
+    completionProviders: any;
+    _globalKeysRegistered: any;
+    userSnippets: any;
+    defaultKeybindings: any;
+    keybindings: any;
+    _keybindingParseCache: any;
+    _headerCache: any;
+    _includePathCache: any;
+    _compilerIncludeDirsCache: any;
+    _compilerIncludeDirsPromise: any;
+    _includeCacheToken: any;
+    _includeRootsCache: any;
+    _fileIncludeCache: any;
+    lineHeightSetting: any;
+    syntaxColorsByTheme: any;
+    syntaxStyles: any;
+    unifiedPreprocessorColor: any;
+    formatterIndentStyle: any;
+    clangFormatStyle: any;
+    _lspSemanticProviders: any;
+    _lspDocuments: any;
+    _lspChangeTimers: any;
+    _lspChangeInFlight: any;
+    _lspChangePending: any;
+    _lspReadyPromise: any;
+    _lspCompletionEnabled: any;
+    _syntaxCheckEnabled: any;
+    _lspCompilerPath: any;
+    _lspProviders: any;
+    _lspProvidersReady: any;
+    _lspGuardedModels: any;
+    _lspGuardDetails: any;
+    lspClient: any;
+    _onMonacoContextMenuPasteCapture: any;
+    _pendingFontSizeSave: any;
+    _typeKeywordRegex: any;
+    _preprocessorKeywordSet: any;
+    _controlKeywordSet: any;
+    _themesDefined: any;
     constructor() {
         this.currentEditor = null;
         this.editors = new Map();
@@ -80,8 +141,9 @@ class MonacoEditorManager {
         if (window.electronAPI?.onSettingsChanged) {
             try {
                 window.electronAPI.onSettingsChanged((_event, _settingsType, payload) => {
-                    if (payload && Object.prototype.hasOwnProperty.call(payload, 'compilerPath')) {
-                        const newCompilerPath = payload.compilerPath || '';
+                    const settings = payload as Record<string, unknown>;
+                    if (settings && Object.prototype.hasOwnProperty.call(settings, 'compilerPath')) {
+                        const newCompilerPath = settings.compilerPath || '';
                         this._lspCompilerPath = newCompilerPath;
 
                         this._compilerIncludeDirsCache = { compilerPath: null, dirs: [] };
@@ -516,7 +578,7 @@ class MonacoEditorManager {
                 if (window.electronAPI?.getAllSettings) {
                     const settings = await window.electronAPI.getAllSettings();
                     fallbackFlags = this.tokenizeCompilerArgs(settings?.compilerArgs || '');
-                    compilerPath = settings?.compilerPath || '';
+                    compilerPath = (settings?.compilerPath as string) || '';
                 }
             } catch (_) {
                 fallbackFlags = [];
@@ -977,7 +1039,7 @@ class MonacoEditorManager {
                             }
                         }
 
-                        const sug = {
+                        const sug: any = {
                             label: rawLabel,
                             kind: kindMap[item.kind] || monaco.languages.CompletionItemKind.Text,
                             insertText,
@@ -989,7 +1051,7 @@ class MonacoEditorManager {
                             additionalTextEdits
                         };
                         if (item.insertTextFormat === 2) {
-                            sug.insertTextRules = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+                            sug.insertTextFormat = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
                         }
                         return sug;
                     }).filter(Boolean);
@@ -1697,7 +1759,7 @@ class MonacoEditorManager {
     }
 
     getDefaultSyntaxStyles() {
-        const styles = {};
+        const styles: any = {};
         this.getSyntaxTokenKeys().forEach((key) => {
             styles[key] = { bold: false, italic: false };
         });
@@ -1781,7 +1843,7 @@ class MonacoEditorManager {
         ];
 
         const makeRule = (token, colorKey) => {
-            const rule = {
+            const rule: any = {
                 token,
                 foreground: this.toMonacoColorHex(colors[colorKey])
             };
@@ -1918,7 +1980,7 @@ class MonacoEditorManager {
         }
     }
 
-    getThemeSyntaxOverride(theme, syntaxSettings = {}) {
+    getThemeSyntaxOverride(theme, syntaxSettings: any = {}) {
         const themeKey = this.normalizeThemeKey(theme);
         const hasColorByThemeInPayload = !!(syntaxSettings && syntaxSettings.syntaxColorsByTheme !== undefined);
         const hasGlobalStyleInPayload = !!(syntaxSettings && syntaxSettings.syntaxFontStyles !== undefined);
@@ -2180,7 +2242,7 @@ class MonacoEditorManager {
     }
 
     async waitForMonaco() {
-        return new Promise((resolve) => {
+        return new Promise<void>((resolve) => {
             const checkMonaco = () => {
                 if (typeof monaco !== 'undefined') {
                     resolve();
@@ -2331,7 +2393,7 @@ class MonacoEditorManager {
         return normalized;
     }
 
-    loadKeybindingsFromSettings(allSettings = {}) {
+    loadKeybindingsFromSettings(allSettings: any = {}) {
         this.keybindings = this.normalizeKeybindings(allSettings?.keybindings);
         if (this._keybindingParseCache instanceof Map) {
             this._keybindingParseCache.clear();
@@ -2815,7 +2877,7 @@ class MonacoEditorManager {
         }
     }
 
-    async createNewEditor(tabId, fileName, content = '', filePath = null, options = {}) {
+    async createNewEditor(tabId, fileName, content = '', filePath = null, options: any = {}) {
         try {
             const existingEditor = this.editors.get(tabId);
             if (existingEditor) {
@@ -2905,23 +2967,23 @@ class MonacoEditorManager {
                 if (window.electronAPI && window.electronAPI.getAllSettings) {
                     const allSettings = await window.electronAPI.getAllSettings();
                     if (allSettings) {
-                        currentTheme = allSettings.theme || 'dark';
+                        currentTheme = (allSettings.theme as string) || 'dark';
                         if (allSettings.fontSize) {
-                            fontSize = parseInt(allSettings.fontSize);
+                            fontSize = parseInt(allSettings.fontSize as string);
                         }
                         if (typeof allSettings.lineHeight === 'number' && allSettings.lineHeight > 0) {
-                            lineHeightSetting = allSettings.lineHeight;
+                            lineHeightSetting = allSettings.lineHeight as number;
                         }
                         if (allSettings.font) {
                             if (window.fontDetector) {
-                                fontFamily = window.fontDetector.validateFont(allSettings.font);
+                                fontFamily = window.fontDetector.validateFont(allSettings.font as string);
                                 if (fontFamily !== allSettings.font) {
                                     window.electronAPI.updateSettings({ font: fontFamily }).catch(err => {
                                         logError('更新字体设置失败:', err);
                                     });
                                 }
                             } else {
-                                fontFamily = allSettings.font;
+                                fontFamily = allSettings.font as string;
                             }
                         }
                         foldingEnabled = allSettings.foldingEnabled !== false;
@@ -2934,12 +2996,12 @@ class MonacoEditorManager {
                         this._lspCompletionEnabled = autoCompletionEnabled;
                         this.syntaxColorsByTheme = this.normalizeSyntaxColorsByTheme(allSettings.syntaxColorsByTheme);
                         this.syntaxStyles = this.normalizeSyntaxStyles(allSettings.syntaxFontStyles);
-                        syntaxSettings = {
+                        let syntaxSettings: any = {
                             syntaxColorsByTheme: allSettings.syntaxColorsByTheme,
                             syntaxFontStyles: this.syntaxStyles,
                             syntaxColors: allSettings.syntaxColors
                         };
-                        const parsedTabSize = parseInt(allSettings.tabSize, 10);
+                        const parsedTabSize = parseInt(allSettings.tabSize as string, 10);
                         if (!Number.isNaN(parsedTabSize) && parsedTabSize > 0) {
                             tabSize = parsedTabSize;
                         }
@@ -2999,7 +3061,6 @@ class MonacoEditorManager {
                 roundedSelection: false,
                 renderWhitespace: 'none',
                 renderControlCharacters: false,
-                selectionHighlight: true,
                 selectionClipboard: true,
                 folding: foldingEnabled,
                 foldingStrategy: 'auto',
@@ -3008,7 +3069,6 @@ class MonacoEditorManager {
                 foldingImportsByDefault: false,
                 showFoldingControls: 'always',
                 contextmenu: true,
-                selectionClipboard: true,
                 multiCursorSupport: true,
                 find: {
                     addExtraSpaceOnTop: false,
@@ -4221,7 +4281,7 @@ class MonacoEditorManager {
         }
     }
 
-    async createDiffEditor(tabId, options = {}) {
+    async createDiffEditor(tabId, options: any = {}) {
         let container = null;
         let originalModel = null;
         let modifiedModel = null;
@@ -4335,7 +4395,7 @@ class MonacoEditorManager {
         }
     }
 
-    async showDiffEditor(tabId, options = {}) {
+    async showDiffEditor(tabId, options: any = {}) {
         try {
             const editor = this.editors.get(tabId);
             if (!editor || !editor.__isDiffEditor) {
@@ -4387,7 +4447,7 @@ class MonacoEditorManager {
         this.updateClangFormatSettings(settings);
 
         if (this.currentEditor && settings) {
-            const updateOptions = {};
+            const updateOptions: any = {};
             updateOptions['semanticHighlighting.enabled'] = true;
             let targetFontSize = null;
             if (settings.fontSize !== undefined) {
@@ -4482,7 +4542,7 @@ class MonacoEditorManager {
         }
     }
 
-    updateFormatterSettings(settings = {}) {
+    updateFormatterSettings(settings: any = {}) {
         if (!settings || typeof settings !== 'object') {
             return;
         }
@@ -4565,7 +4625,7 @@ class MonacoEditorManager {
         return normalized;
     }
 
-    updateClangFormatSettings(settings = {}) {
+    updateClangFormatSettings(settings: any = {}) {
         if (!settings || typeof settings !== 'object') {
             return;
         }
@@ -4604,7 +4664,7 @@ class MonacoEditorManager {
                 if (window.electronAPI && window.electronAPI.getAllSettings) {
                     const settings = await window.electronAPI.getAllSettings();
                     if (settings && settings.cppTemplate) {
-                        defaultContent = settings.cppTemplate;
+                        defaultContent = settings.cppTemplate as string;
                     } else {
                         defaultContent = '';
                     }
@@ -4638,12 +4698,12 @@ class MonacoEditorManager {
     }
 
     addWheelZoomListenerToEditorArea(editor) {
-    const editorArea = document.querySelector('.editor-groups');
+    const editorArea = document.querySelector('.editor-groups') as HTMLElement;
         if (!editorArea || editorArea.hasGlobalWheelZoomListener) {
             return;
         }
                 
-        editorArea.addEventListener('wheel', (e) => {
+        editorArea.addEventListener('wheel', (e: any) => {
             
             if (e.ctrlKey && this.currentEditor) {
                 e.preventDefault();
@@ -4783,7 +4843,7 @@ class MonacoEditorManager {
         
     this.editors.forEach((editor, fileName) => {
             if (editor && editor !== this.currentEditor) {
-                const updateOptions = {};
+                const updateOptions: any = {};
                 updateOptions['semanticHighlighting.enabled'] = true;
                 let targetFontSize = null;
                 if (settings.fontSize !== undefined) {
@@ -5099,7 +5159,7 @@ class MonacoEditorManager {
         return text || '';
     }
 
-    async formatCode() {
+    async formatCode(): Promise<boolean> {
         if (this.currentEditor && this.currentEditor.getModel) {
             try {
                 logInfo('开始格式化代码...');
@@ -5118,8 +5178,10 @@ class MonacoEditorManager {
                     logInfo('代码格式化完成');
                     return true;
                 } 
+                return false;
             } catch (error) {
                 logError('代码格式化失败:', error);
+                return false;
             }
         } else {
             logWarn('当前没有可用的编辑器实例');
@@ -5548,7 +5610,7 @@ class MonacoEditorManager {
         }
     }
 
-    identifySymbolAtPosition(model, position) {
+    identifySymbolAtPosition(model, position): SymbolInfo {
         try {
             if (!model || !position) return null;
             const lineText = model.getLineContent(position.lineNumber) || '';
@@ -5609,7 +5671,7 @@ class MonacoEditorManager {
         }
     }
 
-    identifyUrlAtPosition(lineText, position) {
+    identifyUrlAtPosition(lineText: string, position: any): SymbolInfo | null {
         try {
             if (!lineText || !position || !Number.isFinite(position.column)) return null;
             const urlPattern = /\b(?:https?:\/\/|www\.)[^\s<>"'()\[\]{}]+/gi;
@@ -5703,7 +5765,7 @@ class MonacoEditorManager {
         }
     }
 
-    findDefinitionInLines(lines, word, options = {}) {
+    findDefinitionInLines(lines, word, options: any = {}) {
         try {
             if (!Array.isArray(lines) || !word) return null;
 
@@ -5764,7 +5826,7 @@ class MonacoEditorManager {
         }
     }
 
-    findFallbackOccurrence(model, word, options = {}) {
+    findFallbackOccurrence(model, word, options: any = {}) {
         try {
             if (!model || !word) return null;
             const escaped = this.escapeRegExp(word);
@@ -5842,7 +5904,7 @@ class MonacoEditorManager {
 
             if (stringDelimiter) {
                 if (ch === '\\') {
-                    if (ch !== '\n') chars[i] = ' ';
+                    if ((ch as string) !== '\n') chars[i] = ' ';
                     if (i + 1 < chars.length && chars[i + 1] !== '\n') chars[i + 1] = ' ';
                     i += 2;
                     continue;
@@ -6197,7 +6259,7 @@ class MonacoEditorManager {
         return false;
     }
 
-    classifyOccurrence(masked, index, wordLength, options = {}) {
+    classifyOccurrence(masked, index, wordLength, options: any = {}) {
         const lineStart = masked.lastIndexOf('\n', index - 1) + 1;
         const lineEndRaw = masked.indexOf('\n', index);
         const lineEnd = lineEndRaw === -1 ? masked.length : lineEndRaw;
@@ -6388,7 +6450,7 @@ class MonacoEditorManager {
                 const editor = this.editors.get(tabId);
                 const model = editor?.getModel?.();
                 if (model) {
-                    const def = this.findDefinitionInModel(model, word);
+                    const def = this.findDefinitionInModel(model, word, {});
                     if (def?.position) {
                         return { filePath, position: def.position };
                     }
@@ -6413,7 +6475,7 @@ class MonacoEditorManager {
         }
     }
 
-    async findDefinitionInIncludes(symbol, model, includePaths) {
+    async findDefinitionInIncludes(symbol: any, model: any, includePaths: any = {}) {
         try {
             if (!symbol || symbol.kind !== 'symbol') return null;
             const word = symbol.word;
@@ -7056,8 +7118,8 @@ class MonacoEditorManager {
         try {
             if (window.electronAPI?.getAllSettings) {
                 const all = await window.electronAPI.getAllSettings();
-                result.compilerPath = all?.compilerPath || '';
-                result.compilerArgs = all?.compilerArgs || '';
+                result.compilerPath = (all?.compilerPath as string) || '';
+                result.compilerArgs = (all?.compilerArgs as string) || '';
             }
         } catch (_) {}
 
@@ -7083,7 +7145,7 @@ class MonacoEditorManager {
         return result;
     }
 
-    async resolveIncludeTarget(symbol, options = {}) {
+    async resolveIncludeTarget(symbol: any, options: any = {}) {
         try {
             if (!symbol || !symbol.path || symbol.isAngle) return null;
             const header = String(symbol.path || '').trim();
@@ -7205,7 +7267,7 @@ class MonacoEditorManager {
             if (normalizedKey && window.tabManager?.activateTabByUniqueKey) {
                 try {
                     const activated = await window.tabManager.activateTabByUniqueKey(normalizedKey);
-                    activatedViaTabManager = activated === true;
+                    activatedViaTabManager = activated != null;
                     targetEditor = this.editors.get(tabId) || targetEditor;
                 } catch (activationError) {
                     logWarn('TabManager.activateTabByUniqueKey 失败:', activationError);

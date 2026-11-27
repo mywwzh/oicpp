@@ -1,4 +1,10 @@
-class TitlebarManager {
+export default class TitlebarManager {
+    titlebar: HTMLElement | null = null;
+    currentTitle: string = 'OICPP IDE';
+    isMaximized: boolean = false;
+    _closeConfirmInProgress: boolean = false;
+    isMacPlatform: boolean = false;
+
     constructor() {
         this.titlebar = null;
         this.currentTitle = 'OICPP IDE';
@@ -34,7 +40,7 @@ class TitlebarManager {
     }
 
     setupTitlebar() {
-        this.titlebar = document.querySelector('.titlebar');
+        this.titlebar = document.querySelector('.titlebar') as HTMLElement;
         if (!this.titlebar) {
             this.titlebar = document.createElement('div');
             this.titlebar.className = 'titlebar';
@@ -105,7 +111,7 @@ class TitlebarManager {
         }, 100);
     }
 
-    _escapeHtml(text) {
+    _escapeHtml(text: unknown) {
         try {
             const div = document.createElement('div');
             div.textContent = String(text ?? '');
@@ -119,60 +125,55 @@ class TitlebarManager {
         return this._requestCloseInternal({ source: 'button' });
     }
 
-    async _requestCloseInternal({ source } = { source: 'button' }) {
+    async _requestCloseInternal({ source }: { source: string } = { source: 'button' }) {
         if (this._closeConfirmInProgress) return;
         if (!window.electronIPC) return;
 
-        // 立即占位，避免在多个 await 期间重复进入。
-        // 连点关闭否则会弹出多个对话框，且 DialogManager 单槽位会把前一个 Promise 永久挂起。
         this._closeConfirmInProgress = true;
         try {
-
-        // 关闭前先持久化当前打开的标签页。标签页状态平时靠 2s 防抖保存，
-        // 快速关闭时可能来不及写入，导致下次启动恢复成更早的旧会话。
-        try {
-            if (window.oicppApp && typeof window.oicppApp.saveCurrentOpenTabs === 'function') {
-                await window.oicppApp.saveCurrentOpenTabs();
-            }
-        } catch (err) {
-            logWarn('关闭前保存标签页失败:', err);
-        }
-
-        const tempFilesHandled = await this._confirmTemporaryFilesBeforeClose();
-        if (!tempFilesHandled) {
-            if (source === 'system') {
-                window.electronIPC.send('app-close-cancelled');
-            }
-            return;
-        }
-
-        const unsavedFiles = (() => {
             try {
-                if (window.tabManager && typeof window.tabManager.getUnsavedFiles === 'function') {
-                    return window.tabManager.getUnsavedFiles() || [];
+                if (window.oicppApp && typeof window.oicppApp.saveCurrentOpenTabs === 'function') {
+                    await window.oicppApp.saveCurrentOpenTabs();
                 }
-            } catch (_) { }
-            return [];
-        })();
-
-        if (!unsavedFiles || unsavedFiles.length === 0) {
-            if (source === 'system') {
-                window.electronIPC.send('app-close-confirmed');
-            } else {
-                window.electronIPC.send('window-close');
+            } catch (err) {
+                logWarn('关闭前保存标签页失败:', err);
             }
-            return;
-        }
 
-        if (!window.dialogManager || typeof window.dialogManager.showActionDialog !== 'function') {
-            logWarn('dialogManager 不可用，已阻止关闭以避免无提示自动保存');
-            if (source === 'system') {
-                try { window.electronIPC.send('app-close-cancelled'); } catch (_) { }
+            const tempFilesHandled = await this._confirmTemporaryFilesBeforeClose();
+            if (!tempFilesHandled) {
+                if (source === 'system') {
+                    window.electronIPC.send('app-close-cancelled');
+                }
+                return;
             }
-            return;
-        }
 
-        const maxShow = 8;
+            const unsavedFiles = (() => {
+                try {
+                    if (window.tabManager && typeof window.tabManager.getUnsavedFiles === 'function') {
+                        return window.tabManager.getUnsavedFiles() || [];
+                    }
+                } catch (_) { }
+                return [];
+            })() as string[];
+
+            if (!unsavedFiles || unsavedFiles.length === 0) {
+                if (source === 'system') {
+                    window.electronIPC.send('app-close-confirmed');
+                } else {
+                    window.electronIPC.send('window-close');
+                }
+                return;
+            }
+
+            if (!window.dialogManager || typeof window.dialogManager.showActionDialog !== 'function') {
+                logWarn('dialogManager 不可用，已阻止关闭以避免无提示自动保存');
+                if (source === 'system') {
+                    try { window.electronIPC.send('app-close-cancelled'); } catch (_) { }
+                }
+                return;
+            }
+
+            const maxShow = 8;
             const shown = unsavedFiles.slice(0, maxShow);
             const moreCount = Math.max(0, unsavedFiles.length - shown.length);
 
@@ -217,9 +218,9 @@ class TitlebarManager {
 
     async _confirmTemporaryFilesBeforeClose() {
         const tempFiles = Array.from(window.tabManager?.tabs?.values?.() || [])
-            .filter((tab) => tab?.isTempFile && tab.viewType !== 'pdf');
+            .filter((tab) => { const t = tab as { isTempFile?: boolean; viewType?: string }; return t?.isTempFile && t?.viewType !== 'pdf'; });
         for (const tab of tempFiles) {
-            const fileName = tab.fileName || '临时文件';
+            const fileName = (tab as { fileName?: string }).fileName || '临时文件';
             const result = await window.dialogManager?.showActionDialog?.(
                 '确认丢弃临时文件',
                 `临时文件“${fileName}”未保存。\n\n请选择如何处理临时文件。`,
@@ -232,7 +233,7 @@ class TitlebarManager {
             if (result === 'cancel' || !result) return false;
             if (result === 'save') {
                 const content = window.tabManager.getTabContentForSave?.(tab);
-                const savedPath = await window.electronAPI?.saveAsFile?.(content);
+                const savedPath = await window.electronAPI?.saveAsFile?.(content as string);
                 if (!savedPath) return false;
             }
         }
@@ -282,9 +283,9 @@ class TitlebarManager {
         }
     }
 
-    setTitle(title) {
+    setTitle(title: string) {
         this.currentTitle = title;
-        const titleElement = this.titlebar.querySelector('.titlebar-title');
+        const titleElement = this.titlebar?.querySelector('.titlebar-title');
         if (titleElement) {
             titleElement.textContent = title;
         }
@@ -292,4 +293,4 @@ class TitlebarManager {
 }
 
 
-window.TitlebarManager = TitlebarManager;
+(window as unknown as { TitlebarManager?: typeof TitlebarManager }).TitlebarManager = TitlebarManager;
