@@ -1,21 +1,23 @@
 class FontDetector {
+    private testString: string = 'mmmmmmmmmmlli';
+    private testSize: string = '72px';
+    private fallbackFont: string = 'monospace';
+    private defaultFont: string = 'monospace, monospace';
+    private _warnedFonts: Set<string> = new Set();
+
     constructor() {
-        this.testString = 'mmmmmmmmmmlli';
-        this.testSize = '72px';
-        this.fallbackFont = 'monospace';
-        const platform = (typeof process!=='undefined' && process.platform)||'';
-        if(platform==='win32') {
+        const platform = (typeof process !== 'undefined' && process.platform) || '';
+        if (platform === 'win32') {
             this.defaultFont = 'Consolas';
         } else {
             this.defaultFont = 'monospace, monospace';
         }
-        this._warnedFonts = new Set();
     }
 
-    isFontAvailable(fontName) {
-    if(!fontName) return false;
-    const genericFamilies = ['monospace','serif','sans-serif'];
-    if (genericFamilies.includes(fontName.toLowerCase())) return true;
+    isFontAvailable(fontName: string): boolean {
+        if (!fontName) return false;
+        const genericFamilies = ['monospace', 'serif', 'sans-serif'];
+        if (genericFamilies.includes(fontName.toLowerCase())) return true;
         const testElement = document.createElement('span');
         testElement.style.position = 'absolute';
         testElement.style.left = '-9999px';
@@ -23,49 +25,49 @@ class FontDetector {
         testElement.style.fontSize = this.testSize;
         testElement.style.fontFamily = this.fallbackFont;
         testElement.textContent = this.testString;
-        
+
         document.body.appendChild(testElement);
-        
+
         const fallbackWidth = testElement.offsetWidth;
         const fallbackHeight = testElement.offsetHeight;
-        
+
         testElement.style.fontFamily = `"${fontName}", ${this.fallbackFont}`;
-        
+
         const testWidth = testElement.offsetWidth;
         const testHeight = testElement.offsetHeight;
-        
+
         document.body.removeChild(testElement);
-        
+
         return testWidth !== fallbackWidth || testHeight !== fallbackHeight;
     }
 
-    validateFont(fontName) {
+    validateFont(fontName: string): string {
         if (!fontName || fontName.trim() === '') {
             return this.defaultFont;
         }
 
         let cleanFontName = fontName.replace(/["']/g, '').trim();
-        const aliasMap = {
+        const aliasMap: Record<string, string> = {
             'mono': 'monospace',
             'monospaced': 'monospace',
             'code': 'monospace'
         };
         const lower = cleanFontName.toLowerCase();
-        if(aliasMap[lower]) cleanFontName = aliasMap[lower];
-        
+        if (aliasMap[lower]) cleanFontName = aliasMap[lower];
+
         const firstFont = cleanFontName.split(',')[0].trim();
-        if (['monospace','serif','sans-serif'].includes(firstFont.toLowerCase())) {
+        if (['monospace', 'serif', 'sans-serif'].includes(firstFont.toLowerCase())) {
             return firstFont;
         }
-        
+
         if (this.isFontAvailable(firstFont)) {
             return firstFont;
         } else {
-            if(!this._warnedFonts.has(firstFont)) {
+            if (!this._warnedFonts.has(firstFont)) {
                 this._warnedFonts.add(firstFont);
                 logWarn(`字体 "${firstFont}" 在系统中不可用，已切换到默认字体 "${this.defaultFont}"`);
-                const platform = (typeof process!=='undefined' && process.platform)||'';
-                if(platform!=='win32') this.showFontNotAvailableMessage(firstFont);
+                const platform = (typeof process !== 'undefined' && process.platform) || '';
+                if (platform !== 'win32') this.showFontNotAvailableMessage(firstFont);
             }
             return this.defaultFont;
         }
@@ -84,7 +86,7 @@ class FontDetector {
                 <button class="font-warning-close" onclick="this.parentElement.parentElement.remove()">×</button>
             </div>
         `;
-        const detail = message.querySelector('.font-warning-detail');
+        const detail = message.querySelector('.font-warning-detail') as HTMLElement;
         if (detail) {
             detail.textContent = `系统中未找到字体 "${fontName}"，已自动切换到 "${this.defaultFont}"`;
         }
@@ -104,7 +106,7 @@ class FontDetector {
             animation: slideInRight 0.3s ease-out;
         `;
         
-        const content = message.querySelector('.font-warning-content');
+        const content = message.querySelector('.font-warning-content') as HTMLElement;
         content.style.cssText = `
             display: flex;
             align-items: flex-start;
@@ -112,7 +114,7 @@ class FontDetector {
             gap: 12px;
         `;
         
-        const icon = message.querySelector('.font-warning-icon');
+        const icon = message.querySelector('.font-warning-icon') as HTMLElement;
         icon.style.cssText = `
             font-size: 20px;
             flex-shrink: 0;
@@ -123,7 +125,7 @@ class FontDetector {
             window.uiIcons.hydrate(message);
         }
         
-        const text = message.querySelector('.font-warning-text');
+        const text = message.querySelector('.font-warning-text') as HTMLElement;
         text.style.cssText = `
             flex: 1;
             color: #856404;
@@ -131,7 +133,7 @@ class FontDetector {
             line-height: 1.4;
         `;
         
-        const closeBtn = message.querySelector('.font-warning-close');
+        const closeBtn = message.querySelector('.font-warning-close') as HTMLElement;
         closeBtn.style.cssText = `
             background: none;
             border: none;
@@ -276,7 +278,7 @@ class FontDetector {
             'sans-serif'
         ];
         
-        const allFonts = [...new Set([...systemFonts, ...commonFonts])];
+        const allFonts = [...new Set([...systemFonts, ...commonFonts])] as string[];
         
         const availableFonts = allFonts.filter(font => {
             if (['monospace', 'serif', 'sans-serif'].includes(font)) {
@@ -366,11 +368,8 @@ class FontDetector {
     }
 }
 
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = FontDetector;
-}
+export default FontDetector;
 
 if (typeof window !== 'undefined') {
-    window.FontDetector = FontDetector;
-    window.fontDetector = new FontDetector();
+    (window as unknown as { fontDetector?: FontDetector }).fontDetector = new FontDetector();
 }

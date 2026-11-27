@@ -1,14 +1,30 @@
-const os = require('os');
-const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
-const { spawn, spawnSync } = require('child_process');
+import * as os from 'os';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import { spawn, spawnSync, ChildProcessWithoutNullStreams } from 'child_process';
+import { createRequire } from 'module';
+const require = createRequire(__filename);
 
 let pty = null;
 let ptyLoadError = null;
 let ptyLoadTargets = [];
 
-function tryLoadPty(moduleId) {
+interface TerminalSession {
+    id: string;
+    shell: string;
+    cwd: string;
+    cols: number;
+    rows: number;
+    createdAt: number;
+    backend: 'pty' | 'process';
+    pty?: { write?: (data: string) => void; resize?: (cols: number, rows: number) => void; kill?: () => void; pid?: number };
+    process?: ChildProcessWithoutNullStreams;
+    wrappedWithScript?: boolean;
+    name?: string;
+}
+
+function tryLoadPty(moduleId: string) {
     try {
         return require(moduleId);
     } catch (error) {
@@ -60,7 +76,9 @@ if (!pty) {
 }
 
 class IntegratedTerminalManager {
-    constructor(options = {}) {
+    sessions: Map<string, TerminalSession>;
+    sendToRenderer: (channel: string, ...args: unknown[]) => void;
+    constructor(options: { sendToRenderer?: (channel: string, ...args: unknown[]) => void } = {}) {
         this.sessions = new Map();
         this.sendToRenderer = typeof options.sendToRenderer === 'function'
             ? options.sendToRenderer
@@ -304,7 +322,7 @@ class IntegratedTerminalManager {
     }
 
     _buildSpawnEnv() {
-        const nextEnv = {};
+        const nextEnv: Record<string, string> = {};
         for (const [key, value] of Object.entries(process.env || {})) {
             if (typeof key !== 'string' || !key) {
                 continue;
@@ -466,12 +484,12 @@ class IntegratedTerminalManager {
         }
     }
 
-    _spawnProcessFallbackSession({ shellPath, requestedArgs, cwd, env, cols, rows, name }) {
+    _spawnProcessFallbackSession({ shellPath, requestedArgs, cwd, env, cols, rows, name }: { shellPath: string; requestedArgs: string[] | null; cwd: string; env: Record<string, string>; cols: number; rows: number; name?: string }) {
         const args = this._resolveProcessFallbackArgs(shellPath, requestedArgs);
         const preflight = this._runShellPreflight(shellPath, [], cwd, env);
         if (!preflight.ok) {
             const err = new Error(`兼容终端预检查失败: ${preflight.detail}`);
-            err.code = 'SHELL_PREFLIGHT_FAILED';
+            (err as { code?: string }).code = 'SHELL_PREFLIGHT_FAILED';
             throw err;
         }
 
@@ -485,7 +503,7 @@ class IntegratedTerminalManager {
         });
 
         const sessionId = crypto.randomUUID();
-        const session = {
+        const session: TerminalSession = {
             id: sessionId,
             shell: shellPath,
             cwd,
@@ -540,11 +558,11 @@ class IntegratedTerminalManager {
         };
     }
 
-    createSession(options = {}) {
+    createSession(options: { shell?: string; args?: string[]; cols?: number; rows?: number; cwd?: string; name?: string } = {}) {
         if (!this.isAvailable()) {
             const status = this.getStatus();
             const err = new Error(`${status.reason}: ${status.detail}`);
-            err.code = 'TERMINAL_UNAVAILABLE';
+            (err as { code?: string }).code = 'TERMINAL_UNAVAILABLE';
             throw err;
         }
 
@@ -563,7 +581,7 @@ class IntegratedTerminalManager {
 
         if (shellCandidates.length === 0) {
             const err = new Error('未找到可用的 shell 候选项');
-            err.code = 'SHELL_UNAVAILABLE';
+            (err as { code?: string }).code = 'SHELL_UNAVAILABLE';
             throw err;
         }
 
@@ -571,7 +589,7 @@ class IntegratedTerminalManager {
             if (!this._isInteractiveFallbackAvailable()) {
                 const status = this.getStatus();
                 const err = new Error(`${status.reason}: ${status.detail}`);
-                err.code = 'TERMINAL_REQUIRES_PTY';
+                (err as { code?: string }).code = 'TERMINAL_REQUIRES_PTY';
                 throw err;
             }
             const fallbackErrors = [];
@@ -592,7 +610,7 @@ class IntegratedTerminalManager {
             }
 
             const err = new Error(`兼容终端启动失败: ${fallbackErrors.join(' || ') || '未知错误'}`);
-            err.code = 'PROCESS_FALLBACK_FAILED';
+            (err as { code?: string }).code = 'PROCESS_FALLBACK_FAILED';
             throw err;
         }
 
@@ -663,13 +681,13 @@ class IntegratedTerminalManager {
             const trace = spawnErrors.length > 0 ? `; node-pty: ${spawnErrors.join(' || ')}` : '';
             const fallbackTrace = fallbackErrors.length > 0 ? `; 兼容终端: ${fallbackErrors.join(' || ')}` : '';
             const err = new Error(`启动 shell 失败: ${detail}. 尝试候选: ${attempted}${trace}${fallbackTrace}`);
-            err.code = 'SHELL_SPAWN_FAILED';
+            (err as { code?: string }).code = 'SHELL_SPAWN_FAILED';
             throw err;
         }
 
         const sessionId = crypto.randomUUID();
 
-        const session = {
+        const session: TerminalSession = {
             id: sessionId,
             shell: activeShell,
             cwd,
@@ -692,7 +710,7 @@ class IntegratedTerminalManager {
             });
         });
 
-        ptyProcess.onExit((event = {}) => {
+        ptyProcess.onExit((event: { exitCode?: number; signal?: string } = {}) => {
             this.sessions.delete(sessionId);
             this.sendToRenderer('terminal-exit', {
                 terminalId: sessionId,
@@ -735,7 +753,7 @@ class IntegratedTerminalManager {
             return false;
         }
 
-        session.pty.write(String(data ?? ''));
+        session.pty.write?.(String(data ?? ''));
         return true;
     }
 
@@ -757,7 +775,7 @@ class IntegratedTerminalManager {
             return false;
         }
 
-        session.pty.resize(nextCols, nextRows);
+        session.pty.resize?.(nextCols, nextRows);
         return true;
     }
 
@@ -782,7 +800,7 @@ class IntegratedTerminalManager {
         }
 
         try {
-            session.pty.kill();
+            session.pty.kill?.();
         } catch (_) {}
         this.sessions.delete(terminalId);
         return true;
@@ -902,4 +920,4 @@ class IntegratedTerminalManager {
     }
 }
 
-module.exports = IntegratedTerminalManager;
+export default IntegratedTerminalManager;

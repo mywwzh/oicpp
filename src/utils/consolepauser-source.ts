@@ -1,4 +1,4 @@
-module.exports = String.raw`#include <windows.h>
+export default String.raw`#include <windows.h>
 #include <conio.h>
 #include <stdio.h>
 #include <psapi.h>

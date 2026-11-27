@@ -362,9 +362,6 @@ contextBridge.exposeInMainWorld('turndownAPI', {
     }
 });
 
-if (globalThis.__oicppPreloadInitialized) {
-    return;
-}
 globalThis.__oicppPreloadInitialized = true;
 
 try {
