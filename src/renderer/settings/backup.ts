@@ -1,4 +1,7 @@
 class BackupSettings {
+    settings: any;
+    _saving: any;
+    latestInfoEl: HTMLElement | null = null;
     constructor() {
         this.settings = {
             autoBackupSettings: false,
@@ -31,8 +34,9 @@ class BackupSettings {
 
         if (window.electronIPC && window.electronIPC.on) {
             window.electronIPC.on('settings-imported', (_event, allSettings) => {
-                if (allSettings && typeof allSettings.autoBackupSettings === 'boolean') {
-                    this.settings.autoBackupSettings = allSettings.autoBackupSettings;
+                const s = allSettings as { autoBackupSettings?: boolean } | undefined;
+                if (s && typeof s.autoBackupSettings === 'boolean') {
+                    this.settings.autoBackupSettings = s.autoBackupSettings;
                     this.updateUI();
                 }
             });
@@ -97,7 +101,7 @@ class BackupSettings {
     }
 
     updateUI() {
-        const autoBackupCheckbox = document.getElementById('auto-backup-settings');
+        const autoBackupCheckbox = document.getElementById('auto-backup-settings') as HTMLInputElement;
         if (autoBackupCheckbox) {
             autoBackupCheckbox.checked = this.settings.autoBackupSettings === true;
         }
@@ -135,7 +139,7 @@ class BackupSettings {
     }
 
     collectSettings() {
-        const autoBackupCheckbox = document.getElementById('auto-backup-settings');
+        const autoBackupCheckbox = document.getElementById('auto-backup-settings') as HTMLInputElement;
         return {
             autoBackupSettings: !!autoBackupCheckbox?.checked
         };
@@ -301,6 +305,8 @@ class BackupSettings {
         }, 3000);
     }
 }
+
+export default BackupSettings;
 
 window.addEventListener('DOMContentLoaded', () => {
     new BackupSettings();
