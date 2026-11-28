@@ -293,4 +293,4 @@ export default class TitlebarManager {
 }
 
 
-(window as unknown as { TitlebarManager?: typeof TitlebarManager }).TitlebarManager = TitlebarManager;
+(window as { TitlebarManager?: typeof TitlebarManager }).TitlebarManager = TitlebarManager;

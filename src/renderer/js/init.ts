@@ -46,7 +46,7 @@ async function setUserIconPath() {
 async function initializeApp() {
     try {
         logInfo('初始化标题栏管理器...');
-        window.titlebarManager = new (window.TitlebarManager as unknown as new () => unknown)();
+        window.titlebarManager = new (window.TitlebarManager as new () => unknown)();
   
         logInfo('初始化侧边栏管理器...');
         window.sidebarManager = new SidebarManager();

@@ -1890,7 +1890,7 @@ class OICPPApp {
                         }
                     };
                     reader.onerror = () => reject(reader.error || new Error('读取文件失败'));
-                    reader.readAsDataURL(file as unknown as Blob);
+                    reader.readAsDataURL(file as Blob);
                 });
             } catch (error) {
                 logWarn('通过 readAsDataURL 读取拖拽文件失败:', error);

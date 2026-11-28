@@ -182,7 +182,7 @@ class MultiThreadDownloader {
 
                 if (response.status !== 206) {
                     const rangeError = new Error(`服务器未按范围请求返回数据（HTTP ${response.status}）`);
-                    (rangeError as unknown as Record<string, unknown>).code = 'RANGE_NOT_SUPPORTED';
+                    (rangeError as { code?: string }).code = 'RANGE_NOT_SUPPORTED';
                     try { (response.body as { destroy?: () => void }).destroy?.(); } catch (_) { }
                     throw rangeError;
                 }
@@ -223,7 +223,7 @@ class MultiThreadDownloader {
                                 const expectedBytes = end - start + 1;
                                 if (downloadedBytes !== expectedBytes) {
                                     const sizeError = new Error(`分片 ${chunkIndex} 大小异常（${downloadedBytes}/${expectedBytes}）`);
-                                    (sizeError as unknown as Record<string, unknown>).code = 'RANGE_SIZE_MISMATCH';
+                                    (sizeError as { code?: string }).code = 'RANGE_SIZE_MISMATCH';
                                     return reject(sizeError);
                                 }
                                 logInfo(`[多线程下载] 分片 ${chunkIndex} 下载完成`);

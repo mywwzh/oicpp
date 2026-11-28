@@ -371,5 +371,5 @@ class FontDetector {
 export default FontDetector;
 
 if (typeof window !== 'undefined') {
-    (window as unknown as { fontDetector?: FontDetector }).fontDetector = new FontDetector();
+    (window as { fontDetector?: FontDetector }).fontDetector = new FontDetector();
 }

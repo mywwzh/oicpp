@@ -565,4 +565,4 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-(window as unknown as { TemplatesSettings?: typeof TemplatesSettings }).TemplatesSettings = TemplatesSettings;
+(window as { TemplatesSettings?: typeof TemplatesSettings }).TemplatesSettings = TemplatesSettings;
